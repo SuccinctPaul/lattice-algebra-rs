@@ -1,11 +1,9 @@
 use crate::matrix::Matrix;
-use crate::matrix::vector_arithmatic::VectorArithmatic;
 use crate::poly::Polynomial;
-use crate::poly::uni_poly::UniPolynomial;
 use crate::ring::Ring;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::ops::{Add, AddAssign, Div, Mul, Sub};
+use std::ops::{Add, Mul, Sub};
 
 /// This defined `matrix` (rows * cols) （m × n）
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -42,25 +40,6 @@ impl<P: Polynomial> PolyMatrix<P> {
             .collect::<Vec<_>>()
     }
 
-    // pub fn from_vector(vector: Vec<P>) -> Self {
-    //     for x in &vector {
-    //         println!("from_vector.raw:  {}", x.to_string());
-    //     }
-    //
-    //     let res = Self {
-    //         rows: 1,
-    //         cols: vector.len(),
-    //         values: vec![vector],
-    //     };
-    //     for i in 0..res.rows {
-    //         for j in 0..res.cols {
-    //             let value = res.get(i, j).unwrap_or(&P::zero()).clone();
-    //             println!("from_vector.res: {i},{j}: {}", value);
-    //         }
-    //     }
-    //     res
-    // }
-
     pub fn from_row_vector(vector: Vec<P>) -> Self {
         let res = Self {
             rows: 1,
@@ -77,8 +56,8 @@ impl<P: Polynomial> PolyMatrix<P> {
         }
         matrix
     }
-
-    pub fn vec_dot_mul(a: &Vec<P>, b: &Vec<P>) -> P {
+    // Dot product between two vectors.
+    pub fn inner_product(a: &Vec<P>, b: &Vec<P>) -> P {
         assert_eq!(a.len(), b.len(), "Vectors must have the same length");
 
         let mut poly = a
@@ -88,6 +67,16 @@ impl<P: Polynomial> PolyMatrix<P> {
             .fold(P::zero(), |acc, x| acc + x);
         poly.normalize();
         poly
+    }
+    // Mul between two vectors.
+    // It's a special case of matrix mul.
+    pub fn vector_hadamard_product(a: &Vec<P>, b: &Vec<P>) -> Vec<P> {
+        assert_eq!(a.len(), b.len(), "Vectors must have the same length");
+
+        a.iter()
+            .zip(b.iter())
+            .map(|(ai, bi)| ai.clone() * bi.clone())
+            .collect::<Vec<_>>()
     }
     // Add between two vectors.
     pub fn vec_add(a: &Vec<P>, b: &Vec<P>) -> Vec<P> {
@@ -105,17 +94,6 @@ impl<P: Polynomial> PolyMatrix<P> {
         a.iter()
             .zip(b.iter())
             .map(|(ai, bi)| ai.clone() - bi.clone())
-            .collect::<Vec<_>>()
-    }
-
-    // Mul between two vectors.
-    // It's a special case of matrix mul.
-    pub fn vec_mul(a: &Vec<P>, b: &Vec<P>) -> Vec<P> {
-        assert_eq!(a.len(), b.len(), "Vectors must have the same length");
-
-        a.iter()
-            .zip(b.iter())
-            .map(|(ai, bi)| ai.clone() * bi.clone())
             .collect::<Vec<_>>()
     }
 
@@ -153,7 +131,7 @@ impl<P: Polynomial> PolyMatrix<P> {
             .map(|i| {
                 let row_i = &self.values[i];
                 (0..p)
-                    .map(|j| Self::vec_dot_mul(row_i, &m_b_columns[j]))
+                    .map(|j| Self::inner_product(row_i, &m_b_columns[j]))
                     .collect()
             })
             .collect();
@@ -326,81 +304,81 @@ mod test {
     use crate::poly::Polynomial;
     use crate::poly::uni_poly::UniPolynomial;
     use crate::ring::Ring;
-    use crate::ring::zq::Zq;
+    use crate::ring::Zq17;
     use std::ops::{Mul, Neg};
 
     #[test]
     fn test_ring_matrix_new() {
-        let matrix = PolyMatrix::<UniPolynomial<Zq>>::new(3, 4);
+        let matrix = PolyMatrix::<UniPolynomial<Zq17>>::new(3, 4);
         println!("{:?}", matrix);
         println!("{:?}", matrix.to_string());
     }
 
     #[test]
     pub fn test_matrix_vec_dot_mul() {
-        let poly_1 = UniPolynomial::from_coefficients(vec![Zq::one(), Zq::one(), Zq::one()]);
+        let poly_1 = UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one(), Zq17::one()]);
         let vec1 = vec![UniPolynomial::zero(), poly_1.clone()];
         let vec2 = vec![poly_1.clone(), UniPolynomial::zero()];
         assert_eq!(
-            PolyMatrix::<UniPolynomial<Zq>>::vec_dot_mul(&vec1, &vec2),
+            PolyMatrix::<UniPolynomial<Zq17>>::inner_product(&vec1, &vec2),
             UniPolynomial::zero()
         );
 
         // [x+1, x-1]
         let vec3 = vec![
-            UniPolynomial::from_coefficients(vec![Zq::one(), Zq::one()]),
-            UniPolynomial::from_coefficients(vec![Zq::one().neg(), Zq::one()]),
+            UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
+            UniPolynomial::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
         ];
         // [3x+1, x+3]
-        let mut vec4 = vec![
-            UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-            UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(1)]),
+        let vec4 = vec![
+            UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(1)]),
         ];
         assert_eq!(
-            PolyMatrix::<UniPolynomial<Zq>>::vec_dot_mul(&vec3, &vec4),
+            PolyMatrix::<UniPolynomial<Zq17>>::inner_product(&vec3, &vec4),
             // -2 + 6x + 4x^2
-            UniPolynomial::from_coefficients(vec![Zq::new(2).neg(), Zq::new(6), Zq::new(4)])
+            UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::new(6), Zq17::new(4)])
         );
     }
 
     #[test]
     pub fn test_matrix_transpose() {
         let m = 2;
-        let matrix = PolyMatrix::<UniPolynomial<Zq>> {
+        let matrix = PolyMatrix::<UniPolynomial<Zq17>> {
             rows: m,
             cols: m,
             values: vec![
                 vec![
                     UniPolynomial::zero(),
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
                 ],
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::one(), Zq::new(2)]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(4)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::new(2)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(4)]),
                 ],
             ],
         };
         println!("{:?}", matrix.to_string());
 
-        let transposed: PolyMatrix<UniPolynomial<Zq>> = matrix.transpose();
-        let expect = PolyMatrix::<UniPolynomial<Zq>> {
+        let transposed: PolyMatrix<UniPolynomial<Zq17>> = matrix.transpose();
+        let expect = PolyMatrix::<UniPolynomial<Zq17>> {
             rows: m,
             cols: m,
             values: vec![
                 vec![
                     UniPolynomial::zero(),
-                    UniPolynomial::from_coefficients(vec![Zq::one(), Zq::new(2)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::new(2)]),
                 ],
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(4)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(4)]),
                 ],
             ],
         };
 
         assert_eq!(transposed, expect);
 
-        let recovered: PolyMatrix<UniPolynomial<Zq>> = transposed.transpose();
+        let recovered: PolyMatrix<UniPolynomial<Zq17>> = transposed.transpose();
         assert_eq!(recovered, matrix);
     }
 
@@ -410,8 +388,8 @@ mod test {
         let rows = 4;
         let degree = 4;
         let rng = &mut rand::thread_rng();
-        let lhs = PolyMatrix::<UniPolynomial<Zq>>::rand(rng, rows, cols, degree);
-        let rhs = PolyMatrix::<UniPolynomial<Zq>>::rand(rng, rows, cols, degree);
+        let lhs = PolyMatrix::<UniPolynomial<Zq17>>::rand(rng, rows, cols, degree);
+        let rhs = PolyMatrix::<UniPolynomial<Zq17>>::rand(rng, rows, cols, degree);
 
         let sum = lhs.clone() + rhs.clone();
 
@@ -429,8 +407,8 @@ mod test {
     fn test_from_vector_by_row_and_col() {
         // [3x+1, x+3]
         let rhs = vec![
-            UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-            UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(1)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(1)]),
         ];
 
         let p1 = PolyMatrix::from_col_vector(rhs.clone());
@@ -449,27 +427,27 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::one(), Zq::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq::one().neg(), Zq::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::one(), Zq::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(2).neg(), Zq::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
                 ],
             ],
         };
         // [3x+1, x+3]
         let rhs = vec![
-            UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-            UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(1)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(1)]),
         ];
 
         let expect = vec![
             // -2 + 6x + 4x^2
-            UniPolynomial::from_coefficients(vec![Zq::new(2).neg(), Zq::new(6), Zq::new(4)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::new(6), Zq17::new(4)]),
             // (4x^2 + 5x - 5)
-            UniPolynomial::from_coefficients(vec![Zq::new(5).neg(), Zq::new(5), Zq::new(4)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(5).neg(), Zq17::new(5), Zq17::new(4)]),
         ];
 
         let rhs = PolyMatrix::from_col_vector(rhs);
@@ -486,13 +464,13 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::one(), Zq::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq::one().neg(), Zq::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::one(), Zq::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(2).neg(), Zq::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
                 ],
             ],
         };
@@ -502,13 +480,13 @@ mod test {
             values: vec![
                 // [3x+1, x+3]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(1)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(1)]),
                 ],
                 // [3x+1, x+1]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(1)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(1)]),
                 ],
             ],
         };
@@ -519,17 +497,29 @@ mod test {
             values: vec![
                 // [2x + 6x^2, 2 + 4x + 2x^2]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::new(0), Zq::new(2), Zq::new(6)]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(2), Zq::new(4), Zq::new(2)]),
+                    UniPolynomial::from_coefficients(vec![
+                        Zq17::new(0),
+                        Zq17::new(2),
+                        Zq17::new(6),
+                    ]),
+                    UniPolynomial::from_coefficients(vec![
+                        Zq17::new(2),
+                        Zq17::new(4),
+                        Zq17::new(2),
+                    ]),
                 ],
                 // [-1 - x + 6x^2, 1 + 3x + 2x^2]
                 vec![
                     UniPolynomial::from_coefficients(vec![
-                        Zq::new(1).neg(),
-                        Zq::new(1).neg(),
-                        Zq::new(6),
+                        Zq17::new(1).neg(),
+                        Zq17::new(1).neg(),
+                        Zq17::new(6),
                     ]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3), Zq::new(2)]),
+                    UniPolynomial::from_coefficients(vec![
+                        Zq17::new(1),
+                        Zq17::new(3),
+                        Zq17::new(2),
+                    ]),
                 ],
             ],
         };
@@ -540,7 +530,7 @@ mod test {
     #[test]
     fn test_matrix_scalar_mul_and_matrix_mul() {
         let m = 2;
-        let mut rng = rand::thread_rng();
+        let rng = rand::thread_rng();
 
         let lhs = PolyMatrix {
             rows: m,
@@ -548,13 +538,13 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::one(), Zq::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq::one().neg(), Zq::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::one(), Zq::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(2).neg(), Zq::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
                 ],
             ],
         };
@@ -564,25 +554,25 @@ mod test {
             values: vec![
                 // [3x+1, x+3]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(1)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(1)]),
                 ],
                 // [3x+1, x+1]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-                    UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(1)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(1)]),
                 ],
             ],
         };
         // [3x+1, x+3]
         let x = vec![
-            UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(3)]),
-            UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(1)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
+            UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(1)]),
         ];
         let x = PolyMatrix::from_col_vector(x);
 
         // A*B*x
-        let res1 = PolyMatrix::<UniPolynomial<Zq>>::mul_matrix(&lhs, &rhs).mul(x.clone());
+        let res1 = PolyMatrix::<UniPolynomial<Zq17>>::mul_matrix(&lhs, &rhs).mul(x.clone());
         // A*(B*x)
         let res2 = lhs.mul(rhs.mul(x));
         assert_eq!(res1, res2);

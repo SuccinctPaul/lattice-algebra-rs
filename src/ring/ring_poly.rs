@@ -1,5 +1,4 @@
 use crate::poly::Polynomial;
-use crate::poly::uni_poly::UniPolynomial;
 use crate::ring::{PolynomialRingTrait, Ring};
 use rand::RngCore;
 use std::fmt;

@@ -4,7 +4,7 @@ pub mod poly_ring_matrix;
 pub mod ring_matrix;
 pub mod vector_arithmatic;
 
-use std::ops::{Add, Mul, Neg, Sub};
+use std::ops::{Add, Mul, Sub};
 
 pub trait Matrix<T>: Sized + Clone + Add + Sub + Mul
 where

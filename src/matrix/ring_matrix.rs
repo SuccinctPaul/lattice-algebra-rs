@@ -1,7 +1,7 @@
 use crate::matrix::Matrix;
 use crate::matrix::vector_arithmatic::VectorArithmatic;
 use crate::ring::Ring;
-use std::ops::{Add, AddAssign, Div, Mul, Sub};
+use std::ops::{Add, Mul, Sub};
 
 /// This define `matrix` (rows * cols) （m × n）
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -226,39 +226,42 @@ mod test {
     use crate::matrix::ring_matrix::RingMatrix;
     use crate::matrix::vector_arithmatic::VectorArithmatic;
     use crate::ring::Ring;
-    use crate::ring::zq::Zq;
+    use crate::ring::Zq17;
 
     #[test]
     fn test_ring_matrix_new() {
-        let matrix = RingMatrix::<Zq>::new(3, 4);
+        let matrix = RingMatrix::<Zq17>::new(3, 4);
         println!("{:?}", matrix);
     }
 
     #[test]
     pub fn test_matrix_mul_vector() {
-        let vec1 = vec![Zq::one(), Zq::zero(), Zq::new(3)];
-        let vec2 = vec![Zq::zero(), Zq::one(), Zq::new(2)];
+        let vec1 = vec![Zq17::one(), Zq17::zero(), Zq17::new(3)];
+        let vec2 = vec![Zq17::zero(), Zq17::one(), Zq17::new(2)];
         assert_eq!(
-            VectorArithmatic::<Zq>::inner_product(&vec1, &vec2),
-            Zq::new(6)
+            VectorArithmatic::<Zq17>::inner_product(&vec1, &vec2),
+            Zq17::new(6)
         );
 
-        let vec3 = vec![Zq::one(), Zq::one()];
-        let vec4 = vec![Zq::zero(), Zq::zero()];
+        let vec3 = vec![Zq17::one(), Zq17::one()];
+        let vec4 = vec![Zq17::zero(), Zq17::zero()];
         assert_eq!(
-            VectorArithmatic::<Zq>::inner_product(&vec3, &vec4),
-            Zq::zero()
+            VectorArithmatic::<Zq17>::inner_product(&vec3, &vec4),
+            Zq17::zero()
         );
     }
     #[test]
     pub fn test_matrix_identity() {
         let m = 2;
-        let vector = vec![Zq::one(), Zq::zero()];
+        let vector = vec![Zq17::one(), Zq17::zero()];
 
-        let matrix = RingMatrix::<Zq> {
+        let matrix = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![vec![Zq::one(), Zq::zero()], vec![Zq::zero(), Zq::one()]],
+            values: vec![vec![Zq17::one(), Zq17::zero()], vec![
+                Zq17::zero(),
+                Zq17::one(),
+            ]],
         };
         assert_eq!(matrix, RingMatrix::identity(m));
 
@@ -266,10 +269,10 @@ mod test {
         let len = 5;
         let vector = (0..len)
             .into_iter()
-            .map(|_| Zq::rand(rng))
+            .map(|_| Zq17::rand(rng))
             .collect::<Vec<_>>();
 
-        let identity = RingMatrix::<Zq>::identity(len);
+        let identity = RingMatrix::<Zq17>::identity(len);
 
         let actual = identity.mul_vector(&vector);
         assert_eq!(vector, actual);
@@ -278,21 +281,27 @@ mod test {
     #[test]
     pub fn test_matrix_transpose() {
         let m = 2;
-        let matrix = RingMatrix::<Zq> {
+        let matrix = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![vec![Zq::one(), Zq::new(2)], vec![Zq::new(3), Zq::new(4)]],
+            values: vec![vec![Zq17::one(), Zq17::new(2)], vec![
+                Zq17::new(3),
+                Zq17::new(4),
+            ]],
         };
-        let transposed: RingMatrix<Zq> = matrix.transpose();
-        let expect = RingMatrix::<Zq> {
+        let transposed: RingMatrix<Zq17> = matrix.transpose();
+        let expect = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![vec![Zq::one(), Zq::new(3)], vec![Zq::new(2), Zq::new(4)]],
+            values: vec![vec![Zq17::one(), Zq17::new(3)], vec![
+                Zq17::new(2),
+                Zq17::new(4),
+            ]],
         };
 
         assert_eq!(transposed, expect);
 
-        let recovered: RingMatrix<Zq> = transposed.transpose();
+        let recovered: RingMatrix<Zq17> = transposed.transpose();
         assert_eq!(recovered, matrix);
     }
 
@@ -301,8 +310,8 @@ mod test {
         let cols = 10;
         let rows = 20;
         let rng = &mut rand::thread_rng();
-        let lhs = RingMatrix::<Zq>::rand(rng, rows, cols);
-        let rhs = RingMatrix::<Zq>::rand(rng, rows, cols);
+        let lhs = RingMatrix::<Zq17>::rand(rng, rows, cols);
+        let rhs = RingMatrix::<Zq17>::rand(rng, rows, cols);
 
         let sum = lhs.clone() + rhs.clone();
 
@@ -319,20 +328,23 @@ mod test {
     #[test]
     #[should_panic(expected = "Vectors must have the same length")]
     fn test_inner_product_unequal_lengths() {
-        let vec1 = vec![Zq::one(), Zq::zero()];
-        let vec2 = vec![Zq::zero(), Zq::one(), Zq::new(2)];
-        VectorArithmatic::<Zq>::inner_product(&vec1, &vec2);
+        let vec1 = vec![Zq17::one(), Zq17::zero()];
+        let vec2 = vec![Zq17::zero(), Zq17::one(), Zq17::new(2)];
+        VectorArithmatic::<Zq17>::inner_product(&vec1, &vec2);
     }
     #[test]
     fn test_mul_vector() {
         let m: usize = 2;
         // | 1 0 |
         // | 0 1 |
-        let matrix = vec![vec![Zq::one(), Zq::zero()], vec![Zq::zero(), Zq::one()]];
+        let matrix = vec![vec![Zq17::one(), Zq17::zero()], vec![
+            Zq17::zero(),
+            Zq17::one(),
+        ]];
 
-        let vector = vec![Zq::one(), Zq::zero()];
+        let vector = vec![Zq17::one(), Zq17::zero()];
 
-        let a = RingMatrix::<Zq> {
+        let a = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
             values: matrix,
@@ -345,21 +357,27 @@ mod test {
     #[test]
     #[should_panic(expected = "Matrix columns must match vector length")]
     fn test_mul_vector_mismatch() {
-        let matrix = RingMatrix::<Zq> {
+        let matrix = RingMatrix::<Zq17> {
             rows: 2,
             cols: 2,
-            values: vec![vec![Zq::one(), Zq::zero()], vec![Zq::zero(), Zq::one()]],
+            values: vec![vec![Zq17::one(), Zq17::zero()], vec![
+                Zq17::zero(),
+                Zq17::one(),
+            ]],
         };
-        let vector = vec![Zq::one()];
+        let vector = vec![Zq17::one()];
         matrix.mul_vector(&vector);
     }
     #[test]
     fn test_mul_matrix() {
         let m: usize = 2;
-        let a = RingMatrix::<Zq> {
+        let a = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![vec![Zq::one(), Zq::zero()], vec![Zq::zero(), Zq::one()]],
+            values: vec![vec![Zq17::one(), Zq17::zero()], vec![
+                Zq17::zero(),
+                Zq17::one(),
+            ]],
         };
         let b = a.clone();
 
@@ -372,19 +390,22 @@ mod test {
     #[test]
     #[should_panic(expected = "Matrix dimensions must be compatible for multiplication")]
     fn test_mul_matrix_incompatible() {
-        let a = RingMatrix::<Zq> {
+        let a = RingMatrix::<Zq17> {
             rows: 2,
             cols: 3,
-            values: vec![vec![Zq::one(), Zq::zero(), Zq::one()], vec![
-                Zq::zero(),
-                Zq::one(),
-                Zq::zero(),
+            values: vec![vec![Zq17::one(), Zq17::zero(), Zq17::one()], vec![
+                Zq17::zero(),
+                Zq17::one(),
+                Zq17::zero(),
             ]],
         };
-        let b = RingMatrix::<Zq> {
+        let b = RingMatrix::<Zq17> {
             rows: 2,
             cols: 2,
-            values: vec![vec![Zq::one(), Zq::zero()], vec![Zq::zero(), Zq::one()]],
+            values: vec![vec![Zq17::one(), Zq17::zero()], vec![
+                Zq17::zero(),
+                Zq17::one(),
+            ]],
         };
         a.mul_matrix(&b);
     }
@@ -393,12 +414,12 @@ mod test {
         let n = 2;
         let mut rng = rand::thread_rng();
 
-        let A = RingMatrix::<Zq>::rand(&mut rng, n, n);
-        let B = RingMatrix::<Zq>::rand(&mut rng, n, n);
-        let x = vec![Zq::new(3), Zq::new(5)];
+        let A = RingMatrix::<Zq17>::rand(&mut rng, n, n);
+        let B = RingMatrix::<Zq17>::rand(&mut rng, n, n);
+        let x = vec![Zq17::new(3), Zq17::new(5)];
 
         // A*B*x
-        let res1 = RingMatrix::<Zq>::mul_matrix(&A, &B).mul_vector(&x);
+        let res1 = RingMatrix::<Zq17>::mul_matrix(&A, &B).mul_vector(&x);
         // A*(B*x)
         let res2 = A.mul_vector(&B.mul_vector(&x));
         assert_eq!(res1, res2);

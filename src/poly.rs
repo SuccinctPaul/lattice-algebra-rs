@@ -1,9 +1,6 @@
 use crate::ring::Ring;
-use rand::RngCore;
 use std::fmt::{Debug, Display};
-use std::ops::{
-    Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
-};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
 
 pub mod uni_poly;
 
