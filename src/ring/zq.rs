@@ -1,18 +1,18 @@
 use crate::ring::Ring;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
 use std::fmt::*;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::random::{Random, RandomSource};
 
+// TODO: module it.
 // Z_q: Ring of integers mod q
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize)]
-pub struct Zq {
+pub struct Zq<const MODULUS: u64> {
     value: u64,
 }
 
-impl Zq {
+impl<const MODULUS: u64> Zq<MODULUS> {
     // To ensure the value within the [0, MODULUS - 1].
     pub fn new(value: u64) -> Self {
         Self {
@@ -42,14 +42,14 @@ impl Zq {
     }
 }
 
-impl Random for Zq {
+impl<const MODULUS: u64> Random for Zq<MODULUS> {
     fn random(source: &mut (impl RandomSource + ?Sized)) -> Self {
         Self::new(u64::random(source))
     }
 }
 
-impl Ring for Zq {
-    const MODULUS: u64 = 17;
+impl<const MODULUS: u64> Ring for Zq<MODULUS> {
+    const MODULUS: u64 = MODULUS;
     fn rand(rng: &mut impl RngCore) -> Self {
         Self::new(rng.next_u64())
     }
@@ -80,14 +80,14 @@ impl Ring for Zq {
         result
     }
 }
-impl From<u64> for Zq {
+impl<const MODULUS: u64> From<u64> for Zq<MODULUS> {
     fn from(value: u64) -> Self {
         Self {
             value: value % Self::MODULUS,
         }
     }
 }
-impl Add for Zq {
+impl<const MODULUS: u64> Add for Zq<MODULUS> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -95,7 +95,7 @@ impl Add for Zq {
     }
 }
 
-impl AddAssign for Zq {
+impl<const MODULUS: u64> AddAssign for Zq<MODULUS> {
     fn add_assign(&mut self, rhs: Self) {
         self.value = (self.value + rhs.value) % Self::MODULUS;
     }
@@ -105,7 +105,7 @@ impl AddAssign for Zq {
 //  - Implement Barrett reduction algorithm
 //      https://www.nayuki.io/page/barrett-reduction-algorithm
 //  - Implement Montgomery reduction algorithm
-impl Mul for Zq {
+impl<const MODULUS: u64> Mul for Zq<MODULUS> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -113,13 +113,13 @@ impl Mul for Zq {
     }
 }
 
-impl MulAssign for Zq {
+impl<const MODULUS: u64> MulAssign for Zq<MODULUS> {
     fn mul_assign(&mut self, rhs: Self) {
         self.value = (self.value * rhs.value) % Self::MODULUS;
     }
 }
 
-impl Neg for Zq {
+impl<const MODULUS: u64> Neg for Zq<MODULUS> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -131,7 +131,7 @@ impl Neg for Zq {
         Self { value }
     }
 }
-impl Sub for Zq {
+impl<const MODULUS: u64> Sub for Zq<MODULUS> {
     type Output = Self;
 
     // a−b mod q=(a+(q−b))mod q
@@ -140,13 +140,13 @@ impl Sub for Zq {
     }
 }
 
-impl SubAssign for Zq {
+impl<const MODULUS: u64> SubAssign for Zq<MODULUS> {
     fn sub_assign(&mut self, rhs: Self) {
         self.value = (self.value + Self::MODULUS - rhs.value) % Self::MODULUS;
     }
 }
 
-impl Div for Zq {
+impl<const MODULUS: u64> Div for Zq<MODULUS> {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -160,7 +160,7 @@ impl Div for Zq {
     }
 }
 
-impl<'a> Add<&'a Self> for Zq {
+impl<'a, const MODULUS: u64> Add<&'a Self> for Zq<MODULUS> {
     type Output = Self;
 
     fn add(self, rhs: &'a Self) -> Self::Output {
@@ -168,13 +168,13 @@ impl<'a> Add<&'a Self> for Zq {
     }
 }
 
-impl<'a> AddAssign<&'a Self> for Zq {
+impl<'a, const MODULUS: u64> AddAssign<&'a Self> for Zq<MODULUS> {
     fn add_assign(&mut self, rhs: &'a Self) {
         self.value = (self.value + rhs.value) % Self::MODULUS;
     }
 }
 
-impl<'a> Mul<&'a Self> for Zq {
+impl<'a, const MODULUS: u64> Mul<&'a Self> for Zq<MODULUS> {
     type Output = Self;
 
     fn mul(self, rhs: &'a Self) -> Self::Output {
@@ -182,7 +182,7 @@ impl<'a> Mul<&'a Self> for Zq {
     }
 }
 
-impl<'a> MulAssign<&'a Self> for Zq {
+impl<'a, const MODULUS: u64> MulAssign<&'a Self> for Zq<MODULUS> {
     fn mul_assign(&mut self, rhs: &'a Self) {
         self.value = (self.value * rhs.value) % Self::MODULUS;
     }
@@ -194,7 +194,7 @@ impl<'a> MulAssign<&'a Self> for Zq {
 //     }
 // }
 
-impl Display for Zq {
+impl<const MODULUS: u64> Display for Zq<MODULUS> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.value)
     }
@@ -204,17 +204,18 @@ impl Display for Zq {
 mod tests {
     use super::*;
     use std::random::DefaultRandomSource;
+    type Zq17 = Zq<17>;
 
     #[test]
     fn test_new_Zq() {
-        assert_eq!(Zq::zero(), Zq::new(Zq::MODULUS));
-        assert_eq!(Zq::one(), Zq::new(1));
+        assert_eq!(Zq17::zero(), Zq17::new(Zq17::MODULUS));
+        assert_eq!(Zq17::one(), Zq17::new(1));
     }
 
     #[test]
     fn test_Zq_to_string_and_display() {
         let mut rng = DefaultRandomSource::default();
-        let lhs = Zq::random(&mut rng);
+        let lhs = Zq17::random(&mut rng);
         let str = lhs.to_string();
         println!("{:?}", lhs);
         println!("{}", lhs);
@@ -224,155 +225,155 @@ mod tests {
     #[test]
     fn test_rand_Zq() {
         let mut rng = rand::thread_rng();
-        let lhs = Zq::rand(&mut rng);
-        let rhs = Zq::rand(&mut rng);
+        let lhs = Zq17::rand(&mut rng);
+        let rhs = Zq17::rand(&mut rng);
         assert_ne!(lhs, rhs);
     }
 
     #[test]
     fn test_Zq_addition() {
-        assert_eq!(Zq::new(8), Zq::new(5) + Zq::new(3)); // 13 mod 17 = 13
-        assert_eq!(Zq::new(15), Zq::new(7) + Zq::new(8)); // 15 mod 17 = 15
-        assert_eq!(Zq::new(1), Zq::new(9) + Zq::new(9)); // 18 mod 17 = 1
+        assert_eq!(Zq17::new(8), Zq17::new(5) + Zq17::new(3)); // 13 mod 17 = 13
+        assert_eq!(Zq17::new(15), Zq17::new(7) + Zq17::new(8)); // 15 mod 17 = 15
+        assert_eq!(Zq17::new(1), Zq17::new(9) + Zq17::new(9)); // 18 mod 17 = 1
     }
 
     #[test]
     fn test_Zq_add_assign() {
-        let mut a = Zq::new(5);
-        let b = Zq::new(3);
+        let mut a = Zq17::new(5);
+        let b = Zq17::new(3);
         a += b;
-        assert_eq!(a, Zq::new(8));
+        assert_eq!(a, Zq17::new(8));
 
-        let mut c = Zq::new(15);
-        let d = Zq::new(5);
+        let mut c = Zq17::new(15);
+        let d = Zq17::new(5);
         c += d;
-        assert_eq!(c, Zq::new(3)); // (15 + 5) % 17 = 3
+        assert_eq!(c, Zq17::new(3)); // (15 + 5) % 17 = 3
     }
 
     #[test]
     fn test_Zq_mul_assign() {
-        let mut a = Zq::new(5);
-        let b = Zq::new(3);
+        let mut a = Zq17::new(5);
+        let b = Zq17::new(3);
         a *= b;
-        assert_eq!(a, Zq::new(15));
+        assert_eq!(a, Zq17::new(15));
 
-        let mut c = Zq::new(15);
-        let d = Zq::new(5);
+        let mut c = Zq17::new(15);
+        let d = Zq17::new(5);
         c *= d;
-        assert_eq!(c, Zq::new(75)); // (15 + 5) % 17 = 3
+        assert_eq!(c, Zq17::new(75)); // (15 + 5) % 17 = 3
     }
 
     #[test]
     fn test_Zq_subtraction() {
-        let a = Zq::new(5);
-        let b = Zq::new(3);
-        assert_eq!(Zq::new(2), a - b);
-        assert_eq!(Zq::new(16), Zq::new(3) - Zq::new(4)); // -1 mod 17 = 16
-        assert_eq!(Zq::new(0), Zq::new(7) - Zq::new(7));
+        let a = Zq17::new(5);
+        let b = Zq17::new(3);
+        assert_eq!(Zq17::new(2), a - b);
+        assert_eq!(Zq17::new(16), Zq17::new(3) - Zq17::new(4)); // -1 mod 17 = 16
+        assert_eq!(Zq17::new(0), Zq17::new(7) - Zq17::new(7));
     }
 
     #[test]
     fn test_Zq_multiplication() {
-        let a = Zq::new(5);
-        let b = Zq::new(3);
-        assert_eq!(Zq::new(15), a * b);
-        assert_eq!(Zq::new(1), Zq::new(6) * Zq::new(3)); // 18 mod 17 = 1
-        assert_eq!(Zq::new(0), Zq::new(17) * Zq::new(5)); // 85 mod 17 = 0
+        let a = Zq17::new(5);
+        let b = Zq17::new(3);
+        assert_eq!(Zq17::new(15), a * b);
+        assert_eq!(Zq17::new(1), Zq17::new(6) * Zq17::new(3)); // 18 mod 17 = 1
+        assert_eq!(Zq17::new(0), Zq17::new(17) * Zq17::new(5)); // 85 mod 17 = 0
     }
 
     #[test]
     fn test_Zq_division() {
-        let a = Zq::new(8);
-        let b = Zq::new(2);
-        assert_eq!(Zq::new(4), a / b);
-        assert_eq!(Zq::new(1), Zq::new(5) / Zq::new(5));
-        assert_eq!(Zq::new(9), Zq::new(1) / Zq::new(2)); // 1 * 9 = 18 ≡ 1 (mod 17)
+        let a = Zq17::new(8);
+        let b = Zq17::new(2);
+        assert_eq!(Zq17::new(4), a / b);
+        assert_eq!(Zq17::new(1), Zq17::new(5) / Zq17::new(5));
+        assert_eq!(Zq17::new(9), Zq17::new(1) / Zq17::new(2)); // 1 * 9 = 18 ≡ 1 (mod 17)
     }
 
     #[test]
     #[should_panic(expected = "Division by zero")]
     fn test_Zq_division_by_zero() {
-        let a = Zq::new(5);
-        let b = Zq::new(0);
+        let a = Zq17::new(5);
+        let b = Zq17::new(0);
         let _ = a / b;
     }
 
     #[test]
     fn test_Zq_negation() {
-        assert_eq!(Zq::new(0), -Zq::new(0));
-        assert_eq!(Zq::new(12), -Zq::new(5)); // -5 mod 17 = 12
-        assert_eq!(Zq::new(1), -Zq::new(16));
+        assert_eq!(Zq17::new(0), -Zq17::new(0));
+        assert_eq!(Zq17::new(12), -Zq17::new(5)); // -5 mod 17 = 12
+        assert_eq!(Zq17::new(1), -Zq17::new(16));
     }
 
     #[test]
     fn test_Zq_additive_inverse() {
         for i in 0..17 {
-            let a = Zq::new(i);
-            assert_eq!(Zq::new(0), a + (-a));
+            let a = Zq17::new(i);
+            assert_eq!(Zq17::new(0), a + (-a));
         }
     }
 
     #[test]
     fn test_Zq_multiplicative_inverse() {
         for i in 1..17 {
-            let a = Zq::new(i);
-            assert_eq!(Zq::new(1), a * (Zq::new(1) / a));
+            let a = Zq17::new(i);
+            assert_eq!(Zq17::new(1), a * (Zq17::new(1) / a));
         }
     }
 
     #[test]
     fn test_Zq_associativity() {
-        let a = Zq::new(5);
-        let b = Zq::new(7);
-        let c = Zq::new(11);
+        let a = Zq17::new(5);
+        let b = Zq17::new(7);
+        let c = Zq17::new(11);
         assert_eq!((a + b) + c, a + (b + c));
         assert_eq!((a * b) * c, a * (b * c));
     }
 
     #[test]
     fn test_Zq_commutativity() {
-        let a = Zq::new(5);
-        let b = Zq::new(7);
+        let a = Zq17::new(5);
+        let b = Zq17::new(7);
         assert_eq!(a + b, b + a);
         assert_eq!(a * b, b * a);
     }
 
     #[test]
     fn test_Zq_distributivity() {
-        let a = Zq::new(5);
-        let b = Zq::new(7);
-        let c = Zq::new(11);
+        let a = Zq17::new(5);
+        let b = Zq17::new(7);
+        let c = Zq17::new(11);
         assert_eq!(a * (b + c), (a * b) + (a * c));
     }
 
     #[test]
     fn test_Zq_serde_and_deserde() {
         let mut rng = rand::thread_rng();
-        let lhs = Zq::rand(&mut rng);
+        let lhs = Zq17::rand(&mut rng);
         let serde = serde_json::to_string(&lhs).unwrap();
-        let rhs = serde_json::from_str::<Zq>(&serde).unwrap();
+        let rhs = serde_json::from_str::<Zq17>(&serde).unwrap();
         assert_eq!(lhs, rhs);
     }
     #[test]
     fn test_Zq_pow() {
         // Test x^0 = 1 for any x
-        assert_eq!(Zq::new(5).pow(0), Zq::one());
-        assert_eq!(Zq::new(0).pow(0), Zq::one());
+        assert_eq!(Zq17::new(5).pow(0), Zq17::one());
+        assert_eq!(Zq17::new(0).pow(0), Zq17::one());
 
         // Test x^1 = x for any x
-        assert_eq!(Zq::new(7).pow(1), Zq::new(7));
+        assert_eq!(Zq17::new(7).pow(1), Zq17::new(7));
 
         // Test 0^x = 0 for x > 0
-        assert_eq!(Zq::new(0).pow(5), Zq::zero());
+        assert_eq!(Zq17::new(0).pow(5), Zq17::zero());
 
         // Test some specific cases
-        assert_eq!(Zq::new(2).pow(3), Zq::new(8)); // 2^3 = 8
-        assert_eq!(Zq::new(3).pow(4), Zq::new(81)); // 3^4 = 81
+        assert_eq!(Zq17::new(2).pow(3), Zq17::new(8)); // 2^3 = 8
+        assert_eq!(Zq17::new(3).pow(4), Zq17::new(81)); // 3^4 = 81
 
         // Test a larger exponent
-        assert_eq!(Zq::new(2).pow(10), Zq::new(1024)); // 2^10 = 1024
+        assert_eq!(Zq17::new(2).pow(10), Zq17::new(1024)); // 2^10 = 1024
 
         // Test with modulus (assuming MODULUS = 17)
-        assert_eq!(Zq::new(3).pow(16), Zq::one()); // 3^16 ≡ 1 (mod 17) by Fermat's Little Theorem
+        assert_eq!(Zq17::new(3).pow(16), Zq17::one()); // 3^16 ≡ 1 (mod 17) by Fermat's Little Theorem
     }
 }

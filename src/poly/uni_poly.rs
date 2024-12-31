@@ -401,122 +401,144 @@ impl<R: Ring> Display for UniPolynomial<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ring::zq::Zq;
+    use crate::ring::Zq17;
     use std::ops::Neg;
     #[test]
     fn test_ring_polynomial_display() {
-        let poly =
-            UniPolynomial::from_coefficients(vec![Zq::new(3), Zq::new(0), Zq::new(2), Zq::new(1)]);
+        let poly = UniPolynomial::from_coefficients(vec![
+            Zq17::new(3),
+            Zq17::new(0),
+            Zq17::new(2),
+            Zq17::new(1),
+        ]);
         // assert_eq!(poly.to_string(), "x^3 + 2x^2 + 3");
         println!("poly: {:?}", poly.to_string());
-        let zero_poly = UniPolynomial::<Zq>::zero();
+        let zero_poly = UniPolynomial::<Zq17>::zero();
         // assert_eq!(zero_poly.to_string(), "0");
         println!("zero_poly: {:?}", zero_poly.to_string());
 
-        let linear_poly = UniPolynomial::from_coefficients(vec![Zq::new(2), Zq::new(1)]);
+        let linear_poly = UniPolynomial::from_coefficients(vec![Zq17::new(2), Zq17::new(1)]);
         // assert_eq!(linear_poly.to_string(), "1x + 2");
         println!("linear_poly: {:?}", linear_poly.to_string());
     }
 
     #[test]
     fn test_poly_addition() {
-        let p1 = UniPolynomial::<Zq>::from_coefficients(
-            vec![3, 2, 1].into_iter().map(Zq::from).collect(),
+        let p1 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![3, 2, 1].into_iter().map(Zq17::from).collect(),
         ); // x^2 + 2x + 3
-        let p2 = UniPolynomial::<Zq>::from_coefficients(
-            vec![6, 5, 4].into_iter().map(Zq::from).collect(),
+        let p2 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![6, 5, 4].into_iter().map(Zq17::from).collect(),
         ); // x^2 + 5x + 6
         let result = p1 + p2;
-        assert_eq!(result.coeffs, vec![Zq::new(9), Zq::new(7), Zq::new(5)]);
+        assert_eq!(result.coeffs, vec![
+            Zq17::new(9),
+            Zq17::new(7),
+            Zq17::new(5)
+        ]);
     }
 
     #[test]
     fn test_poly_subtraction() {
-        let p1 = UniPolynomial::<Zq>::from_coefficients(
-            vec![6, 5, 4].into_iter().map(Zq::from).collect(),
+        let p1 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![6, 5, 4].into_iter().map(Zq17::from).collect(),
         ); // x^2 + 5x + 6
-        let p2 = UniPolynomial::<Zq>::from_coefficients(
-            vec![3, 2, 1].into_iter().map(Zq::from).collect(),
+        let p2 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![3, 2, 1].into_iter().map(Zq17::from).collect(),
         ); // x^2 + 2x + 3
         let result = p1 - p2;
-        assert_eq!(result.coeffs, vec![Zq::new(3); 3]);
+        assert_eq!(result.coeffs, vec![Zq17::new(3); 3]);
 
         //     s_tranpose_dot_u: "2x^3 + 7x^2 + 8x + 3"
         // ciphter_text.v:
         // "11x^3 + 7x^2 + x + 13"
-        let p3 = UniPolynomial::<Zq>::from_coefficients(
-            vec![13, 1, 7, 11].into_iter().map(Zq::from).collect(),
+        let p3 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![13, 1, 7, 11].into_iter().map(Zq17::from).collect(),
         );
 
         // 2x^3 + 7x^2 + 8x + 3
-        let p4 = UniPolynomial::<Zq>::from_coefficients(
-            vec![3, 8, 7, 2].into_iter().map(Zq::from).collect(),
+        let p4 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![3, 8, 7, 2].into_iter().map(Zq17::from).collect(),
         );
 
         let result = p3 - p4;
         println!("result: {:?}", result.to_string());
         assert_eq!(result.coeffs, vec![
-            Zq::new(10),
-            Zq::new(7).neg(),
-            Zq::zero(),
-            Zq::new(9)
+            Zq17::new(10),
+            Zq17::new(7).neg(),
+            Zq17::zero(),
+            Zq17::new(9)
         ]);
     }
 
     #[test]
     fn test_poly_multiplication() {
-        let p1 =
-            UniPolynomial::<Zq>::from_coefficients(vec![1, 2].into_iter().map(Zq::from).collect()); // 2x + 1
-        let p2 =
-            UniPolynomial::<Zq>::from_coefficients(vec![3, 4].into_iter().map(Zq::from).collect()); // 4x + 3
+        let p1 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![1, 2].into_iter().map(Zq17::from).collect(),
+        ); // 2x + 1
+        let p2 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![3, 4].into_iter().map(Zq17::from).collect(),
+        ); // 4x + 3
         // (2x + 1)*(4x+ 3)
         let result = p1 * p2;
-        assert_eq!(result.coeffs, vec![Zq::new(3), Zq::new(10), Zq::new(8)]);
+        assert_eq!(result.coeffs, vec![
+            Zq17::new(3),
+            Zq17::new(10),
+            Zq17::new(8)
+        ]);
     }
 
     #[test]
     fn test_poly_scalar_multiplication() {
-        let p = UniPolynomial::<Zq>::from_coefficients(
-            vec![1, 2, 3].into_iter().map(Zq::from).collect(),
+        let p = UniPolynomial::<Zq17>::from_coefficients(
+            vec![1, 2, 3].into_iter().map(Zq17::from).collect(),
         ); // x^2 + 2x + 3
-        let q = Zq::new(2);
+        let q = Zq17::new(2);
         let result = p.scalar_mul(&q);
-        assert_eq!(result.coeffs, vec![Zq::new(2), Zq::new(4), Zq::new(6)]);
+        assert_eq!(result.coeffs, vec![
+            Zq17::new(2),
+            Zq17::new(4),
+            Zq17::new(6)
+        ]);
     }
 
     #[test]
     fn test_derivative() {
         // Test polynomial: 3x^3 + 2x^2 + x + 5
-        let poly =
-            UniPolynomial::from_coefficients(vec![Zq::new(5), Zq::new(1), Zq::new(2), Zq::new(3)]);
+        let poly = UniPolynomial::from_coefficients(vec![
+            Zq17::new(5),
+            Zq17::new(1),
+            Zq17::new(2),
+            Zq17::new(3),
+        ]);
 
         // Expected derivative: 9x^2 + 4x + 1
         let expected_derivative =
-            UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(4), Zq::new(9)]);
+            UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(4), Zq17::new(9)]);
 
         assert_eq!(poly.derivative(), expected_derivative);
 
         // Test constant polynomial
-        let constant_poly = UniPolynomial::from_coefficients(vec![Zq::new(42)]);
+        let constant_poly = UniPolynomial::from_coefficients(vec![Zq17::new(42)]);
         assert_eq!(constant_poly.derivative(), UniPolynomial::zero());
 
         // Test zero polynomial
-        let zero_poly = UniPolynomial::<Zq>::zero();
+        let zero_poly = UniPolynomial::<Zq17>::zero();
         assert_eq!(zero_poly.derivative(), UniPolynomial::zero());
     }
     #[test]
     fn test_negate() {
         // Test polynomial: 3x^2 + 2x + 1
-        let poly = UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(2), Zq::new(3)]);
+        let poly = UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(2), Zq17::new(3)]);
 
         // Expected negation: -3x^2 - 2x - 1
         let expected_negation =
-            UniPolynomial::from_coefficients(vec![-Zq::new(1), -Zq::new(2), -Zq::new(3)]);
+            UniPolynomial::from_coefficients(vec![-Zq17::new(1), -Zq17::new(2), -Zq17::new(3)]);
 
         assert_eq!(poly.negate(), expected_negation);
 
         // Test zero polynomial
-        let zero_poly = UniPolynomial::<Zq>::zero();
+        let zero_poly = UniPolynomial::<Zq17>::zero();
         assert_eq!(zero_poly.negate(), zero_poly);
 
         // Test negation of negation
@@ -525,31 +547,31 @@ mod tests {
     #[test]
     fn test_poly_div_rem() {
         // Define polynomials
-        let p1 = UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(2), Zq::new(1)]); // x^2 + 2x + 1
-        let p2 = UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(1)]); // x + 1
+        let p1 = UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(2), Zq17::new(1)]); // x^2 + 2x + 1
+        let p2 = UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(1)]); // x + 1
 
         // Perform division: (x^2 + 2x + 1)/(x + 1)
         let (quotient, remainder) = p1.clone().divide_with_q_and_r(&p2).unwrap();
 
         // Check quotient
-        assert_eq!(quotient.coefficients(), vec![Zq::new(1), Zq::new(1)]); // x + 1
+        assert_eq!(quotient.coefficients(), vec![Zq17::new(1), Zq17::new(1)]); // x + 1
 
         // Check remainder
         assert!(remainder.is_zero()); // 0
 
         // Test division by higher degree polynomial
-        let p3 = UniPolynomial::from_coefficients(vec![Zq::new(1), Zq::new(1), Zq::new(1)]); // x^2 + x + 1
+        let p3 = UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(1), Zq17::new(1)]); // x^2 + x + 1
         //  (x^2 + 2x + 1)/(x^2 + x + 1)
         let (quotient, remainder) = p1.divide_with_q_and_r(&p3).unwrap();
 
         // Check remainder is the same as the dividend
-        assert_eq!(remainder.coefficients(), vec![Zq::new(0), Zq::new(1)]);
-        assert_eq!(quotient.coefficients(), vec![Zq::new(1)]);
+        assert_eq!(remainder.coefficients(), vec![Zq17::new(0), Zq17::new(1)]);
+        assert_eq!(quotient.coefficients(), vec![Zq17::new(1)]);
 
         // (x^2 + x + 1)/(x^2 + 2x + 1)
         let (quotient, remainder) = p3.divide_with_q_and_r(&p1).unwrap();
         // Check remainder is the same as the dividend
-        // assert_eq!(remainder.coefficients(), vec![Zq::new(2), Zq::new(2)]);
+        // assert_eq!(remainder.coefficients(), vec![Zq17::new(2), Zq17::new(2)]);
         assert_eq!(
             p3,
             (p1.clone() * quotient) + remainder,
@@ -569,8 +591,8 @@ mod tests {
 
         for a_degree in 1..2 {
             for b_degree in 1..2 {
-                let dividend = UniPolynomial::<Zq>::rand(rng, a_degree);
-                let divisor = UniPolynomial::<Zq>::rand(rng, b_degree);
+                let dividend = UniPolynomial::<Zq17>::rand(rng, a_degree);
+                let divisor = UniPolynomial::<Zq17>::rand(rng, b_degree);
                 println!("{a_degree}: dividend: {:?}", dividend.to_string());
                 println!("{b_degree}: divisor: {:?}", divisor.to_string());
                 if let Some((quotient, remainder)) = dividend.divide_with_q_and_r(&divisor) {
@@ -593,8 +615,8 @@ mod tests {
 
         let a_degree = 2;
         let b_degree = 1;
-        let dividend = UniPolynomial::<Zq>::rand(rng, a_degree);
-        let divisor = UniPolynomial::<Zq>::rand(rng, b_degree);
+        let dividend = UniPolynomial::<Zq17>::rand(rng, a_degree);
+        let divisor = UniPolynomial::<Zq17>::rand(rng, b_degree);
         println!("{a_degree}: dividend: {:?}", dividend.to_string());
         println!("{b_degree}: divisor: {:?}", divisor.to_string());
         let quotient = dividend.clone().div(&divisor);
@@ -611,26 +633,26 @@ mod tests {
     fn test_mul_poly() {
         // p = 1 - x
         let p = UniPolynomial {
-            coeffs: vec![Zq::one(), Zq::one().neg()],
+            coeffs: vec![Zq17::one(), Zq17::one().neg()],
         };
         // q = 1 + x
         let q = UniPolynomial {
-            coeffs: vec![Zq::one(), Zq::one()],
+            coeffs: vec![Zq17::one(), Zq17::one()],
         };
 
         assert_eq!(p.clone().mul(&q).coeffs, vec![
-            Zq::one(),
-            Zq::zero(),
-            Zq::one().neg()
+            Zq17::one(),
+            Zq17::zero(),
+            Zq17::one().neg()
         ]);
 
         // add
-        assert_eq!(p.clone().add(&q).coeffs, vec![Zq::new(2)]);
+        assert_eq!(p.clone().add(&q).coeffs, vec![Zq17::new(2)]);
 
-        // poly.mul(Zq)
-        assert_eq!(p.scalar_mul(&Zq::new(5)).coeffs, vec![
-            Zq::new(5),
-            Zq::new(5).neg()
+        // poly.mul(Zq17)
+        assert_eq!(p.scalar_mul(&Zq17::new(5)).coeffs, vec![
+            Zq17::new(5),
+            Zq17::new(5).neg()
         ]);
     }
 }
