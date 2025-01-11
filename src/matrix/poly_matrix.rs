@@ -201,6 +201,14 @@ impl<P: Polynomial> Matrix<P> for PolyMatrix<P> {
     fn inverse(&self) -> Option<Self> {
         todo!()
     }
+    fn concat(&self, other: &Self) -> Self {
+        assert_eq!(self.rows, other.rows, "Concat matrix row should be equal");
+        Self {
+            rows: self.rows,
+            cols: self.cols + other.cols,
+            values: vec![self.values.clone(), other.values.clone()].concat(),
+        }
+    }
 }
 impl<P: Polynomial> Add for PolyMatrix<P> {
     type Output = Self;

@@ -23,7 +23,11 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> PolynomialRingTrait
     type PolyType = P;
     type PolyCoeff = P::Coefficient;
 
-    // x^n + 1
+    // Idea Lattice:
+    //      f=x^n + 1 , defines anticyclic lattices.
+    //      f=x^n - 1 , defines cyclic lattices.
+    //
+    // Reference: [2.2 Lattices](https://publi.math.unideb.hu/load_doc.php?p=1637&t=pap)
     fn modulus() -> Self::PolyType {
         let coeffs = if DEGREE_BOUND == 0 {
             vec![P::Coefficient::from(2)]
