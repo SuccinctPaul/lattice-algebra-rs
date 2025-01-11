@@ -225,6 +225,7 @@ impl<'a, R: Ring> Add<&'a Self> for UniPolynomial<R> {
     }
 }
 
+// TODO: polynomial's multiplication can be implemented by the FFT- Fast Fourier Transform
 impl<R: Ring> std::ops::Mul for UniPolynomial<R> {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self::Output {

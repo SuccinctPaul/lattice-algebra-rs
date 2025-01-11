@@ -183,6 +183,14 @@ impl<P: PolynomialRingTrait> Matrix<P> for PolyRingMatrix<P> {
     fn inverse(&self) -> Option<Self> {
         todo!()
     }
+    fn concat(&self, other: &Self) -> Self {
+        assert_eq!(self.rows, other.rows, "Concat matrix row should be equal");
+        Self {
+            rows: self.rows,
+            cols: self.cols + other.cols,
+            values: vec![self.values.clone(), other.values.clone()].concat(),
+        }
+    }
 }
 impl<P: PolynomialRingTrait> Add for PolyRingMatrix<P> {
     type Output = Self;

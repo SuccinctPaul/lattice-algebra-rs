@@ -46,4 +46,10 @@ where
 
     /// Invert the matrix (if possible)
     fn inverse(&self) -> Option<Self>;
+
+    /// Concat of columns of matrixs
+    /// eg: Matrix A is k*l, Matrix B is k*v, then concat(A, B) is k*(l+v)
+    ///
+    /// TODO: Optimize this by implement trait std::slice::Concat;
+    fn concat(&self, other: &Self) -> Self;
 }
