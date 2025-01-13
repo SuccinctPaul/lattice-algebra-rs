@@ -44,15 +44,6 @@ impl<P: PolynomialRingTrait> PolyRingMatrix<P> {
         };
         res
     }
-    pub fn from_col_vector(vector: Vec<P>) -> Self {
-        let mut matrix = Self::new(vector.len(), 1);
-
-        for (row, v) in vector.into_iter().enumerate() {
-            matrix.set(row, 0, v);
-        }
-        matrix
-    }
-
     /// AKA. Dot product.
     pub fn inner_product(a: &Vec<P>, b: &Vec<P>) -> P {
         assert_eq!(a.len(), b.len(), "Vectors must have the same length");

@@ -52,4 +52,13 @@ where
     ///
     /// TODO: Optimize this by implement trait std::slice::Concat;
     fn concat(&self, other: &Self) -> Self;
+
+    fn from_col_vector(vector: Vec<T>) -> Self {
+        let mut matrix = Self::new(vector.len(), 1);
+
+        for (row, v) in vector.into_iter().enumerate() {
+            matrix.set(row, 0, v);
+        }
+        matrix
+    }
 }
