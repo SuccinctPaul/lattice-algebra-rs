@@ -1,7 +1,7 @@
 use crate::matrix::poly_ring_matrix::PolyRingMatrix;
 use crate::ring::PolynomialRingTrait;
 
-pub fn debug_poly_matrix<P: PolynomialRingTrait>(label: &str, matrix: &PolyRingMatrix<P>) {
+pub fn debug_polyring_matrix<P: PolynomialRingTrait>(label: &str, matrix: &PolyRingMatrix<P>) {
     println!(
         "{label}: row*col={:?}*{:?}, value: {:?}",
         matrix.rows, matrix.cols, matrix.values

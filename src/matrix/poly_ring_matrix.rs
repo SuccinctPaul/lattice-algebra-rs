@@ -307,7 +307,7 @@ impl<P: PolynomialRingTrait> Display for PolyRingMatrix<P> {
 }
 #[cfg(test)]
 mod test {
-    use crate::debug::debug_poly_matrix;
+    use crate::debug::debug_polyring_matrix;
     use crate::matrix::Matrix;
     use crate::matrix::poly_ring_matrix::PolyRingMatrix;
     use crate::poly::Polynomial;
@@ -412,8 +412,8 @@ mod test {
         let expect_lhs = sum.clone() - rhs.clone();
         assert_eq!(expect_lhs, lhs);
         let expect_rhs = sum.clone() - lhs.clone();
-        debug_poly_matrix("expect_rhs", &expect_rhs);
-        debug_poly_matrix("rhs", &rhs);
+        debug_polyring_matrix("expect_rhs", &expect_rhs);
+        debug_polyring_matrix("rhs", &rhs);
         assert_eq!(expect_rhs, rhs);
         let expect_sum = expect_lhs.clone() + expect_rhs.clone();
         assert_eq!(expect_sum, sum);

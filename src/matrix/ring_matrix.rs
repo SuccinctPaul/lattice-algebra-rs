@@ -1,6 +1,8 @@
 use crate::matrix::vector_arithmatic::VectorArithmatic;
 use crate::matrix::{Matrix, MatrixScalarType};
 use crate::ring::Ring;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::ops::{Add, Mul, Sub};
 
 /// This define `matrix` (rows * cols) （m × n）
@@ -252,6 +254,32 @@ impl<R: Ring> Mul for RingMatrix<R> {
 
     fn mul(self, rhs: Self) -> Self::Output {
         self.mul_matrix(&rhs)
+    }
+}
+
+impl<P: Ring> Display for RingMatrix<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.cols == 0 || self.rows == 0 {
+            return write!(f, "Empty");
+        }
+        println!("Matrix: {}*{}", self.rows, self.cols);
+        for (i, row) in self.values.iter().enumerate() {
+            print!("|");
+            let mut not_head = false;
+            for (i, value) in row.iter().enumerate() {
+                if not_head {
+                    print!(",");
+                }
+                print!(" {}", value.to_string());
+                if i == 0 {
+                    not_head = true;
+                }
+            }
+
+            println!("|");
+        }
+
+        Ok(())
     }
 }
 
