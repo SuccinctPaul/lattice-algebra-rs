@@ -1,5 +1,5 @@
-use crate::matrix::Matrix;
 use crate::matrix::vector_arithmatic::VectorArithmatic;
+use crate::matrix::{Matrix, MatrixScalarType};
 use crate::ring::Ring;
 use std::ops::{Add, Mul, Sub};
 
@@ -146,12 +146,38 @@ impl<R: Ring> Matrix<R> for RingMatrix<R> {
         todo!()
     }
 
-    fn concat(&self, other: &Self) -> Self {
-        assert_eq!(self.rows, other.rows, "Concat matrix row should be equal");
-        Self {
-            rows: self.rows,
-            cols: self.cols + other.cols,
-            values: vec![self.values.clone(), other.values.clone()].concat(),
+    fn concat(&self, other: &Self, scalar_type: MatrixScalarType) -> Self {
+        match scalar_type {
+            MatrixScalarType::VERTICAL => {
+                assert_eq!(
+                    self.cols, other.cols,
+                    "VERTICAL Concat matrix row should be equal"
+                );
+                Self {
+                    rows: self.rows + other.rows,
+                    cols: self.cols,
+                    values: vec![self.values.clone(), other.values.clone()].concat(),
+                }
+            }
+            MatrixScalarType::HORIZONTAL => {
+                assert_eq!(
+                    self.rows, other.rows,
+                    "HORIZONTAL Concat matrix row should be equal"
+                );
+
+                let values = self
+                    .values
+                    .clone()
+                    .into_iter()
+                    .zip(other.values.clone().into_iter())
+                    .map(|(l_row, r_row)| vec![l_row, r_row].concat())
+                    .collect::<Vec<_>>();
+                Self {
+                    rows: self.rows,
+                    cols: self.cols + other.cols,
+                    values,
+                }
+            }
         }
     }
 }
