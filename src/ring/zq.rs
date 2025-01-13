@@ -79,6 +79,10 @@ impl<const MODULUS: u64> Ring for Zq<MODULUS> {
 
         result
     }
+
+    fn abs(&self) -> u64 {
+        self.value
+    }
 }
 impl<const MODULUS: u64> From<u64> for Zq<MODULUS> {
     fn from(value: u64) -> Self {

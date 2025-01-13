@@ -41,6 +41,9 @@ Add<Output = Self>
     fn square(&self) -> Self;
     /// Computes self^exponent using exponentiation by squaring
     fn pow(&self, power: u64) -> Self;
+
+    // output the abs value, in Fq, equal to the value.
+    fn abs(&self) -> u64;
 }
 
 /// Polynomial Ring

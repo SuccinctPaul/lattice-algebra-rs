@@ -5,6 +5,11 @@ pub struct VectorArithmatic<R: Ring> {
 }
 
 impl<R: Ring> VectorArithmatic<R> {
+    // Hamming wight: The sum of element's abs value in the vector.
+    pub fn hamming_wight(v: &Vec<R>) -> u64 {
+        v.iter().fold(0, |acc, x| acc + x.abs())
+    }
+
     // Dot product between two vectors.
     pub fn inner_product(a: &Vec<R>, b: &Vec<R>) -> R {
         assert_eq!(a.len(), b.len(), "Vectors must have the same length");
