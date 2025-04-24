@@ -432,11 +432,10 @@ mod tests {
             vec![6, 5, 4].into_iter().map(Zq17::from).collect(),
         ); // x^2 + 5x + 6
         let result = p1 + p2;
-        assert_eq!(result.coeffs, vec![
-            Zq17::new(9),
-            Zq17::new(7),
-            Zq17::new(5)
-        ]);
+        assert_eq!(
+            result.coeffs,
+            vec![Zq17::new(9), Zq17::new(7), Zq17::new(5)]
+        );
     }
 
     #[test]
@@ -464,12 +463,15 @@ mod tests {
 
         let result = p3 - p4;
         println!("result: {:?}", result.to_string());
-        assert_eq!(result.coeffs, vec![
-            Zq17::new(10),
-            Zq17::new(7).neg(),
-            Zq17::zero(),
-            Zq17::new(9)
-        ]);
+        assert_eq!(
+            result.coeffs,
+            vec![
+                Zq17::new(10),
+                Zq17::new(7).neg(),
+                Zq17::zero(),
+                Zq17::new(9)
+            ]
+        );
     }
 
     #[test]
@@ -482,11 +484,10 @@ mod tests {
         ); // 4x + 3
         // (2x + 1)*(4x+ 3)
         let result = p1 * p2;
-        assert_eq!(result.coeffs, vec![
-            Zq17::new(3),
-            Zq17::new(10),
-            Zq17::new(8)
-        ]);
+        assert_eq!(
+            result.coeffs,
+            vec![Zq17::new(3), Zq17::new(10), Zq17::new(8)]
+        );
     }
 
     #[test]
@@ -496,11 +497,10 @@ mod tests {
         ); // x^2 + 2x + 3
         let q = Zq17::new(2);
         let result = p.scalar_mul(&q);
-        assert_eq!(result.coeffs, vec![
-            Zq17::new(2),
-            Zq17::new(4),
-            Zq17::new(6)
-        ]);
+        assert_eq!(
+            result.coeffs,
+            vec![Zq17::new(2), Zq17::new(4), Zq17::new(6)]
+        );
     }
 
     #[test]
@@ -641,19 +641,18 @@ mod tests {
             coeffs: vec![Zq17::one(), Zq17::one()],
         };
 
-        assert_eq!(p.clone().mul(&q).coeffs, vec![
-            Zq17::one(),
-            Zq17::zero(),
-            Zq17::one().neg()
-        ]);
+        assert_eq!(
+            p.clone().mul(&q).coeffs,
+            vec![Zq17::one(), Zq17::zero(), Zq17::one().neg()]
+        );
 
         // add
         assert_eq!(p.clone().add(&q).coeffs, vec![Zq17::new(2)]);
 
         // poly.mul(Zq17)
-        assert_eq!(p.scalar_mul(&Zq17::new(5)).coeffs, vec![
-            Zq17::new(5),
-            Zq17::new(5).neg()
-        ]);
+        assert_eq!(
+            p.scalar_mul(&Zq17::new(5)).coeffs,
+            vec![Zq17::new(5), Zq17::new(5).neg()]
+        );
     }
 }

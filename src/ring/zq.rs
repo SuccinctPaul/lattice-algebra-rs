@@ -5,23 +5,21 @@ use std::fmt::*;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::random::{Random, RandomSource};
 
-// TODO: module it.
-// Z_q: Ring of integers mod q
+/// Z_q: Ring of integers mod q, where q <= 2^64.
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize)]
 pub struct Zq<const MODULUS: u64> {
     value: u64,
 }
 
 impl<const MODULUS: u64> Zq<MODULUS> {
-    // To ensure the value within the [0, MODULUS - 1].
+    /// Creates a new Zq element from a raw value, which ensure the value within the [0, MODULUS - 1].
     pub fn new(value: u64) -> Self {
         Self {
             value: value % Self::MODULUS,
         }
     }
-    // Helper function to calculate modular multiplicative inverse
-    // The Extended Euclidean Algorithm to find the modular multiplicative inverse of a modulo m.
-    // Here's a breakdown:
+    /// Helper function to calculate modular multiplicative inverse
+    /// The Extended Euclidean Algorithm to find the modular multiplicative inverse of a modulo m.
     fn inverse(a: i64, m: i64) -> Option<u64> {
         let mut t = 0i64;
         let mut newt = 1i64;
@@ -39,12 +37,6 @@ impl<const MODULUS: u64> Zq<MODULUS> {
         } else {
             Some(((t + m as i64) % m as i64) as u64)
         }
-    }
-}
-
-impl<const MODULUS: u64> Random for Zq<MODULUS> {
-    fn random(source: &mut (impl RandomSource + ?Sized)) -> Self {
-        Self::new(u64::random(source))
     }
 }
 
@@ -80,48 +72,50 @@ impl<const MODULUS: u64> Ring for Zq<MODULUS> {
         result
     }
 
+    /// output the abs value, in Fq, equal to the value.
     fn abs(&self) -> u64 {
         self.value
     }
 }
+
+impl<const MODULUS: u64> Random for Zq<MODULUS> {
+    fn random(source: &mut (impl RandomSource + ?Sized)) -> Self {
+        Self::new(u64::random(source))
+    }
+}
 impl<const MODULUS: u64> From<u64> for Zq<MODULUS> {
     fn from(value: u64) -> Self {
-        Self {
-            value: value % Self::MODULUS,
+        Self::new(value)
+    }
+}
+
+// Macro to generate arithmetic trait implementations
+macro_rules! impl_arithmetic {
+    ($trait:ident, $assign_trait:ident, $method:ident, $assign_method:ident, $op:ident) => {
+        impl<const MODULUS: u64> $trait for Zq<MODULUS> {
+            type Output = Self;
+
+            fn $method(self, rhs: Self) -> Self::Output {
+                Self::new(self.value.$op(rhs.value))
+            }
         }
-    }
-}
-impl<const MODULUS: u64> Add for Zq<MODULUS> {
-    type Output = Self;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::new(self.value + rhs.value)
-    }
-}
-
-impl<const MODULUS: u64> AddAssign for Zq<MODULUS> {
-    fn add_assign(&mut self, rhs: Self) {
-        self.value = (self.value + rhs.value) % Self::MODULUS;
-    }
+        impl<const MODULUS: u64> $assign_trait for Zq<MODULUS> {
+            fn $assign_method(&mut self, rhs: Self) {
+                self.value = self.value.$op(rhs.value) % Self::MODULUS;
+            }
+        }
+    };
 }
 
+impl_arithmetic!(Add, AddAssign, add, add_assign, wrapping_add);
+
+// impl_arithmetic!(Sub, SubAssign, sub, sub_assign, wrapping_sub);
 // TODO:
 //  - Implement Barrett reduction algorithm
 //      https://www.nayuki.io/page/barrett-reduction-algorithm
 //  - Implement Montgomery reduction algorithm
-impl<const MODULUS: u64> Mul for Zq<MODULUS> {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        Self::new(self.value * rhs.value)
-    }
-}
-
-impl<const MODULUS: u64> MulAssign for Zq<MODULUS> {
-    fn mul_assign(&mut self, rhs: Self) {
-        self.value = (self.value * rhs.value) % Self::MODULUS;
-    }
-}
+impl_arithmetic!(Mul, MulAssign, mul, mul_assign, wrapping_mul);
 
 impl<const MODULUS: u64> Neg for Zq<MODULUS> {
     type Output = Self;
@@ -191,12 +185,6 @@ impl<'a, const MODULUS: u64> MulAssign<&'a Self> for Zq<MODULUS> {
         self.value = (self.value * rhs.value) % Self::MODULUS;
     }
 }
-
-// impl ToString for Zq {
-//     fn to_string(&self) -> String {
-//         format!("{}", self.value)
-//     }
-// }
 
 impl<const MODULUS: u64> Display for Zq<MODULUS> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
