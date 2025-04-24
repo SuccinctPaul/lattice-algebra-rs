@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::random::Random;
 
-/// Ring of integers mod q
+/// Ring mod q
 pub trait Ring:
 Add<Output = Self>
 + AddAssign
@@ -33,16 +33,19 @@ Add<Output = Self>
 // + ToString
 + Display
 {
+    /// Modulus q
     const MODULUS: u64;
 
     fn rand(rng: &mut impl rand::RngCore) -> Self;
+    /// Zero element (additive identity)
     fn zero() -> Self;
+    /// Multiplicative identity
     fn one() -> Self;
+    /// Compute square of element.
     fn square(&self) -> Self;
     /// Computes self^exponent using exponentiation by squaring
     fn pow(&self, power: u64) -> Self;
-
-    // output the abs value, in Fq, equal to the value.
+    /// output the abs value,
     fn abs(&self) -> u64;
 }
 

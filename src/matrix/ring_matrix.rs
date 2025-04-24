@@ -262,6 +262,7 @@ impl<P: Ring> Display for RingMatrix<P> {
         if self.cols == 0 || self.rows == 0 {
             return write!(f, "Empty");
         }
+        println!("========================================");
         println!("Matrix: {}*{}", self.rows, self.cols);
         for (i, row) in self.values.iter().enumerate() {
             print!("|");
@@ -276,7 +277,7 @@ impl<P: Ring> Display for RingMatrix<P> {
                 }
             }
 
-            println!("|");
+            println!(" |");
         }
 
         Ok(())
@@ -321,10 +322,10 @@ mod test {
         let matrix = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![vec![Zq17::one(), Zq17::zero()], vec![
-                Zq17::zero(),
-                Zq17::one(),
-            ]],
+            values: vec![
+                vec![Zq17::one(), Zq17::zero()],
+                vec![Zq17::zero(), Zq17::one()],
+            ],
         };
         assert_eq!(matrix, RingMatrix::identity(m));
 
@@ -347,19 +348,19 @@ mod test {
         let matrix = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![vec![Zq17::one(), Zq17::new(2)], vec![
-                Zq17::new(3),
-                Zq17::new(4),
-            ]],
+            values: vec![
+                vec![Zq17::one(), Zq17::new(2)],
+                vec![Zq17::new(3), Zq17::new(4)],
+            ],
         };
         let transposed: RingMatrix<Zq17> = matrix.transpose();
         let expect = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![vec![Zq17::one(), Zq17::new(3)], vec![
-                Zq17::new(2),
-                Zq17::new(4),
-            ]],
+            values: vec![
+                vec![Zq17::one(), Zq17::new(3)],
+                vec![Zq17::new(2), Zq17::new(4)],
+            ],
         };
 
         assert_eq!(transposed, expect);
@@ -400,10 +401,10 @@ mod test {
         let m: usize = 2;
         // | 1 0 |
         // | 0 1 |
-        let matrix = vec![vec![Zq17::one(), Zq17::zero()], vec![
-            Zq17::zero(),
-            Zq17::one(),
-        ]];
+        let matrix = vec![
+            vec![Zq17::one(), Zq17::zero()],
+            vec![Zq17::zero(), Zq17::one()],
+        ];
 
         let vector = vec![Zq17::one(), Zq17::zero()];
 
@@ -423,10 +424,10 @@ mod test {
         let matrix = RingMatrix::<Zq17> {
             rows: 2,
             cols: 2,
-            values: vec![vec![Zq17::one(), Zq17::zero()], vec![
-                Zq17::zero(),
-                Zq17::one(),
-            ]],
+            values: vec![
+                vec![Zq17::one(), Zq17::zero()],
+                vec![Zq17::zero(), Zq17::one()],
+            ],
         };
         let vector = vec![Zq17::one()];
         matrix.mul_vector(&vector);
@@ -437,10 +438,10 @@ mod test {
         let a = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![vec![Zq17::one(), Zq17::zero()], vec![
-                Zq17::zero(),
-                Zq17::one(),
-            ]],
+            values: vec![
+                vec![Zq17::one(), Zq17::zero()],
+                vec![Zq17::zero(), Zq17::one()],
+            ],
         };
         let b = a.clone();
 
@@ -456,19 +457,18 @@ mod test {
         let a = RingMatrix::<Zq17> {
             rows: 2,
             cols: 3,
-            values: vec![vec![Zq17::one(), Zq17::zero(), Zq17::one()], vec![
-                Zq17::zero(),
-                Zq17::one(),
-                Zq17::zero(),
-            ]],
+            values: vec![
+                vec![Zq17::one(), Zq17::zero(), Zq17::one()],
+                vec![Zq17::zero(), Zq17::one(), Zq17::zero()],
+            ],
         };
         let b = RingMatrix::<Zq17> {
             rows: 2,
             cols: 2,
-            values: vec![vec![Zq17::one(), Zq17::zero()], vec![
-                Zq17::zero(),
-                Zq17::one(),
-            ]],
+            values: vec![
+                vec![Zq17::one(), Zq17::zero()],
+                vec![Zq17::zero(), Zq17::one()],
+            ],
         };
         a.mul_matrix(&b);
     }
