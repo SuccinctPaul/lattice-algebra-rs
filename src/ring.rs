@@ -1,6 +1,6 @@
 pub mod ring_poly;
 
-// mod sample; // TODO: sample
+mod sample; // TODO: sample
 mod traits;
 pub mod zq;
 

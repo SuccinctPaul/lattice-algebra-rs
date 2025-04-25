@@ -83,7 +83,7 @@ impl<R: Ring> Matrix<R> for RingMatrix<R> {
         Self {
             rows,
             cols,
-            values: vec![vec![R::zero(); cols]; rows],
+            values: vec![vec![R::ZERO; cols]; rows],
         }
     }
 
@@ -121,7 +121,7 @@ impl<R: Ring> Matrix<R> for RingMatrix<R> {
     }
 
     fn identity(size: usize) -> Self {
-        let identity = R::one();
+        let identity = R::ONE;
         let mut matrix = Self::new(size, size);
         for i in 0..size {
             matrix.set(i, i, identity.clone()).unwrap();
@@ -300,32 +300,29 @@ mod test {
 
     #[test]
     pub fn test_matrix_mul_vector() {
-        let vec1 = vec![Zq17::one(), Zq17::zero(), Zq17::new(3)];
-        let vec2 = vec![Zq17::zero(), Zq17::one(), Zq17::new(2)];
+        let vec1 = vec![Zq17::ONE, Zq17::ZERO, Zq17::new(3)];
+        let vec2 = vec![Zq17::ZERO, Zq17::ONE, Zq17::new(2)];
         assert_eq!(
             VectorArithmatic::<Zq17>::inner_product(&vec1, &vec2),
             Zq17::new(6)
         );
 
-        let vec3 = vec![Zq17::one(), Zq17::one()];
-        let vec4 = vec![Zq17::zero(), Zq17::zero()];
+        let vec3 = vec![Zq17::ONE, Zq17::ONE];
+        let vec4 = vec![Zq17::ZERO, Zq17::ZERO];
         assert_eq!(
             VectorArithmatic::<Zq17>::inner_product(&vec3, &vec4),
-            Zq17::zero()
+            Zq17::ZERO
         );
     }
     #[test]
     pub fn test_matrix_identity() {
         let m = 2;
-        let vector = vec![Zq17::one(), Zq17::zero()];
+        let vector = vec![Zq17::ONE, Zq17::ZERO];
 
         let matrix = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![
-                vec![Zq17::one(), Zq17::zero()],
-                vec![Zq17::zero(), Zq17::one()],
-            ],
+            values: vec![vec![Zq17::ONE, Zq17::ZERO], vec![Zq17::ZERO, Zq17::ONE]],
         };
         assert_eq!(matrix, RingMatrix::identity(m));
 
@@ -349,7 +346,7 @@ mod test {
             rows: m,
             cols: m,
             values: vec![
-                vec![Zq17::one(), Zq17::new(2)],
+                vec![Zq17::ONE, Zq17::new(2)],
                 vec![Zq17::new(3), Zq17::new(4)],
             ],
         };
@@ -358,7 +355,7 @@ mod test {
             rows: m,
             cols: m,
             values: vec![
-                vec![Zq17::one(), Zq17::new(3)],
+                vec![Zq17::ONE, Zq17::new(3)],
                 vec![Zq17::new(2), Zq17::new(4)],
             ],
         };
@@ -392,8 +389,8 @@ mod test {
     #[test]
     #[should_panic(expected = "Vectors must have the same length")]
     fn test_inner_product_unequal_lengths() {
-        let vec1 = vec![Zq17::one(), Zq17::zero()];
-        let vec2 = vec![Zq17::zero(), Zq17::one(), Zq17::new(2)];
+        let vec1 = vec![Zq17::ONE, Zq17::ZERO];
+        let vec2 = vec![Zq17::ZERO, Zq17::ONE, Zq17::new(2)];
         VectorArithmatic::<Zq17>::inner_product(&vec1, &vec2);
     }
     #[test]
@@ -401,12 +398,9 @@ mod test {
         let m: usize = 2;
         // | 1 0 |
         // | 0 1 |
-        let matrix = vec![
-            vec![Zq17::one(), Zq17::zero()],
-            vec![Zq17::zero(), Zq17::one()],
-        ];
+        let matrix = vec![vec![Zq17::ONE, Zq17::ZERO], vec![Zq17::ZERO, Zq17::ONE]];
 
-        let vector = vec![Zq17::one(), Zq17::zero()];
+        let vector = vec![Zq17::ONE, Zq17::ZERO];
 
         let a = RingMatrix::<Zq17> {
             rows: m,
@@ -424,12 +418,9 @@ mod test {
         let matrix = RingMatrix::<Zq17> {
             rows: 2,
             cols: 2,
-            values: vec![
-                vec![Zq17::one(), Zq17::zero()],
-                vec![Zq17::zero(), Zq17::one()],
-            ],
+            values: vec![vec![Zq17::ONE, Zq17::ZERO], vec![Zq17::ZERO, Zq17::ONE]],
         };
-        let vector = vec![Zq17::one()];
+        let vector = vec![Zq17::ONE];
         matrix.mul_vector(&vector);
     }
     #[test]
@@ -438,10 +429,7 @@ mod test {
         let a = RingMatrix::<Zq17> {
             rows: m,
             cols: m,
-            values: vec![
-                vec![Zq17::one(), Zq17::zero()],
-                vec![Zq17::zero(), Zq17::one()],
-            ],
+            values: vec![vec![Zq17::ONE, Zq17::ZERO], vec![Zq17::ZERO, Zq17::ONE]],
         };
         let b = a.clone();
 
@@ -458,17 +446,14 @@ mod test {
             rows: 2,
             cols: 3,
             values: vec![
-                vec![Zq17::one(), Zq17::zero(), Zq17::one()],
-                vec![Zq17::zero(), Zq17::one(), Zq17::zero()],
+                vec![Zq17::ONE, Zq17::ZERO, Zq17::ONE],
+                vec![Zq17::ZERO, Zq17::ONE, Zq17::ZERO],
             ],
         };
         let b = RingMatrix::<Zq17> {
             rows: 2,
             cols: 2,
-            values: vec![
-                vec![Zq17::one(), Zq17::zero()],
-                vec![Zq17::zero(), Zq17::one()],
-            ],
+            values: vec![vec![Zq17::ONE, Zq17::ZERO], vec![Zq17::ZERO, Zq17::ONE]],
         };
         a.mul_matrix(&b);
     }

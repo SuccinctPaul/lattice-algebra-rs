@@ -5,42 +5,43 @@ use std::random::Random;
 
 /// Ring mod q
 pub trait Ring:
-Add<Output = Self>
-+ AddAssign
-+ Mul<Output = Self>
-+ MulAssign
-+ Neg<Output = Self>
-+ Sub<Output = Self>
-+ SubAssign
-+ Div<Output = Self>
-+ for<'a> Add<&'a Self, Output = Self>
-+ for<'a> AddAssign<&'a Self>
-+ Sized
-+ for<'a> Mul<&'a Self, Output = Self>
-+ for<'a> MulAssign<&'a Self>
-+ Sized
-+ Clone
-+ Copy
-+ Debug
-+ PartialEq
-+ Eq
-+ Ord
-+ PartialOrd
-+ Random
-+ From<u64>
-+ Send
-+ Sync
-// + ToString
-+ Display
+    Add<Output = Self>
+    + AddAssign
+    + Mul<Output = Self>
+    + MulAssign
+    + Neg<Output = Self>
+    + Sub<Output = Self>
+    + SubAssign
+    + Div<Output = Self>
+    + for<'a> Add<&'a Self, Output = Self>
+    + for<'a> AddAssign<&'a Self>
+    + Sized
+    + for<'a> Mul<&'a Self, Output = Self>
+    + for<'a> MulAssign<&'a Self>
+    + Sized
+    + Clone
+    + Copy
+    + Debug
+    + PartialEq
+    + Eq
+    + Ord
+    + PartialOrd
+    + Random
+    + From<u64>
+    + Send
+    + Sync
+    + Display
 {
     /// Modulus q
     const MODULUS: u64;
+    /// Zero element (additive identity)
+    const ZERO: Self;
+    /// Multiplicative identity
+    const ONE: Self;
+    /// Max element, which equals `MODULUS - 1`
+    const MAX: Self;
 
     fn rand(rng: &mut impl rand::RngCore) -> Self;
-    /// Zero element (additive identity)
-    fn zero() -> Self;
-    /// Multiplicative identity
-    fn one() -> Self;
     /// Compute square of element.
     fn square(&self) -> Self;
     /// Computes self^exponent using exponentiation by squaring

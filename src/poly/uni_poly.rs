@@ -30,8 +30,8 @@ impl<R: Ring> UniPolynomial<R> {
     }
 
     fn scalar_mul(&self, rhs: &R) -> Self {
-        let coeffs = if rhs == &R::one() {
-            vec![R::one()]
+        let coeffs = if rhs == &R::ONE {
+            vec![R::ONE]
         } else {
             self.coeffs.iter().map(|c| c.mul(rhs)).collect::<Vec<R>>()
         };
@@ -49,14 +49,14 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
 
     // Remove leading zero coefficients
     fn normalize(&mut self) {
-        while self.coeffs.len() > 1 && self.coeffs.last() == Some(&R::zero()) {
+        while self.coeffs.len() > 1 && self.coeffs.last() == Some(&R::ZERO) {
             self.coeffs.pop();
         }
     }
 
     fn zero() -> Self {
         Self {
-            coeffs: vec![R::zero()],
+            coeffs: vec![R::ZERO],
         }
     }
 
@@ -89,7 +89,7 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
         fn eval<R: Ring>(poly: &[R], point: &R) -> R {
             poly.iter()
                 .rev()
-                .fold(R::one(), |acc, coeff| acc * point + coeff)
+                .fold(R::ONE, |acc, coeff| acc * point + coeff)
         }
 
         let num_threads = current_num_threads();
@@ -97,7 +97,7 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
             eval(&coeffs, x)
         } else {
             let chunk_size = (poly_size + num_threads - 1) / num_threads;
-            let mut parts = vec![R::one(); num_threads];
+            let mut parts = vec![R::ONE; num_threads];
             scope(|scope| {
                 for (chunk_idx, (out, c)) in parts
                     .chunks_mut(1)
@@ -110,7 +110,7 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
                     });
                 }
             });
-            parts.iter().fold(R::one(), |acc, coeff| acc + coeff)
+            parts.iter().fold(R::ONE, |acc, coeff| acc + coeff)
         }
     }
 
@@ -142,7 +142,7 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
     }
 
     fn is_zero(&self) -> bool {
-        self.coeffs.is_empty() || self.coeffs.iter().all(|c| c == &R::zero())
+        self.coeffs.is_empty() || self.coeffs.iter().all(|c| c == &R::ZERO)
     }
 
     fn divide_with_q_and_r(&self, divisor: &Self) -> Option<(Self, Self)> {
@@ -154,7 +154,7 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
             Some((Self::zero(), self.clone().into()))
         } else {
             // Now we know that self.degree() >= divisor.degree();
-            let mut quotient = vec![R::zero(); self.degree() - divisor.degree() + 1];
+            let mut quotient = vec![R::ZERO; self.degree() - divisor.degree() + 1];
             let mut remainder = self.clone();
 
             // Can unwrap here because we know self is not zero.
@@ -167,7 +167,7 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
                 for (i, div_coeff) in divisor.coefficients().iter().enumerate() {
                     remainder.coeffs[cur_q_degree + i] -= cur_q_coeff.clone() * div_coeff;
                 }
-                while let Some(true) = remainder.coefficients().last().map(|c| c == &R::zero()) {
+                while let Some(true) = remainder.coefficients().last().map(|c| c == &R::ZERO) {
                     remainder.coeffs.pop();
                 }
             }
@@ -229,7 +229,7 @@ impl<'a, R: Ring> Add<&'a Self> for UniPolynomial<R> {
 impl<R: Ring> std::ops::Mul for UniPolynomial<R> {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self::Output {
-        let mut coeffs: Vec<R> = vec![R::zero(); self.coeffs.len() + rhs.coeffs.len() - 1];
+        let mut coeffs: Vec<R> = vec![R::ZERO; self.coeffs.len() + rhs.coeffs.len() - 1];
         for n in 0..self.coeffs.len() {
             for m in 0..rhs.coeffs.len() {
                 coeffs[n + m] += self.coeffs[n] * rhs.coeffs[m];
@@ -241,7 +241,7 @@ impl<R: Ring> std::ops::Mul for UniPolynomial<R> {
 impl<'a, R: Ring> Mul<&'a Self> for UniPolynomial<R> {
     type Output = Self;
     fn mul(self, rhs: &Self) -> Self::Output {
-        let mut coeffs: Vec<R> = vec![R::zero(); self.coeffs.len() + rhs.coeffs.len() - 1];
+        let mut coeffs: Vec<R> = vec![R::ZERO; self.coeffs.len() + rhs.coeffs.len() - 1];
         for n in 0..self.coeffs.len() {
             for m in 0..rhs.coeffs.len() {
                 coeffs[n + m] += self.coeffs[n] * rhs.coeffs[m];
@@ -265,8 +265,8 @@ impl<R: Ring> Sub for UniPolynomial<R> {
         let mut result = Vec::with_capacity(max_len);
 
         for i in 0..max_len {
-            let a = self.coeffs.get(i).cloned().unwrap_or_else(R::zero);
-            let b = rhs.coeffs.get(i).cloned().unwrap_or_else(R::zero);
+            let a = self.coeffs.get(i).cloned().unwrap_or_else(|| R::ZERO);
+            let b = rhs.coeffs.get(i).cloned().unwrap_or_else(|| R::ZERO);
             result.push(a - b);
         }
 
@@ -281,8 +281,8 @@ impl<'a, R: Ring> Sub<&'a Self> for UniPolynomial<R> {
         let mut result = Vec::with_capacity(max_len);
 
         for i in 0..max_len {
-            let a = self.coeffs.get(i).cloned().unwrap_or_else(R::zero);
-            let b = rhs.coeffs.get(i).cloned().unwrap_or_else(R::zero);
+            let a = self.coeffs.get(i).cloned().unwrap_or_else(|| R::ZERO);
+            let b = rhs.coeffs.get(i).cloned().unwrap_or_else(|| R::ZERO);
             result.push(a - b);
         }
 
@@ -364,13 +364,13 @@ impl<'a, R: Ring> RemAssign<&'a Self> for UniPolynomial<R> {
 
 impl<R: Ring> Display for UniPolynomial<R> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.coeffs.is_empty() || (self.coeffs.len() == 1 && self.coeffs[0] == R::zero()) {
+        if self.coeffs.is_empty() || (self.coeffs.len() == 1 && self.coeffs[0] == R::ZERO) {
             return write!(f, "0");
         }
 
         let mut first = true;
         for (i, coeff) in self.coeffs.iter().enumerate().rev() {
-            if *coeff != R::zero() {
+            if *coeff != R::ZERO {
                 if !first {
                     write!(f, " + ")?;
                 }
@@ -379,14 +379,14 @@ impl<R: Ring> Display for UniPolynomial<R> {
                 match i {
                     0 => write!(f, "{}", coeff)?,
                     1 => {
-                        if *coeff == R::one() {
+                        if *coeff == R::ONE {
                             write!(f, "x")?
                         } else {
                             write!(f, "{}x", coeff)?
                         }
                     }
                     _ => {
-                        if *coeff == R::one() {
+                        if *coeff == R::ONE {
                             write!(f, "x^{}", i)?
                         } else {
                             write!(f, "{}x^{}", coeff, i)?
@@ -465,12 +465,7 @@ mod tests {
         println!("result: {:?}", result.to_string());
         assert_eq!(
             result.coeffs,
-            vec![
-                Zq17::new(10),
-                Zq17::new(7).neg(),
-                Zq17::zero(),
-                Zq17::new(9)
-            ]
+            vec![Zq17::new(10), Zq17::new(7).neg(), Zq17::ZERO, Zq17::new(9)]
         );
     }
 
@@ -634,16 +629,16 @@ mod tests {
     fn test_mul_poly() {
         // p = 1 - x
         let p = UniPolynomial {
-            coeffs: vec![Zq17::one(), Zq17::one().neg()],
+            coeffs: vec![Zq17::ONE, Zq17::ONE.neg()],
         };
         // q = 1 + x
         let q = UniPolynomial {
-            coeffs: vec![Zq17::one(), Zq17::one()],
+            coeffs: vec![Zq17::ONE, Zq17::ONE],
         };
 
         assert_eq!(
             p.clone().mul(&q).coeffs,
-            vec![Zq17::one(), Zq17::zero(), Zq17::one().neg()]
+            vec![Zq17::ONE, Zq17::ZERO, Zq17::ONE.neg()]
         );
 
         // add
