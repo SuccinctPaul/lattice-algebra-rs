@@ -318,6 +318,7 @@ mod test {
     use std::ops::{Mul, Neg};
 
     const POLY_RING_DEGREE: u64 = 2;
+    #[allow(non_camel_case_types)]
     type POLY_RING_TEST = RingPolynomial<UniPolynomial<Zq17>, POLY_RING_DEGREE>;
     #[test]
     fn test_ring_matrix_new() {

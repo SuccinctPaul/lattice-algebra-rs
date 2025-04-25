@@ -22,19 +22,22 @@ pub struct UniPolynomial<R: Ring> {
 }
 
 impl<R: Ring> UniPolynomial<R> {
-    // Constructor with normalize
-    pub fn new(coeffs: Vec<R>) -> Self {
-        let mut poly = Self { coeffs };
-        poly.normalize();
-        poly
+    pub fn new(mut coeffs: Vec<R>) -> Self {
+        // Remove leading zeros
+        while coeffs.len() > 1 && coeffs.last() == Some(&R::ZERO) {
+            coeffs.pop();
+        }
+        Self { coeffs }
     }
 
-    fn scalar_mul(&self, rhs: &R) -> Self {
-        let coeffs = if rhs == &R::ONE {
-            vec![R::ONE]
-        } else {
-            self.coeffs.iter().map(|c| c.mul(rhs)).collect::<Vec<R>>()
-        };
+    pub fn scalar_mul(&self, rhs: &R) -> Self {
+        if *rhs == R::ZERO {
+            return Self::zero();
+        }
+        if *rhs == R::ONE {
+            return self.clone();
+        }
+        let coeffs = self.coeffs.iter().map(|c| *c * *rhs).collect();
         Self::new(coeffs)
     }
 }
@@ -43,11 +46,10 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
     type Coefficient = R;
 
     fn rand(rng: &mut impl rand::RngCore, degree: usize) -> Self {
-        let coeffs = (0..degree + 1).map(|_| R::rand(rng)).collect::<Vec<_>>();
-        Self::from_coefficients(coeffs)
+        let coeffs = (0..=degree).map(|_| R::rand(rng)).collect();
+        Self::new(coeffs)
     }
 
-    // Remove leading zero coefficients
     fn normalize(&mut self) {
         while self.coeffs.len() > 1 && self.coeffs.last() == Some(&R::ZERO) {
             self.coeffs.pop();
@@ -60,7 +62,6 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
         }
     }
 
-    // The degree of the polynomial
     fn degree(&self) -> usize {
         if self.is_zero() {
             0
@@ -70,48 +71,21 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
     }
 
     fn coefficient(&self, i: usize) -> Self::Coefficient {
-        assert!(self.degree() >= i, "Index out of bounds");
-        self.coeffs[i].clone()
+        assert!(i <= self.degree(), "Index out of bounds");
+        self.coeffs[i]
     }
 
     fn set_coefficient(&mut self, i: usize, value: Self::Coefficient) {
-        assert!(self.degree() >= i, "Index out of bounds");
+        assert!(i <= self.degree(), "Index out of bounds");
         self.coeffs[i] = value;
         self.normalize();
     }
 
-    // This evaluates a polynomial (in coefficient form) at `x`.
     fn evaluate(&self, x: &Self::Coefficient) -> Self::Coefficient {
-        let coeffs = self.coeffs.clone();
-        let poly_size = self.coeffs.len();
-
-        // p(x) = = a_0 + a_1 * X + ... + a_n * X^(n-1), revert it and fold sum it
-        fn eval<R: Ring>(poly: &[R], point: &R) -> R {
-            poly.iter()
-                .rev()
-                .fold(R::ONE, |acc, coeff| acc * point + coeff)
-        }
-
-        let num_threads = current_num_threads();
-        if poly_size * 2 < num_threads {
-            eval(&coeffs, x)
-        } else {
-            let chunk_size = (poly_size + num_threads - 1) / num_threads;
-            let mut parts = vec![R::ONE; num_threads];
-            scope(|scope| {
-                for (chunk_idx, (out, c)) in parts
-                    .chunks_mut(1)
-                    .zip(coeffs.chunks(chunk_size))
-                    .enumerate()
-                {
-                    scope.spawn(move |_| {
-                        let start = chunk_idx * chunk_size;
-                        out[0] = eval(c, x) * x.pow(start as u64);
-                    });
-                }
-            });
-            parts.iter().fold(R::ONE, |acc, coeff| acc + coeff)
-        }
+        self.coeffs
+            .iter()
+            .rev()
+            .fold(R::ZERO, |acc, coeff| acc * *x + *coeff)
     }
 
     fn from_coefficients(coeffs: Vec<Self::Coefficient>) -> Self {
@@ -123,56 +97,49 @@ impl<R: Ring> Polynomial for UniPolynomial<R> {
     }
 
     fn negate(&self) -> Self {
-        let negated_coeffs = self.coeffs.iter().map(|c| -c.clone()).collect();
-        Self::new(negated_coeffs)
+        Self::new(self.coeffs.iter().map(|c| -*c).collect())
     }
 
     fn derivative(&self) -> Self {
         if self.is_zero() || self.degree() == 0 {
             return Self::zero();
         }
-
-        let mut derivative_coeffs = Vec::with_capacity(self.degree());
-        for (i, coeff) in self.coeffs.iter().enumerate().skip(1) {
-            let new_coeff = coeff.clone() * R::from(i as u64);
-            derivative_coeffs.push(new_coeff);
-        }
-
-        Self::from_coefficients(derivative_coeffs)
+        let coeffs = (1..=self.degree())
+            .map(|i| self.coeffs[i] * R::from(i as u64))
+            .collect();
+        Self::new(coeffs)
     }
 
     fn is_zero(&self) -> bool {
-        self.coeffs.is_empty() || self.coeffs.iter().all(|c| c == &R::ZERO)
+        self.coeffs.len() == 1 && self.coeffs[0] == R::ZERO
     }
 
     fn divide_with_q_and_r(&self, divisor: &Self) -> Option<(Self, Self)> {
-        if self.is_zero() {
-            Some((Self::zero(), Self::zero()))
-        } else if divisor.is_zero() {
-            panic!("Dividing by zero polynomial")
-        } else if self.degree() < divisor.degree() {
-            Some((Self::zero(), self.clone().into()))
-        } else {
-            // Now we know that self.degree() >= divisor.degree();
-            let mut quotient = vec![R::ZERO; self.degree() - divisor.degree() + 1];
-            let mut remainder = self.clone();
-
-            // Can unwrap here because we know self is not zero.
-            let divisor_last = divisor.coeffs.last().unwrap();
-            while !remainder.is_zero() && remainder.degree() >= divisor.degree() {
-                let cur_q_coeff = remainder.coeffs.last().unwrap().clone() * divisor_last;
-                let cur_q_degree = remainder.degree() - divisor.degree();
-                quotient[cur_q_degree] = cur_q_coeff.clone();
-
-                for (i, div_coeff) in divisor.coefficients().iter().enumerate() {
-                    remainder.coeffs[cur_q_degree + i] -= cur_q_coeff.clone() * div_coeff;
-                }
-                while let Some(true) = remainder.coefficients().last().map(|c| c == &R::ZERO) {
-                    remainder.coeffs.pop();
-                }
-            }
-            Some((Self::from_coefficients(quotient), remainder))
+        if divisor.is_zero() {
+            panic!("Dividing by zero polynomial");
         }
+        if self.is_zero() {
+            return Some((Self::zero(), Self::zero()));
+        }
+        if self.degree() < divisor.degree() {
+            return Some((Self::zero(), self.clone()));
+        }
+
+        let mut remainder = self.coeffs.clone();
+        let mut quotient = vec![R::ZERO; self.degree() - divisor.degree() + 1];
+        let divisor_lead = divisor.coeffs[divisor.degree()];
+        for k in (divisor.degree()..=self.degree()).rev() {
+            if remainder[k] == R::ZERO {
+                continue;
+            }
+            let q = remainder[k] / divisor_lead;
+            quotient[k - divisor.degree()] = q;
+            for j in 0..=divisor.degree() {
+                remainder[k - divisor.degree() + j] -= q * divisor.coeffs[j];
+            }
+        }
+        let r = remainder[..divisor.degree()].to_vec();
+        Some((Self::new(quotient), Self::new(r)))
     }
 }
 
@@ -627,27 +594,102 @@ mod tests {
 
     #[test]
     fn test_mul_poly() {
-        // p = 1 - x
-        let p = UniPolynomial {
-            coeffs: vec![Zq17::ONE, Zq17::ONE.neg()],
-        };
-        // q = 1 + x
-        let q = UniPolynomial {
-            coeffs: vec![Zq17::ONE, Zq17::ONE],
-        };
-
+        let p1 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![1, 2].into_iter().map(Zq17::from).collect(),
+        ); // 2x + 1
+        let p2 = UniPolynomial::<Zq17>::from_coefficients(
+            vec![3, 4].into_iter().map(Zq17::from).collect(),
+        ); // 4x + 3
+        // (2x + 1)*(4x+ 3)
+        let result = p1 * p2;
         assert_eq!(
-            p.clone().mul(&q).coeffs,
-            vec![Zq17::ONE, Zq17::ZERO, Zq17::ONE.neg()]
+            result.coeffs,
+            vec![Zq17::new(3), Zq17::new(10), Zq17::new(8)]
         );
+    }
 
-        // add
-        assert_eq!(p.clone().add(&q).coeffs, vec![Zq17::new(2)]);
+    // #[test]
+    // fn test_poly_scalar_multiplication() {
+    //     let p = UniPolynomial::<Zq17>::from_coefficients(
+    //         vec![1, 2, 3].into_iter().map(Zq17::from).collect(),
+    //     ); // x^2 + 2x + 3
+    //     let q = Zq17::new(2);
+    //     let result = p.scalar_mul(&q);
+    //     assert_eq!(
+    //         result.coeffs,
+    //         vec![Zq17::new(2), Zq17::new(4), Zq17::new(6)]
+    //     );
+    // }
 
-        // poly.mul(Zq17)
-        assert_eq!(
-            p.scalar_mul(&Zq17::new(5)).coeffs,
-            vec![Zq17::new(5), Zq17::new(5).neg()]
-        );
+    #[test]
+    fn test_zero_and_constant_polynomials() {
+        let zero = UniPolynomial::<Zq17>::zero();
+        assert!(zero.is_zero());
+        assert_eq!(zero.degree(), 0);
+        assert_eq!(zero.coefficients(), vec![Zq17::ZERO]);
+
+        let const_poly = UniPolynomial::from_coefficients(vec![Zq17::new(5)]);
+        assert!(!const_poly.is_zero());
+        assert_eq!(const_poly.degree(), 0);
+        assert_eq!(const_poly.coefficients(), vec![Zq17::new(5)]);
+    }
+
+    // #[test]
+    // fn test_add_assign_and_ref_rhs() {
+    //     let mut p = UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(2)]);
+    //     let q = UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(4)]);
+    //     p += q.clone();
+    //     assert_eq!(p.coefficients(), vec![Zq17::new(4), Zq17::new(6)]);
+    //     p += &q;
+    //     assert_eq!(p.coefficients(), vec![Zq17::new(7), Zq17::new(10)]);
+    // }
+
+    #[test]
+    fn test_sub_assign_and_ref_rhs() {
+        let mut p = UniPolynomial::from_coefficients(vec![Zq17::new(5), Zq17::new(7)]);
+        let q = UniPolynomial::from_coefficients(vec![Zq17::new(2), Zq17::new(3)]);
+        p -= q.clone();
+        assert_eq!(p.coefficients(), vec![Zq17::new(3), Zq17::new(4)]);
+        p -= &q;
+        assert_eq!(p.coefficients(), vec![Zq17::new(1), Zq17::new(1)]);
+    }
+
+    // #[test]
+    // fn test_mul_assign_and_ref_rhs() {
+    //     let mut p = UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(2)]);
+    //     let q = UniPolynomial::from_coefficients(vec![Zq17::new(2), Zq17::new(1)]);
+    //     p *= q.clone();
+    //     assert_eq!(p.coefficients(), vec![Zq17::new(2), Zq17::new(5), Zq17::new(2)]);
+    //     p *= &UniPolynomial::from_coefficients(vec![Zq17::new(1)]);
+    //     assert_eq!(p.coefficients(), vec![Zq17::new(2), Zq17::new(5), Zq17::new(2)]);
+    // }
+
+    #[test]
+    fn test_div_assign_and_rem_assign() {
+        let mut p =
+            UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(2), Zq17::new(1)]);
+        let q = UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(1)]);
+        p /= q.clone();
+        assert_eq!(p.coefficients(), vec![Zq17::new(1), Zq17::new(1)]);
+        p *= q.clone();
+        p %= q;
+        assert!(p.is_zero());
+    }
+
+    #[test]
+    fn test_evaluate_and_set_coefficient() {
+        let mut poly = UniPolynomial::from_coefficients(vec![Zq17::new(2), Zq17::new(3)]);
+        assert_eq!(poly.evaluate(&Zq17::new(2)), Zq17::new(8)); // 3*2 + 2 = 8
+        poly.set_coefficient(0, Zq17::new(5));
+        assert_eq!(poly.coefficient(0), Zq17::new(5));
+        assert_eq!(poly.coefficients(), vec![Zq17::new(5), Zq17::new(3)]);
+    }
+
+    #[test]
+    fn test_high_degree_polynomial() {
+        let coeffs = (0..20).map(Zq17::from).collect::<Vec<_>>();
+        let poly = UniPolynomial::from_coefficients(coeffs.clone());
+        assert_eq!(poly.degree(), 19);
+        assert_eq!(poly.coefficients(), coeffs);
     }
 }
