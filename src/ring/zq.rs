@@ -1,4 +1,5 @@
 use crate::ring::Ring;
+use crate::ring::reduction::ModularArithmetic;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fmt::*;
@@ -37,6 +38,20 @@ impl<const MODULUS: u64> Zq<MODULUS> {
             let inv = ((t + MODULUS as i64) % MODULUS as i64) as u64;
             Some(Self::new(inv))
         }
+    }
+
+    pub fn to_le_bytes(&self) -> [u8; 8] {
+        self.value.to_le_bytes()
+    }
+    pub fn from_le_bytes(bytes: [u8; 8]) -> Self {
+        Self::new(u64::from_le_bytes(bytes))
+    }
+
+    pub fn to_be_bytes(&self) -> [u8; 8] {
+        self.value.to_be_bytes()
+    }
+    pub fn from_be_bytes(bytes: [u8; 8]) -> Self {
+        Self::new(u64::from_be_bytes(bytes))
     }
 }
 
@@ -83,44 +98,44 @@ impl<const MODULUS: u64> From<u64> for Zq<MODULUS> {
 /// Macro for arithmetic ops (+, -, *, +=, -=, *=)
 macro_rules! impl_arithmetic {
     // Binary op and assign op for value and reference
-    ($trait:ident, $assign_trait:ident, $method:ident, $assign_method:ident, $op:expr) => {
+    ($trait:ident, $assign_trait:ident, $method:ident, $assign_method:ident, $op:ident) => {
         impl<const MODULUS: u64> $trait for Zq<MODULUS> {
             type Output = Self;
             #[inline]
             fn $method(self, rhs: Self) -> Self::Output {
-                let m = MODULUS as u128;
-                Self::new($op(self.value as u128, rhs.value as u128, m) as u64)
+                Self::new(<Self as ModularArithmetic<MODULUS>>::$op(
+                    self.value, rhs.value,
+                ))
             }
         }
         impl<const MODULUS: u64> $assign_trait for Zq<MODULUS> {
             #[inline]
             fn $assign_method(&mut self, rhs: Self) {
-                let m = MODULUS as u128;
-                self.value = $op(self.value as u128, rhs.value as u128, m) as u64;
+                self.value = <Self as ModularArithmetic<MODULUS>>::$op(self.value, rhs.value);
             }
         }
         impl<'a, const MODULUS: u64> $trait<&'a Self> for Zq<MODULUS> {
             type Output = Self;
             #[inline]
             fn $method(self, rhs: &'a Self) -> Self::Output {
-                let m = MODULUS as u128;
-                Self::new($op(self.value as u128, rhs.value as u128, m) as u64)
+                Self::new(<Self as ModularArithmetic<MODULUS>>::$op(
+                    self.value, rhs.value,
+                ))
             }
         }
         impl<'a, const MODULUS: u64> $assign_trait<&'a Self> for Zq<MODULUS> {
             #[inline]
             fn $assign_method(&mut self, rhs: &'a Self) {
-                let m = MODULUS as u128;
-                self.value = $op(self.value as u128, rhs.value as u128, m) as u64;
+                self.value = <Self as ModularArithmetic<MODULUS>>::$op(self.value, rhs.value);
             }
         }
     };
 }
 
 // Usage for Add, Mul, Sub
-impl_arithmetic!(Add, AddAssign, add, add_assign, |a, b, m| (a + b) % m);
-impl_arithmetic!(Mul, MulAssign, mul, mul_assign, |a, b, m| (a * b) % m);
-impl_arithmetic!(Sub, SubAssign, sub, sub_assign, |a, b, m| (a + m - b) % m);
+impl_arithmetic!(Add, AddAssign, add, add_assign, mod_add);
+impl_arithmetic!(Mul, MulAssign, mul, mul_assign, mod_mul);
+impl_arithmetic!(Sub, SubAssign, sub, sub_assign, mod_sub);
 
 impl<const MODULUS: u64> Neg for Zq<MODULUS> {
     type Output = Self;

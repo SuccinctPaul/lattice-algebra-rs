@@ -1,9 +1,9 @@
 pub mod ring_poly;
 
+pub(crate) mod reduction;
 mod sample; // TODO: sample
 mod traits;
 pub mod zq;
-
 /// export the trait
 pub use traits::*;
 #[cfg(test)]
