@@ -328,7 +328,7 @@ mod test {
 
     #[test]
     pub fn test_vector_inner_product() {
-        let poly_1 = POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::one(), Zq17::one()]);
+        let poly_1 = POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::ONE, Zq17::ONE]);
         let vec1 = vec![POLY_RING_TEST::zero(), poly_1.clone()];
         let vec2 = vec![poly_1.clone(), POLY_RING_TEST::zero()];
         assert_eq!(
@@ -338,8 +338,8 @@ mod test {
 
         // [x+1, x-1]
         let vec3 = vec![
-            POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-            POLY_RING_TEST::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
+            POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+            POLY_RING_TEST::from_coefficients(vec![Zq17::ONE.neg(), Zq17::ONE]),
         ];
         // [3x+1, x+3]
         let vec4 = vec![
@@ -369,7 +369,7 @@ mod test {
                     POLY_RING_TEST::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
                 ],
                 vec![
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::new(2)]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::new(2)]),
                     POLY_RING_TEST::from_coefficients(vec![Zq17::new(3), Zq17::new(4)]),
                 ],
             ],
@@ -383,7 +383,7 @@ mod test {
             values: vec![
                 vec![
                     POLY_RING_TEST::zero(),
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::new(2)]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::new(2)]),
                 ],
                 vec![
                     POLY_RING_TEST::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
@@ -445,13 +445,13 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE.neg(), Zq17::ONE]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::new(2).neg(), Zq17::ONE]),
                 ],
             ],
         };
@@ -482,13 +482,13 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE.neg(), Zq17::ONE]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::new(2).neg(), Zq17::ONE]),
                 ],
             ],
         };
@@ -542,13 +542,13 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE.neg(), Zq17::ONE]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    POLY_RING_TEST::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    POLY_RING_TEST::from_coefficients(vec![Zq17::new(2).neg(), Zq17::ONE]),
                 ],
             ],
         };

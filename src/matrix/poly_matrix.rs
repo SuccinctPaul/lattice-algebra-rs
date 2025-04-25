@@ -343,7 +343,7 @@ mod test {
 
     #[test]
     pub fn test_matrix_vec_dot_mul() {
-        let poly_1 = UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one(), Zq17::one()]);
+        let poly_1 = UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::ONE, Zq17::ONE]);
         let vec1 = vec![UniPolynomial::zero(), poly_1.clone()];
         let vec2 = vec![poly_1.clone(), UniPolynomial::zero()];
         assert_eq!(
@@ -353,8 +353,8 @@ mod test {
 
         // [x+1, x-1]
         let vec3 = vec![
-            UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-            UniPolynomial::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
+            UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+            UniPolynomial::from_coefficients(vec![Zq17::ONE.neg(), Zq17::ONE]),
         ];
         // [3x+1, x+3]
         let vec4 = vec![
@@ -380,7 +380,7 @@ mod test {
                     UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
                 ],
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::new(2)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::new(2)]),
                     UniPolynomial::from_coefficients(vec![Zq17::new(3), Zq17::new(4)]),
                 ],
             ],
@@ -394,7 +394,7 @@ mod test {
             values: vec![
                 vec![
                     UniPolynomial::zero(),
-                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::new(2)]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::new(2)]),
                 ],
                 vec![
                     UniPolynomial::from_coefficients(vec![Zq17::new(1), Zq17::new(3)]),
@@ -454,13 +454,13 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE.neg(), Zq17::ONE]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::ONE]),
                 ],
             ],
         };
@@ -491,13 +491,13 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE.neg(), Zq17::ONE]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::ONE]),
                 ],
             ],
         };
@@ -565,13 +565,13 @@ mod test {
             values: vec![
                 // [x+1, x-1]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq17::one().neg(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE.neg(), Zq17::ONE]),
                 ],
                 // [x+1, x-2]
                 vec![
-                    UniPolynomial::from_coefficients(vec![Zq17::one(), Zq17::one()]),
-                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::one()]),
+                    UniPolynomial::from_coefficients(vec![Zq17::ONE, Zq17::ONE]),
+                    UniPolynomial::from_coefficients(vec![Zq17::new(2).neg(), Zq17::ONE]),
                 ],
             ],
         };

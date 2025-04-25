@@ -32,9 +32,9 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> PolynomialRingTrait
         let coeffs = if DEGREE_BOUND == 0 {
             vec![P::Coefficient::from(2)]
         } else {
-            let mut coeffs = vec![P::Coefficient::zero(); DEGREE_BOUND as usize + 1];
-            coeffs[0] = P::Coefficient::one();
-            coeffs[DEGREE_BOUND as usize] = P::Coefficient::one();
+            let mut coeffs = vec![P::Coefficient::ZERO; DEGREE_BOUND as usize + 1];
+            coeffs[0] = P::Coefficient::ONE;
+            coeffs[DEGREE_BOUND as usize] = P::Coefficient::ONE;
             coeffs
         };
         P::from_coefficients(coeffs)
@@ -160,14 +160,14 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> SubAssign for RingPolynomial<P, DEG
 impl<P: Polynomial, const DEGREE_BOUND: u64> Display for RingPolynomial<P, DEGREE_BOUND> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.coefficients().is_empty()
-            || (self.coefficients().len() == 1 && self.coefficients()[0] == P::Coefficient::zero())
+            || (self.coefficients().len() == 1 && self.coefficients()[0] == P::Coefficient::ZERO)
         {
             return write!(f, "0");
         }
 
         let mut first = true;
         for (i, coeff) in self.coefficients().iter().enumerate().rev() {
-            if *coeff != P::Coefficient::zero() {
+            if *coeff != P::Coefficient::ZERO {
                 if !first {
                     write!(f, " + ")?;
                 }
@@ -176,14 +176,14 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> Display for RingPolynomial<P, DEGRE
                 match i {
                     0 => write!(f, "{}", coeff)?,
                     1 => {
-                        if *coeff == P::Coefficient::one() {
+                        if *coeff == P::Coefficient::ONE {
                             write!(f, "x")?
                         } else {
                             write!(f, "{}x", coeff)?
                         }
                     }
                     _ => {
-                        if *coeff == P::Coefficient::one() {
+                        if *coeff == P::Coefficient::ONE {
                             write!(f, "x^{}", i)?
                         } else {
                             write!(f, "{}x^{}", coeff, i)?

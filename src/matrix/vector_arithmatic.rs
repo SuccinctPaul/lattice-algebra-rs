@@ -17,7 +17,7 @@ impl<R: Ring> VectorArithmatic<R> {
         a.iter()
             .zip(b.iter())
             .map(|(ai, bi)| ai.clone() * bi.clone())
-            .fold(R::zero(), |acc, x| acc + x)
+            .fold(R::ZERO, |acc, x| acc + x)
     }
 
     // Mul between two vectors.
