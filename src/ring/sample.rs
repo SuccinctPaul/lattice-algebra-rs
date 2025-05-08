@@ -1,6 +1,7 @@
 use crate::ring::Ring;
 use crate::ring::zq::Zq;
 use rand::Rng;
+use rand::distr::Distribution;
 use rand::distr::uniform::{Error, SampleBorrow, SampleUniform, UniformInt, UniformSampler};
 
 pub trait GaussianSampler<R: Ring> {
@@ -37,37 +38,58 @@ impl<const MODULUS: u64> UniformSampler for UniformZq<MODULUS> {
     }
 }
 
+impl<const MODULUS: u64> Distribution<Zq<MODULUS>> for UniformZq<MODULUS> {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Zq<MODULUS> {
+        self.0.sample(rng).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::ring::Ring;
-
     use super::*;
-    use rand::thread_rng;
+    use crate::ring::Ring;
+    use rand::distr::Distribution;
+    use rand::rngs::ThreadRng;
 
     type Zq17 = Zq<17>;
 
-    // #[test]
-    // fn test_sample_trait_for_zq() {
-    //     let mut rng = thread_rng();
-    //     for _ in 0..100 {
-    //         let x: Zq17 = Sample::sample(&mut rng);
-    //         assert!(x.abs() < 17);
-    //     }
-    // }
+    #[test]
+    fn test_uniform_sampler_for_zq() {
+        let mut rng = ThreadRng::default();
+        let sampler = UniformZq::<17>::new(Zq17::ZERO, Zq17::new(16)).unwrap();
+        for _ in 0..100 {
+            let x = Distribution::sample(&sampler, &mut rng);
+            assert!(x.value < 17);
+        }
+    }
 
     #[test]
-    #[ignore]
-    fn test_uniform_sampler_for_zq() {
-        let mut rng = thread_rng();
-        let sampler = UniformZq::<17>::new(Zq17::ZERO, Zq17::new(222)).unwrap();
+    fn test_uniform_sampler_inclusive() {
+        let mut rng = ThreadRng::default();
+        let sampler = UniformZq::<17>::new_inclusive(Zq17::new(3), Zq17::new(10)).unwrap();
         for _ in 0..100 {
-            let x = sampler.sample(&mut rng);
-            assert!(x.abs() >= 3 && x.abs() < 10);
+            let x = Distribution::sample(&sampler, &mut rng);
+            assert!(x.value >= 3 && x.value <= 10);
         }
-        let sampler_inc = UniformZq::<17>::new_inclusive(Zq17::new(3), Zq17::new(10)).unwrap();
+    }
+
+    #[test]
+    fn test_distribution_trait() {
+        let mut rng = ThreadRng::default();
+        let sampler = UniformZq::<17>::new(Zq17::ZERO, Zq17::new(16)).unwrap();
         for _ in 0..100 {
-            let x = sampler_inc.sample(&mut rng);
-            assert!(x.abs() >= 3 && x.abs() <= 10);
+            let x = Distribution::sample(&sampler, &mut rng);
+            assert!(x.value < 17);
+        }
+    }
+
+    #[test]
+    fn test_sampling_bounds() {
+        let mut rng = ThreadRng::default();
+        let sampler = UniformZq::<17>::new(Zq17::new(5), Zq17::new(15)).unwrap();
+        for _ in 0..100 {
+            let x = Distribution::sample(&sampler, &mut rng);
+            assert!(x.value >= 5 && x.value < 15);
         }
     }
 }
