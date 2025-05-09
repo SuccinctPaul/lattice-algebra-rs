@@ -1,4 +1,4 @@
-pub mod ring_poly;
+pub mod poly_ring;
 
 pub(crate) mod reduction;
 mod sample; // TODO: sample

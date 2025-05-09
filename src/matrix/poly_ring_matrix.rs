@@ -1,19 +1,19 @@
 use crate::matrix::{Matrix, MatrixScalarType};
 use crate::poly::Polynomial;
-use crate::ring::{PolynomialRingTrait, Ring};
+use crate::ring::{PolynomialQuotientRing, Ring};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Mul, Sub};
 
 /// This defined `matrix` (rows * cols) （m × n）
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct PolyRingMatrix<P: PolynomialRingTrait> {
+pub struct PolyRingMatrix<P: PolynomialQuotientRing> {
     pub rows: usize,
     pub cols: usize,
     pub values: Vec<Vec<P>>,
 }
 
-impl<P: PolynomialRingTrait> PolyRingMatrix<P> {
+impl<P: PolynomialQuotientRing> PolyRingMatrix<P> {
     // Will generate random PolyRingMatrix with bound_degree.
     pub fn rand(rng: &mut impl rand::RngCore, rows: usize, cols: usize) -> Self {
         let values = (0..rows)
@@ -117,7 +117,7 @@ impl<P: PolynomialRingTrait> PolyRingMatrix<P> {
     }
 }
 
-impl<P: PolynomialRingTrait> Matrix<P> for PolyRingMatrix<P> {
+impl<P: PolynomialQuotientRing> Matrix<P> for PolyRingMatrix<P> {
     fn new(rows: usize, cols: usize) -> Self {
         Self {
             rows,
@@ -210,7 +210,7 @@ impl<P: PolynomialRingTrait> Matrix<P> for PolyRingMatrix<P> {
         }
     }
 }
-impl<P: PolynomialRingTrait> Add for PolyRingMatrix<P> {
+impl<P: PolynomialQuotientRing> Add for PolyRingMatrix<P> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -243,7 +243,7 @@ impl<P: PolynomialRingTrait> Add for PolyRingMatrix<P> {
     }
 }
 
-impl<P: PolynomialRingTrait> Sub for PolyRingMatrix<P> {
+impl<P: PolynomialQuotientRing> Sub for PolyRingMatrix<P> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -276,7 +276,7 @@ impl<P: PolynomialRingTrait> Sub for PolyRingMatrix<P> {
     }
 }
 
-impl<P: PolynomialRingTrait> Mul for PolyRingMatrix<P> {
+impl<P: PolynomialQuotientRing> Mul for PolyRingMatrix<P> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -284,7 +284,7 @@ impl<P: PolynomialRingTrait> Mul for PolyRingMatrix<P> {
     }
 }
 
-impl<P: PolynomialRingTrait> Display for PolyRingMatrix<P> {
+impl<P: PolynomialQuotientRing> Display for PolyRingMatrix<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.cols == 0 || self.rows == 0 {
             return write!(f, "Empty");
@@ -313,13 +313,13 @@ mod test {
     use crate::poly::Polynomial;
     use crate::poly::uni_poly::UniPolynomial;
     use crate::ring::Zq17;
-    use crate::ring::ring_poly::RingPolynomial;
-    use crate::ring::{PolynomialRingTrait, Ring};
+    use crate::ring::poly_ring::PolyRing;
+    use crate::ring::{PolynomialQuotientRing, Ring};
     use std::ops::{Mul, Neg};
 
     const POLY_RING_DEGREE: u64 = 2;
     #[allow(non_camel_case_types)]
-    type POLY_RING_TEST = RingPolynomial<UniPolynomial<Zq17>, POLY_RING_DEGREE>;
+    type POLY_RING_TEST = PolyRing<UniPolynomial<Zq17>, POLY_RING_DEGREE>;
     #[test]
     fn test_ring_matrix_new() {
         let matrix = PolyRingMatrix::<POLY_RING_TEST>::new(3, 4);
