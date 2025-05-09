@@ -50,9 +50,9 @@ pub trait Ring:
     fn abs(&self) -> u64;
 }
 
-/// Polynomial Ring
-/// eg: Z_q[x]/(x^n+1)
-pub trait PolynomialRingTrait:
+/// Polynomial Quotient Ring
+/// eg: Z_q[x]/(x^d+1)
+pub trait PolynomialQuotientRing:
     Add<Output = Self>
     + AddAssign
     + for<'a> Add<&'a Self, Output = Self>

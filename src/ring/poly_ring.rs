@@ -1,25 +1,23 @@
 use crate::poly::Polynomial;
-use crate::ring::{PolynomialRingTrait, Ring};
+use crate::ring::{PolynomialQuotientRing, Ring};
 use rand::RngCore;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
-// Z_q[x]/(x^n+1), N mean the module poly's degree
+/// Polynomial Ring: R=Z_q[x]/(x^d+1), D mean the module poly's degree
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct RingPolynomial<P: Polynomial, const DEGREE_BOUND: u64> {
+pub struct PolyRing<P: Polynomial, const DEGREE_BOUND: u64> {
     pub inner: P,
 }
-impl<P: Polynomial, const DEGREE_BOUND: u64> RingPolynomial<P, DEGREE_BOUND> {
+impl<P: Polynomial, const DEGREE_BOUND: u64> PolyRing<P, DEGREE_BOUND> {
     pub fn new(poly: P) -> Self {
         let inner = poly % Self::modulus();
         Self { inner }
     }
 }
 
-impl<P: Polynomial, const DEGREE_BOUND: u64> PolynomialRingTrait
-    for RingPolynomial<P, DEGREE_BOUND>
-{
+impl<P: Polynomial, const DEGREE_BOUND: u64> PolynomialQuotientRing for PolyRing<P, DEGREE_BOUND> {
     type PolyType = P;
     type PolyCoeff = P::Coefficient;
 
@@ -85,7 +83,7 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> PolynomialRingTrait
     }
 }
 
-impl<P: Polynomial, const DEGREE_BOUND: u64> Add for RingPolynomial<P, DEGREE_BOUND> {
+impl<P: Polynomial, const DEGREE_BOUND: u64> Add for PolyRing<P, DEGREE_BOUND> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -93,13 +91,13 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> Add for RingPolynomial<P, DEGREE_BO
     }
 }
 
-impl<P: Polynomial, const DEGREE_BOUND: u64> AddAssign for RingPolynomial<P, DEGREE_BOUND> {
+impl<P: Polynomial, const DEGREE_BOUND: u64> AddAssign for PolyRing<P, DEGREE_BOUND> {
     fn add_assign(&mut self, rhs: Self) {
         self.inner += rhs.inner
     }
 }
 
-impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Add<&'a Self> for RingPolynomial<P, DEGREE_BOUND> {
+impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Add<&'a Self> for PolyRing<P, DEGREE_BOUND> {
     type Output = Self;
 
     fn add(self, rhs: &'a Self) -> Self::Output {
@@ -107,7 +105,7 @@ impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Add<&'a Self> for RingPolynomia
     }
 }
 
-impl<P: Polynomial, const DEGREE_BOUND: u64> Mul for RingPolynomial<P, DEGREE_BOUND> {
+impl<P: Polynomial, const DEGREE_BOUND: u64> Mul for PolyRing<P, DEGREE_BOUND> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -117,7 +115,7 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> Mul for RingPolynomial<P, DEGREE_BO
     }
 }
 
-impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Mul<&'a Self> for RingPolynomial<P, DEGREE_BOUND> {
+impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Mul<&'a Self> for PolyRing<P, DEGREE_BOUND> {
     type Output = Self;
 
     fn mul(self, rhs: &'a Self) -> Self::Output {
@@ -127,7 +125,7 @@ impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Mul<&'a Self> for RingPolynomia
     }
 }
 
-impl<P: Polynomial, const DEGREE_BOUND: u64> MulAssign for RingPolynomial<P, DEGREE_BOUND> {
+impl<P: Polynomial, const DEGREE_BOUND: u64> MulAssign for PolyRing<P, DEGREE_BOUND> {
     fn mul_assign(&mut self, rhs: Self) {
         let product = self.inner.clone() * &rhs.inner;
         let module_one = product % Self::modulus();
@@ -135,7 +133,7 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> MulAssign for RingPolynomial<P, DEG
     }
 }
 
-impl<P: Polynomial, const DEGREE_BOUND: u64> Sub for RingPolynomial<P, DEGREE_BOUND> {
+impl<P: Polynomial, const DEGREE_BOUND: u64> Sub for PolyRing<P, DEGREE_BOUND> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -143,7 +141,7 @@ impl<P: Polynomial, const DEGREE_BOUND: u64> Sub for RingPolynomial<P, DEGREE_BO
     }
 }
 
-impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Sub<&'a Self> for RingPolynomial<P, DEGREE_BOUND> {
+impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Sub<&'a Self> for PolyRing<P, DEGREE_BOUND> {
     type Output = Self;
 
     fn sub(self, rhs: &'a Self) -> Self::Output {
@@ -151,13 +149,13 @@ impl<'a, P: Polynomial, const DEGREE_BOUND: u64> Sub<&'a Self> for RingPolynomia
     }
 }
 
-impl<P: Polynomial, const DEGREE_BOUND: u64> SubAssign for RingPolynomial<P, DEGREE_BOUND> {
+impl<P: Polynomial, const DEGREE_BOUND: u64> SubAssign for PolyRing<P, DEGREE_BOUND> {
     fn sub_assign(&mut self, rhs: Self) {
         self.inner -= rhs.inner
     }
 }
 
-impl<P: Polynomial, const DEGREE_BOUND: u64> Display for RingPolynomial<P, DEGREE_BOUND> {
+impl<P: Polynomial, const DEGREE_BOUND: u64> Display for PolyRing<P, DEGREE_BOUND> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.coefficients().is_empty()
             || (self.coefficients().len() == 1 && self.coefficients()[0] == P::Coefficient::ZERO)
