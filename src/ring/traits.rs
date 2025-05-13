@@ -1,5 +1,6 @@
 use crate::poly::UniPolynomial;
 use std::fmt::{Debug, Display};
+use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::random::Random;
 
@@ -15,7 +16,6 @@ pub trait Ring:
     + Div<Output = Self>
     + for<'a> Add<&'a Self, Output = Self>
     + for<'a> AddAssign<&'a Self>
-    + Sized
     + for<'a> Mul<&'a Self, Output = Self>
     + for<'a> MulAssign<&'a Self>
     + Sized
@@ -26,11 +26,11 @@ pub trait Ring:
     + Eq
     + Ord
     + PartialOrd
-    + Random
     + From<u64>
     + Send
     + Sync
     + Display
+    + MatrixElement
 {
     /// Modulus q
     const MODULUS: u64;
@@ -84,9 +84,6 @@ pub trait PolynomialQuotientRing:
     // TODO: Does it need to export the BOUND_DGREE in trait?
     fn rand_with_bound_degree(rng: &mut impl rand::RngCore) -> Self;
 
-    /// Create a zero polynomial
-    fn zero() -> Self;
-
     /// Create a polynomial representing 1
     // fn one() -> Self;
 
@@ -107,4 +104,40 @@ pub trait PolynomialQuotientRing:
 
     /// Check if the polynomial is zero
     fn is_zero(&self) -> bool;
+}
+
+use std::fmt;
+
+/// Trait for types that can be used as matrix elements
+pub trait MatrixElement:
+    Clone
+    + Add<Output = Self>
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + PartialEq
+    + Eq
+    + Display
+    + Debug
+    + Sum<Self>
+{
+    /// Returns the zero element
+    fn zero() -> Self;
+    /// Returns the one element
+    fn one() -> Self;
+    /// Returns a random element
+    fn random(rng: &mut impl rand::RngCore) -> Self;
+}
+/// Implement MatrixElement for Ring
+impl<R: Ring> MatrixElement for R {
+    fn zero() -> Self {
+        Self::ZERO
+    }
+
+    fn one() -> Self {
+        Self::ONE
+    }
+
+    fn random(rng: &mut impl rand::RngCore) -> Self {
+        Self::rand(rng)
+    }
 }

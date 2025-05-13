@@ -1,8 +1,11 @@
 use crate::poly::UniPolynomial;
+use crate::ring::MatrixElement;
+use crate::ring::zq::Zq;
 use crate::ring::{PolynomialQuotientRing, Ring};
 use rand::RngCore;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
+use std::iter::Sum;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 /// Polynomial Ring: R=Z_q[x]/(x^d+1), D mean the module poly2's degree
@@ -48,10 +51,6 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolynomialQuotientRing for PolyRing<R, DE
 
     fn rand_with_bound_degree(rng: &mut impl RngCore) -> Self {
         Self::rand(rng, DEGREE_BOUND as usize)
-    }
-
-    fn zero() -> Self {
-        Self::new(UniPolynomial::zero())
     }
 
     fn degree(&self) -> usize {
@@ -187,5 +186,25 @@ impl<R: Ring, const DEGREE_BOUND: u64> Display for PolyRing<R, DEGREE_BOUND> {
             }
         }
         Ok(())
+    }
+}
+
+impl<R: Ring, const DEGREE_BOUND: u64> MatrixElement for PolyRing<R, DEGREE_BOUND> {
+    fn zero() -> Self {
+        Self::new(UniPolynomial::zero())
+    }
+
+    fn one() -> Self {
+        Self::from_coefficients(vec![R::ONE])
+    }
+
+    fn random(rng: &mut impl RngCore) -> Self {
+        Self::rand_with_bound_degree(rng)
+    }
+}
+
+impl<R: Ring, const DEGREE_BOUND: u64> Sum for PolyRing<R, DEGREE_BOUND> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::zero(), Self::add)
     }
 }
