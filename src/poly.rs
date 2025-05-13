@@ -2,9 +2,12 @@ use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::ring::Ring;
+use rustfft::num_complex::Complex;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
 
 use rand::RngCore;
+use rustfft::{FftPlanner, num_traits::Zero};
+use std::f64::consts::PI;
 
 /// A univariate polynomial over a ring R.
 ///
@@ -220,6 +223,80 @@ impl<R: Ring> UniPolynomial<R> {
         let r = remainder[..divisor.degree()].to_vec();
         Some((Self::new(quotient), Self::new(r)))
     }
+
+    /// Converts a polynomial to a vector of complex numbers for FFT.
+    /// Pads the vector to the next power of 2 for efficient FFT computation.
+    fn to_complex_vec(&self) -> Vec<Complex<f64>> {
+        let n = self.coeffs.len();
+        let padded_len = (n * 2).next_power_of_two();
+        let mut complex_coeffs = vec![Complex::zero(); padded_len];
+
+        for (i, &coeff) in self.coeffs.iter().enumerate() {
+            // Convert ring element to f64 (assuming it can be represented as a real number)
+            let real = coeff.to_u128() as f64;
+            complex_coeffs[i] = Complex::new(real, 0.0);
+        }
+
+        complex_coeffs
+    }
+
+    /// Converts a vector of complex numbers back to a polynomial.
+    /// Rounds the real parts to the nearest integer and converts back to ring elements.
+    fn from_complex_vec(complex_coeffs: &[Complex<f64>], degree: usize) -> Self {
+        let mut coeffs = Vec::with_capacity(degree + 1);
+
+        for i in 0..=degree {
+            let real = complex_coeffs[i].re.round() as u64;
+            coeffs.push(R::from(real));
+        }
+
+        Self::new(coeffs)
+    }
+
+    /// Multiplies two polynomials using FFT.
+    /// Time complexity: O(n log n) where n is the maximum degree of the input polynomials.
+    pub fn fft_mul(&self, rhs: &Self) -> Self {
+        if self.is_zero() || rhs.is_zero() {
+            return Self::zero();
+        }
+
+        let degree = self.degree() + rhs.degree();
+        let padded_len = (degree + 1).next_power_of_two();
+
+        // Convert polynomials to complex vectors
+        let mut a = self.to_complex_vec();
+        let mut b = rhs.to_complex_vec();
+
+        // Ensure both vectors have the same length (power of 2)
+        a.resize(padded_len, Complex::zero());
+        b.resize(padded_len, Complex::zero());
+
+        // Create FFT planner and compute FFT
+        let mut planner = FftPlanner::new();
+        let fft = planner.plan_fft_forward(padded_len);
+        let ifft = planner.plan_fft_inverse(padded_len);
+
+        // Perform FFT on both polynomials
+        fft.process(&mut a);
+        fft.process(&mut b);
+
+        // Multiply pointwise
+        for i in 0..padded_len {
+            a[i] *= b[i];
+        }
+
+        // Perform inverse FFT
+        ifft.process(&mut a);
+
+        // Scale by 1/n (required for inverse FFT)
+        let scale = 1.0 / (padded_len as f64);
+        for coeff in &mut a {
+            *coeff *= scale;
+        }
+
+        // Convert back to polynomial
+        Self::from_complex_vec(&a, degree)
+    }
 }
 
 impl<R: Ring> Add for UniPolynomial<R> {
@@ -271,31 +348,18 @@ impl<'a, R: Ring> Add<&'a Self> for UniPolynomial<R> {
     }
 }
 
-// TODO: polynomial's multiplication can be implemented by the FFT- Fast Fourier Transform
-impl<R: Ring> std::ops::Mul for UniPolynomial<R> {
+// Update the Mul implementation to use FFT multiplication
+impl<R: Ring> Mul for UniPolynomial<R> {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self::Output {
-        let mut coeffs: Vec<R> = vec![R::ZERO; self.coeffs.len() + rhs.coeffs.len() - 1];
-        for n in 0..self.coeffs.len() {
-            for m in 0..rhs.coeffs.len() {
-                coeffs[n + m] += self.coeffs[n] * rhs.coeffs[m];
-            }
-        }
-        Self::new(coeffs)
+        self.fft_mul(&rhs)
     }
 }
 
-// TODO: Use NTT to reduce the complexity O(d^2) to O(dlogd)
 impl<'a, R: Ring> Mul<&'a Self> for UniPolynomial<R> {
     type Output = Self;
     fn mul(self, rhs: &Self) -> Self::Output {
-        let mut coeffs: Vec<R> = vec![R::ZERO; self.coeffs.len() + rhs.coeffs.len() - 1];
-        for n in 0..self.coeffs.len() {
-            for m in 0..rhs.coeffs.len() {
-                coeffs[n + m] += self.coeffs[n] * rhs.coeffs[m];
-            }
-        }
-        Self::new(coeffs)
+        self.fft_mul(rhs)
     }
 }
 
@@ -738,5 +802,55 @@ mod tests {
         // Test division with reference
         let (quotient, remainder) = p1.divide_with_q_and_r(&p2).unwrap();
         assert_eq!(p1, p2 * quotient + remainder);
+    }
+
+    #[test]
+    fn test_fft_multiplication() {
+        // Test basic multiplication
+        let p1 = create_test_poly(vec![1, 2, 3]); // 3x^2 + 2x + 1
+        let p2 = create_test_poly(vec![4, 5, 6]); // 6x^2 + 5x + 4
+
+        let prod_fft = p1.fft_mul(&p2);
+        let prod_naive = p1.clone() * p2.clone();
+        assert_eq!(prod_fft, prod_naive);
+
+        // Test multiplication with zero polynomial
+        let zero = UniPolynomial::<Zq17>::zero();
+        assert!(p1.fft_mul(&zero).is_zero());
+        assert!(zero.fft_mul(&p1).is_zero());
+
+        // Test multiplication with high-degree polynomials
+        let p3 = create_test_poly(vec![1, 2, 3, 4, 5]); // 5x^4 + 4x^3 + 3x^2 + 2x + 1
+        let p4 = create_test_poly(vec![6, 7, 8, 9]); // 9x^3 + 8x^2 + 7x + 6
+
+        let prod_fft = p3.fft_mul(&p4);
+        let prod_naive = p3.clone() * p4.clone();
+        assert_eq!(prod_fft, prod_naive);
+
+        // Test multiplication with polynomials of different degrees
+        let p5 = create_test_poly(vec![1, 2]); // 2x + 1
+        let p6 = create_test_poly(vec![3, 4, 5, 6]); // 6x^3 + 5x^2 + 4x + 3
+
+        let prod_fft = p5.fft_mul(&p6);
+        let prod_naive = p5.clone() * p6.clone();
+        assert_eq!(prod_fft, prod_naive);
+    }
+
+    #[test]
+    fn test_fft_multiplication_edge_cases() {
+        // Test multiplication with constant polynomials
+        let p1 = create_test_poly(vec![5]); // 5
+        let p2 = create_test_poly(vec![3, 4, 5]); // 5x^2 + 4x + 3
+        assert_eq!(p1.fft_mul(&p2), p1.clone() * p2.clone());
+
+        // Test multiplication with polynomials having leading zeros
+        let p3 = create_test_poly(vec![1, 2, 0, 0]); // 2x + 1
+        let p4 = create_test_poly(vec![3, 4, 5, 0]); // 5x^2 + 4x + 3
+        assert_eq!(p3.fft_mul(&p4), p3.clone() * p4.clone());
+
+        // Test multiplication with polynomials of degree 0
+        let p5 = create_test_poly(vec![2]); // 2
+        let p6 = create_test_poly(vec![3]); // 3
+        assert_eq!(p5.fft_mul(&p6), p5.clone() * p6.clone());
     }
 }
