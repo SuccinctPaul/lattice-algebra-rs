@@ -1,16 +1,10 @@
 //! https://matrixcalc.org/ helps a lot.
-pub mod poly_matrix;
+// pub mod poly_matrix;
 pub mod poly_ring_matrix;
 pub mod ring_matrix;
 pub mod vector_arithmatic;
 
 use std::ops::{Add, Mul, Sub};
-
-// #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
-// pub enum MatrixType {
-//     COLUMN,
-//     ROW,
-// }
 
 // By HORIZONTAL(extend cols): col added, rows fixed
 // By VERTICAL(extend rows): col fixed, rows fixed

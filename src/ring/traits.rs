@@ -1,4 +1,4 @@
-use crate::poly::Polynomial;
+use crate::poly::UniPolynomial;
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::random::Random;
@@ -69,10 +69,9 @@ pub trait PolynomialQuotientRing:
     + Eq
     + Display
 {
-    type PolyType: Polynomial;
     type PolyCoeff: Ring;
 
-    fn modulus() -> Self::PolyType;
+    fn modulus() -> UniPolynomial<Self::PolyCoeff>;
     /// Remove leading zero coefficients
     fn normalize(&mut self);
 
