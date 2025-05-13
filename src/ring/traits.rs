@@ -48,6 +48,9 @@ pub trait Ring:
     fn pow(&self, power: u64) -> Self;
     /// output the abs value,
     fn abs(&self) -> u64;
+
+    /// As the MODULUS is limited in u64, so we can convert Ring to u128
+    fn to_u128(&self) -> u128;
 }
 
 /// Polynomial Quotient Ring

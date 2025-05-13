@@ -82,6 +82,9 @@ impl<const MODULUS: u64> Ring for Zq<MODULUS> {
     fn abs(&self) -> u64 {
         self.value
     }
+    fn to_u128(&self) -> u128 {
+        u128::from(self.value)
+    }
 }
 
 impl<const MODULUS: u64> Random for Zq<MODULUS> {
