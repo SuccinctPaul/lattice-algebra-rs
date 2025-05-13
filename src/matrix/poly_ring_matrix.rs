@@ -1,5 +1,4 @@
 use crate::matrix::{Matrix, MatrixScalarType};
-use crate::poly::Polynomial;
 use crate::ring::{PolynomialQuotientRing, Ring};
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -310,8 +309,8 @@ mod test {
     use crate::debug::debug_polyring_matrix;
     use crate::matrix::Matrix;
     use crate::matrix::poly_ring_matrix::PolyRingMatrix;
-    use crate::poly::Polynomial;
-    use crate::poly::uni_poly::UniPolynomial;
+
+    use crate::poly::UniPolynomial;
     use crate::ring::Zq17;
     use crate::ring::poly_ring::PolyRing;
     use crate::ring::{PolynomialQuotientRing, Ring};
@@ -319,7 +318,7 @@ mod test {
 
     const POLY_RING_DEGREE: u64 = 2;
     #[allow(non_camel_case_types)]
-    type POLY_RING_TEST = PolyRing<UniPolynomial<Zq17>, POLY_RING_DEGREE>;
+    type POLY_RING_TEST = PolyRing<Zq17, POLY_RING_DEGREE>;
     #[test]
     fn test_ring_matrix_new() {
         let matrix = PolyRingMatrix::<POLY_RING_TEST>::new(3, 4);
