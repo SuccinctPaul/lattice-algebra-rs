@@ -1,11 +1,13 @@
+use crate::ring::MatrixElement;
 use crate::ring::Ring;
+use crate::ring::poly_ring::PolyRing;
 use crate::ring::reduction::ModularArithmetic;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fmt::*;
+use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::random::{Random, RandomSource};
-
 /// Z_q: Ring of integers mod q, where q <= 2^64.
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize)]
 pub struct Zq<const MODULUS: u64> {
@@ -87,11 +89,12 @@ impl<const MODULUS: u64> Ring for Zq<MODULUS> {
     }
 }
 
-impl<const MODULUS: u64> Random for Zq<MODULUS> {
-    fn random(source: &mut (impl RandomSource + ?Sized)) -> Self {
-        Self::new(u64::random(source))
+impl<const MODULUS: u64> Sum for Zq<MODULUS> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::ZERO, Self::add)
     }
 }
+
 impl<const MODULUS: u64> From<u64> for Zq<MODULUS> {
     fn from(value: u64) -> Self {
         Self::new(value)
@@ -291,9 +294,6 @@ mod tests {
         assert!(a.value < 17);
         assert!(b.value < 17);
         assert_ne!(a, b); // Very unlikely to fail
-        let mut src = std::random::DefaultRandomSource::default();
-        let c = Zq17::random(&mut src);
-        assert!(c.value < 17);
     }
 
     #[test]

@@ -5,9 +5,12 @@ use crate::ring::Ring;
 use rustfft::num_complex::Complex;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
 
+use crate::ring::MatrixElement;
+use crate::ring::zq::Zq;
 use rand::RngCore;
 use rustfft::{FftPlanner, num_traits::Zero};
 use std::f64::consts::PI;
+use std::iter::Sum;
 
 /// A univariate polynomial over a ring R.
 ///
@@ -72,16 +75,6 @@ impl<R: Ring> UniPolynomial<R> {
     pub fn normalize(&mut self) {
         while self.coeffs.len() > 1 && self.coeffs.last() == Some(&R::ZERO) {
             self.coeffs.pop();
-        }
-    }
-
-    /// Creates a zero polynomial (constant polynomial with value 0).
-    ///
-    /// # Returns
-    /// A polynomial representing 0
-    pub fn zero() -> Self {
-        Self {
-            coeffs: vec![R::ZERO],
         }
     }
 
@@ -296,6 +289,39 @@ impl<R: Ring> UniPolynomial<R> {
 
         // Convert back to polynomial
         Self::from_complex_vec(&a, degree)
+    }
+}
+
+impl<R: Ring> MatrixElement for UniPolynomial<R> {
+    /// Creates a zero polynomial (constant polynomial with value 0).
+    ///
+    /// # Returns
+    /// A polynomial representing 0
+    fn zero() -> Self {
+        Self {
+            coeffs: vec![R::ZERO],
+        }
+    }
+
+    /// Creates a zero polynomial (constant polynomial with value 0).
+    ///
+    /// # Returns
+    /// A polynomial representing 1
+    fn one() -> Self {
+        Self {
+            coeffs: vec![R::ONE],
+        }
+    }
+
+    fn random(rng: &mut impl RngCore) -> Self {
+        // TODO: will be replace by small poly.
+        Self::rand(rng, 5)
+    }
+}
+
+impl<R: Ring> Sum for UniPolynomial<R> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::zero(), Self::add)
     }
 }
 
