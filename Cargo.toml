@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.70.0"  # Minimum supported Rust version
 description = "A Rust library for lattice-based cryptography and algebra"
+readme = "README.md"
+keywords = ["cryptography", "lattice", "algebra"]
+categories = ["cryptography", "algorithms", "math", "science"]
 
 [dependencies]
 rand = "0.9.1"
-#rayon = "1.10.0"
 rustfft = "6.3.0"
 serde = { version = "1.0.216", features = ["derive"] }
 

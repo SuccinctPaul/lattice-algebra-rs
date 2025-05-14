@@ -3,7 +3,7 @@
 // pub mod vector_arithmatic;
 
 pub mod matrix;
-mod vector_arithmatic;
+mod vector;
 #[macro_use]
 pub(self) mod matrix_test_macro;
 #[macro_use]
