@@ -1,8 +1,8 @@
-use crate::ring::Ring;
 use crate::ring::zq::Zq;
-use rand::Rng;
-use rand::distr::Distribution;
+use crate::ring::Ring;
 use rand::distr::uniform::{Error, SampleBorrow, SampleUniform, UniformInt, UniformSampler};
+use rand::distr::Distribution;
+use rand::Rng;
 
 pub trait GaussianSampler<R: Ring> {
     fn sample(&mut self, sigma: f64) -> R;

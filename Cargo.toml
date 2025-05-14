@@ -1,7 +1,9 @@
 [package]
 name = "lattice-algebra-rs"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+rust-version = "1.70.0"  # Minimum supported Rust version
+description = "A Rust library for lattice-based cryptography and algebra"
 
 [dependencies]
 rand = "0.9.1"

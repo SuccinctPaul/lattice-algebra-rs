@@ -1,7 +1,7 @@
-use crate::ring::MatrixElement;
-use crate::ring::Ring;
 use crate::ring::poly_ring::PolyRing;
 use crate::ring::reduction::ModularArithmetic;
+use crate::ring::MatrixElement;
+use crate::ring::Ring;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fmt::*;
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_random_and_rand() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let a = Zq17::rand(&mut rng);
         let b = Zq17::rand(&mut rng);
         assert!(a.value < 17);
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let lhs = Zq17::rand(&mut rng);
         let serde = serde_json::to_string(&lhs).unwrap();
         let rhs = serde_json::from_str::<Zq17>(&serde).unwrap();

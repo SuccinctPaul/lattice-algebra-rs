@@ -1,6 +1,6 @@
 use crate::matrix::matrix::GenericMatrix;
-use crate::ring::MatrixElement;
 use crate::ring::poly_ring::PolyRing;
+use crate::ring::MatrixElement;
 use std::ops::{Add, Mul, Neg, Sub};
 
 /// A matrix over a ring R
@@ -167,7 +167,7 @@ mod ring_vector_tests {
     use crate::vector_tests;
 
     // Test RingVector with Zq17
-    vector_tests!(Zq17, rand::thread_rng());
+    vector_tests!(Zq17, rand::rng());
 }
 
 #[cfg(test)]
@@ -178,8 +178,8 @@ mod poly_ring_vector_tests {
     use crate::{polynomial_vector_tests, vector_tests};
 
     // Test PolyRingVector with Zq17 and degree bound 4
-    vector_tests!(PolyRing<Zq17, 4>, rand::thread_rng());
-    // polynomial_vector_tests!(PolyRing<Zq17, 4>, rand::thread_rng());
+    vector_tests!(PolyRing<Zq17, 4>, rand::rng());
+    // polynomial_vector_tests!(PolyRing<Zq17, 4>, rand::rng());
 }
 
 #[cfg(test)]
@@ -190,6 +190,6 @@ mod poly_vector_tests {
     use crate::{polynomial_vector_tests, vector_tests};
 
     // Test PolynomialVector with Zq17
-    vector_tests!(UniPolynomial<Zq17>, rand::thread_rng());
-    // polynomial_vector_tests!(UniPolynomial<Zq17>, rand::thread_rng());
+    vector_tests!(UniPolynomial<Zq17>, rand::rng());
+    // polynomial_vector_tests!(UniPolynomial<Zq17>, rand::rng());
 }

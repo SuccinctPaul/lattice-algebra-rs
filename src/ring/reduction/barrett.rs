@@ -31,11 +31,19 @@ impl<const MODULUS: u64> ModularArithmetic<MODULUS> for Zq<MODULUS> {
     #[inline(always)]
     fn mod_add(a: u64, b: u64) -> u64 {
         let sum = a.wrapping_add(b);
-        if sum >= MODULUS { sum - MODULUS } else { sum }
+        if sum >= MODULUS {
+            sum - MODULUS
+        } else {
+            sum
+        }
     }
     #[inline(always)]
     fn mod_sub(a: u64, b: u64) -> u64 {
-        if a >= b { a - b } else { MODULUS - (b - a) }
+        if a >= b {
+            a - b
+        } else {
+            MODULUS - (b - a)
+        }
     }
     #[inline(always)]
     fn mod_mul(a: u64, b: u64) -> u64 {

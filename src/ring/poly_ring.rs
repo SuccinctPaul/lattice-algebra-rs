@@ -1,6 +1,6 @@
 use crate::poly::UniPolynomial;
-use crate::ring::MatrixElement;
 use crate::ring::zq::Zq;
+use crate::ring::MatrixElement;
 use crate::ring::{PolynomialQuotientRing, Ring};
 use rand::RngCore;
 use std::fmt;
