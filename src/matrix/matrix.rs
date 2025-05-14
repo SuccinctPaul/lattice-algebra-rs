@@ -1,5 +1,5 @@
-use crate::ring::MatrixElement;
 use crate::ring::poly_ring::PolyRing;
+use crate::ring::MatrixElement;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
@@ -16,9 +16,9 @@ pub type PolyRingMatrix<R, const DEGREE_BOUND: u64> = GenericMatrix<PolyRing<R, 
 /// A generic matrix implementation that can work with any type implementing MatrixElement
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericMatrix<T: MatrixElement> {
-    rows: usize,
-    cols: usize,
-    data: Vec<Vec<T>>,
+    pub rows: usize,
+    pub cols: usize,
+    pub data: Vec<Vec<T>>,
 }
 
 impl<T: MatrixElement> GenericMatrix<T> {
@@ -274,7 +274,7 @@ mod poly_matrix_tests {
     use crate::ring::Zq17;
     use crate::{matrix_tests, polynomial_matrix_tests};
 
-    matrix_tests!(UniPolynomial<Zq17>, rand::thread_rng());
+    matrix_tests!(UniPolynomial<Zq17>, rand::rng());
 }
 
 #[cfg(test)]
@@ -283,7 +283,7 @@ mod ring_matrix_tests {
     use crate::matrix_tests;
     use crate::ring::Zq17;
 
-    matrix_tests!(Zq17, rand::thread_rng());
+    matrix_tests!(Zq17, rand::rng());
 }
 
 #[cfg(test)]

@@ -5,10 +5,10 @@ use crate::ring::Ring;
 use rustfft::num_complex::Complex;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
 
-use crate::ring::MatrixElement;
 use crate::ring::zq::Zq;
+use crate::ring::MatrixElement;
 use rand::RngCore;
-use rustfft::{FftPlanner, num_traits::Zero};
+use rustfft::{num_traits::Zero, FftPlanner};
 use std::f64::consts::PI;
 use std::iter::Sum;
 
@@ -548,7 +548,7 @@ impl<R: Ring> Display for UniPolynomial<R> {
 mod tests {
     use super::*;
     use crate::ring::Zq17;
-    use rand::thread_rng;
+    use rand::rng;
     use std::ops::Neg;
 
     // Helper function to create test polynomials
@@ -721,7 +721,7 @@ mod tests {
 
     #[test]
     fn test_random_polynomial_generation() {
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         // Test random polynomial generation with different degrees
         for degree in 0..5 {

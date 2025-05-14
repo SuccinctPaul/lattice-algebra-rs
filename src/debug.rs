@@ -1,10 +1,10 @@
-use crate::matrix::poly_ring_matrix::PolyRingMatrix;
-use crate::ring::{PolynomialQuotientRing, Ring};
+use crate::matrix::matrix::GenericMatrix;
+use crate::ring::{MatrixElement, PolynomialQuotientRing, Ring};
 
-pub fn debug_polyring_matrix<P: PolynomialQuotientRing>(label: &str, matrix: &PolyRingMatrix<P>) {
+pub fn debug_polyring_matrix<E: MatrixElement>(label: &str, matrix: &GenericMatrix<E>) {
     println!(
-        "{label}: row*col={:?}*{:?}, value: {:?}",
-        matrix.rows, matrix.cols, matrix.values
+        "{label}: row*col={:?}*{:?}, data: {:?}",
+        matrix.rows, matrix.cols, matrix.data
     );
 }
 
