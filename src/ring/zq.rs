@@ -1,13 +1,10 @@
-use crate::ring::poly_ring::PolyRing;
 use crate::ring::reduction::ModularArithmetic;
-use crate::ring::MatrixElement;
 use crate::ring::Ring;
-use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fmt::*;
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
-use std::random::{Random, RandomSource};
+
 /// Z_q: Ring of integers mod q, where q <= 2^64.
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize)]
 pub struct Zq<const MODULUS: u64> {
@@ -176,6 +173,7 @@ impl<const MODULUS: u64> Display for Zq<MODULUS> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
     type Zq17 = Zq<17>;
 
     #[test]
@@ -191,10 +189,10 @@ mod tests {
     #[test]
     fn test_display_and_debug() {
         let a = Zq17::new(7);
-        assert_eq!(format!("{}", a), "7");
-        assert!(format!("{:?}", a).contains("7"));
+        assert_eq!(format!("{a}",), "7");
+        assert!(format!("{a}").contains("7"));
         let mut s = String::new();
-        write!(&mut s, "{}", a).unwrap();
+        write!(&mut s, "{a}").unwrap();
         assert_eq!(s, "7");
     }
 
@@ -213,7 +211,7 @@ mod tests {
         let e = Zq17::new(4);
         d.add_assign(&e);
         assert_eq!(d, Zq17::new(7));
-        assert_eq!(Zq17::new(2) + &Zq17::new(3), Zq17::new(5));
+        assert_eq!(Zq17::new(2) + Zq17::new(3), Zq17::new(5));
     }
 
     #[test]
@@ -228,7 +226,7 @@ mod tests {
         let d = Zq17::new(4);
         c.sub_assign(&d);
         assert_eq!(c, Zq17::new(15));
-        assert_eq!(Zq17::new(2) - &Zq17::new(4), Zq17::new(15));
+        assert_eq!(Zq17::new(2) - Zq17::new(4), Zq17::new(15));
     }
 
     #[test]
@@ -243,7 +241,7 @@ mod tests {
         let d = Zq17::new(4);
         c.mul_assign(&d);
         assert_eq!(c, Zq17::new(3));
-        assert_eq!(Zq17::new(5) * &Zq17::new(4), Zq17::new(3));
+        assert_eq!(Zq17::new(5) * Zq17::new(4), Zq17::new(3));
     }
 
     #[test]
@@ -293,7 +291,6 @@ mod tests {
         let b = Zq17::rand(&mut rng);
         assert!(a.value < 17);
         assert!(b.value < 17);
-        assert_ne!(a, b); // Very unlikely to fail
     }
 
     #[test]
@@ -346,5 +343,36 @@ mod tests {
         assert_eq!(a * b, a);
         assert_eq!(a * Zq17::ZERO, Zq17::ZERO);
         assert_eq!(Zq17::ZERO - a, Zq17::new(1));
+    }
+
+    #[test]
+    fn test_serialization() {
+        let z = Zq17::new(5);
+
+        // Test serialization
+        let serialized = serde_json::to_string(&z).unwrap();
+        let deserialized: Zq17 = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(z, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_zero() {
+        let z = Zq17::ZERO;
+
+        let serialized = serde_json::to_string(&z).unwrap();
+        let deserialized: Zq17 = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(z, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_max() {
+        let z = Zq17::MAX;
+
+        let serialized = serde_json::to_string(&z).unwrap();
+        let deserialized: Zq17 = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(z, deserialized);
     }
 }

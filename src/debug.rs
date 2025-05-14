@@ -1,5 +1,5 @@
 use crate::matrix::matrix::GenericMatrix;
-use crate::ring::{MatrixElement, PolynomialQuotientRing, Ring};
+use crate::ring::{MatrixElement, PolynomialQuotientRing};
 
 pub fn debug_polyring_matrix<E: MatrixElement>(label: &str, matrix: &GenericMatrix<E>) {
     println!(

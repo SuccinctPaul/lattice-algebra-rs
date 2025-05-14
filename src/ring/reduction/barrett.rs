@@ -10,14 +10,14 @@ impl<const MODULUS: u64> Barrett<MODULUS> {
     pub const fn new() -> Self {
         // 2^128 = u128::MAX + 1
         Self {
-            mu: (u128::MAX as u128) + 1 / (MODULUS as u128),
+            mu: (u128::MAX) + 1 / (MODULUS as u128),
         }
     }
     /// Barrett reduction: returns x mod MODULUS for x < MODULUS^2
     #[inline(always)]
     pub fn reduce(&self, x: u128) -> u64 {
         // Correct shift for Barrett reduction is 64 bits, not 128
-        let q = ((x as u128).wrapping_mul(self.mu)) >> 64;
+        let q = (x.wrapping_mul(self.mu)) >> 64;
         let r = x - q * (MODULUS as u128);
         if r >= MODULUS as u128 {
             (r - MODULUS as u128) as u64

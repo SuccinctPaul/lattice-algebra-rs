@@ -5,9 +5,8 @@ macro_rules! vector_tests {
         #[cfg(test)]
         mod tests {
             use super::*;
-            use crate::matrix::vector::GenericVector;
-            use crate::ring::MatrixElement;
-            use rand::RngCore;
+            use $crate::matrix::vector::GenericVector;
+            use $crate::ring::MatrixElement;
 
             #[test]
             fn test_vector_creation() {
@@ -109,9 +108,9 @@ macro_rules! polynomial_vector_tests {
         #[cfg(test)]
         mod polynomial_tests {
             use super::*;
-            use crate::matrix::vector::GenericVector;
-            use crate::ring::MatrixElement;
             use rand::RngCore;
+            use $crate::matrix::vector::GenericVector;
+            use $crate::ring::MatrixElement;
 
             #[test]
             fn test_polynomial_vector_operations() {

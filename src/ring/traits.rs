@@ -2,7 +2,6 @@ use crate::poly::UniPolynomial;
 use std::fmt::{Debug, Display};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
-use std::random::Random;
 
 /// Ring mod q
 pub trait Ring:
@@ -84,9 +83,6 @@ pub trait PolynomialQuotientRing:
     // TODO: Does it need to export the BOUND_DGREE in trait?
     fn rand_with_bound_degree(rng: &mut impl rand::RngCore) -> Self;
 
-    /// Create a polynomial representing 1
-    // fn one() -> Self;
-
     /// Get the degree of the polynomial
     fn degree(&self) -> usize;
 
@@ -105,8 +101,6 @@ pub trait PolynomialQuotientRing:
     /// Check if the polynomial is zero
     fn is_zero(&self) -> bool;
 }
-
-use std::fmt;
 
 /// Trait for types that can be used as matrix elements
 pub trait MatrixElement:
