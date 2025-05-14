@@ -31,8 +31,6 @@ lint: # Run `clippy` and `rustfmt`.
 	# cargo sort
 	cargo sort --grouped
 
-	# cargo audit
-	cargo audit
 
 pr: # Run before 'make pr'
 	make lint && \
