@@ -1,8 +1,3 @@
-use crate::matrix::matrix::GenericMatrix;
-use crate::ring::MatrixElement;
-use crate::ring::PolynomialQuotientRing;
-use rand::RngCore;
-
 /// Macro to generate matrix tests for any type implementing MatrixElement
 #[macro_export]
 macro_rules! matrix_tests {
@@ -10,9 +5,8 @@ macro_rules! matrix_tests {
         #[cfg(test)]
         mod tests {
             use super::*;
-            use crate::matrix::matrix::GenericMatrix;
-            use crate::ring::MatrixElement;
-            use rand::RngCore;
+            use $crate::matrix::matrix::GenericMatrix;
+            use $crate::ring::MatrixElement;
 
             #[test]
             fn test_matrix_creation() {
@@ -148,9 +142,8 @@ macro_rules! polynomial_matrix_tests {
         #[cfg(test)]
         mod polynomial_tests {
             use super::*;
-            use crate::matrix::matrix::GenericMatrix;
-            use crate::ring::MatrixElement;
-            use rand::RngCore;
+            use $crate::matrix::matrix::GenericMatrix;
+            use $crate::ring::MatrixElement;
 
             #[test]
             fn test_polynomial_matrix_mul() {

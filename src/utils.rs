@@ -59,8 +59,8 @@ mod tests {
         ];
         assert_eq!(bytes_to_le_bits(&bytes), expected);
         let expected = vec![true, true, false, true];
-        assert_eq!(bytes_to_le_bits(&vec![11]), bits_formalize(&expected));
-        assert_eq!(bits_normalize(&bytes_to_le_bits(&vec![11])), expected);
+        assert_eq!(bytes_to_le_bits(&[11]), bits_formalize(&expected));
+        assert_eq!(bits_normalize(&bytes_to_le_bits(&[11])), expected);
     }
 
     #[test]

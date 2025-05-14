@@ -1,5 +1,6 @@
 pub mod barrett;
 
+#[allow(unused)]
 /// Trait for modular arithmetic with optional Barrett reduction.
 pub trait ModularArithmetic<const MODULUS: u64> {
     /// Modular addition

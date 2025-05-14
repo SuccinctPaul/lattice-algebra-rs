@@ -1,7 +1,7 @@
-use crate::matrix::matrix::GenericMatrix;
 use crate::ring::poly_ring::PolyRing;
 use crate::ring::MatrixElement;
-use std::ops::{Add, Mul, Neg, Sub};
+use serde::{Deserialize, Serialize};
+use std::ops::{Add, Mul, Sub};
 
 /// A matrix over a ring R
 pub type RingVector<R> = GenericVector<R>;
@@ -11,8 +11,9 @@ pub type PolyRingVector<R, const DEGREE_BOUND: u64> = GenericVector<PolyRing<R, 
 
 /// A generic vector type that supports arithmetic operations
 /// for any type implementing MatrixElement trait
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericVector<T: MatrixElement> {
+    #[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
     elements: Vec<T>,
 }
 
@@ -161,9 +162,7 @@ impl<T: MatrixElement> From<Vec<T>> for GenericVector<T> {
 
 #[cfg(test)]
 mod ring_vector_tests {
-    use super::*;
-    use crate::poly::UniPolynomial;
-    use crate::ring::{Ring, Zq17};
+    use crate::ring::Zq17;
     use crate::vector_tests;
 
     // Test RingVector with Zq17
@@ -173,9 +172,8 @@ mod ring_vector_tests {
 #[cfg(test)]
 mod poly_ring_vector_tests {
     use super::*;
-    use crate::poly::UniPolynomial;
-    use crate::ring::{PolynomialQuotientRing, Ring, Zq17};
-    use crate::{polynomial_vector_tests, vector_tests};
+    use crate::ring::Zq17;
+    use crate::vector_tests;
 
     // Test PolyRingVector with Zq17 and degree bound 4
     vector_tests!(PolyRing<Zq17, 4>, rand::rng());
@@ -184,12 +182,49 @@ mod poly_ring_vector_tests {
 
 #[cfg(test)]
 mod poly_vector_tests {
-    use super::*;
     use crate::poly::UniPolynomial;
-    use crate::ring::{PolynomialQuotientRing, Ring, Zq17};
-    use crate::{polynomial_vector_tests, vector_tests};
+    use crate::ring::Zq17;
+    use crate::vector_tests;
 
     // Test PolynomialVector with Zq17
     vector_tests!(UniPolynomial<Zq17>, rand::rng());
     // polynomial_vector_tests!(UniPolynomial<Zq17>, rand::rng());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ring::Zq17;
+    use serde_json;
+
+    #[test]
+    fn test_serialization() {
+        let vector = GenericVector::new(vec![Zq17::new(1), Zq17::new(2), Zq17::new(3)]);
+
+        let serialized = serde_json::to_string(&vector).unwrap();
+        let deserialized: GenericVector<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(vector, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_zero_vector() {
+        let vector = GenericVector::<Zq17>::zero(3);
+
+        let serialized = serde_json::to_string(&vector).unwrap();
+        let deserialized: GenericVector<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(vector, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_random_vector() {
+        let mut rng = rand::rng();
+        let vector = GenericVector::<Zq17>::random(&mut rng, 5);
+
+        let serialized = serde_json::to_string(&vector).unwrap();
+        let deserialized: GenericVector<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(vector, deserialized);
+    }
 }

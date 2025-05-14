@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -5,11 +6,9 @@ use crate::ring::Ring;
 use rustfft::num_complex::Complex;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
 
-use crate::ring::zq::Zq;
 use crate::ring::MatrixElement;
 use rand::RngCore;
 use rustfft::{num_traits::Zero, FftPlanner};
-use std::f64::consts::PI;
 use std::iter::Sum;
 
 /// A univariate polynomial over a ring R.
@@ -17,9 +16,10 @@ use std::iter::Sum;
 /// The polynomial is represented in little-endian format:
 /// p(x) = a_0 + a_1 * x + ... + a_n * x^n
 /// where coeffs = [a_0, a_1, ..., a_n]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct UniPolynomial<R: Ring> {
     /// Coefficients of the polynomial in ascending order of degree
+    #[serde(bound(serialize = "R: Serialize", deserialize = "R: Deserialize<'de>"))]
     coeffs: Vec<R>,
 }
 
@@ -238,8 +238,8 @@ impl<R: Ring> UniPolynomial<R> {
     fn from_complex_vec(complex_coeffs: &[Complex<f64>], degree: usize) -> Self {
         let mut coeffs = Vec::with_capacity(degree + 1);
 
-        for i in 0..=degree {
-            let real = complex_coeffs[i].re.round() as u64;
+        for item in complex_coeffs.iter().take(degree + 1) {
+            let real = item.re.round() as u64;
             coeffs.push(R::from(real));
         }
 
@@ -331,7 +331,6 @@ impl<R: Ring> Add for UniPolynomial<R> {
     fn add(self, rhs: Self) -> Self::Output {
         let max_len = std::cmp::max(self.coeffs.len(), rhs.coeffs.len());
         let coeffs = (0..max_len)
-            .into_iter()
             .map(|n| {
                 if n >= self.coeffs.len() {
                     rhs.coeffs[n]
@@ -358,7 +357,6 @@ impl<'a, R: Ring> Add<&'a Self> for UniPolynomial<R> {
     fn add(self, rhs: &'a Self) -> Self::Output {
         let max_len = std::cmp::max(self.coeffs.len(), rhs.coeffs.len());
         let coeffs = (0..max_len)
-            .into_iter()
             .map(|n| {
                 if n >= self.coeffs.len() {
                     rhs.coeffs[n]
@@ -382,7 +380,7 @@ impl<R: Ring> Mul for UniPolynomial<R> {
     }
 }
 
-impl<'a, R: Ring> Mul<&'a Self> for UniPolynomial<R> {
+impl<R: Ring> Mul<&Self> for UniPolynomial<R> {
     type Output = Self;
     fn mul(self, rhs: &Self) -> Self::Output {
         self.fft_mul(rhs)
@@ -403,8 +401,8 @@ impl<R: Ring> Sub for UniPolynomial<R> {
         let mut result = Vec::with_capacity(max_len);
 
         for i in 0..max_len {
-            let a = self.coeffs.get(i).cloned().unwrap_or_else(|| R::ZERO);
-            let b = rhs.coeffs.get(i).cloned().unwrap_or_else(|| R::ZERO);
+            let a = self.coeffs.get(i).cloned().unwrap_or(R::ZERO);
+            let b = rhs.coeffs.get(i).cloned().unwrap_or(R::ZERO);
             result.push(a - b);
         }
 
@@ -412,15 +410,15 @@ impl<R: Ring> Sub for UniPolynomial<R> {
     }
 }
 
-impl<'a, R: Ring> Sub<&'a Self> for UniPolynomial<R> {
+impl<R: Ring> Sub<&Self> for UniPolynomial<R> {
     type Output = Self;
     fn sub(self, rhs: &Self) -> Self::Output {
         let max_len = self.coeffs.len().max(rhs.coeffs.len());
         let mut result = Vec::with_capacity(max_len);
 
         for i in 0..max_len {
-            let a = self.coeffs.get(i).cloned().unwrap_or_else(|| R::ZERO);
-            let b = rhs.coeffs.get(i).cloned().unwrap_or_else(|| R::ZERO);
+            let a = self.coeffs.get(i).cloned().unwrap_or(R::ZERO);
+            let b = rhs.coeffs.get(i).cloned().unwrap_or(R::ZERO);
             result.push(a - b);
         }
 
@@ -432,7 +430,7 @@ impl<R: Ring> SubAssign for UniPolynomial<R> {
         *self = self.clone() - rhs;
     }
 }
-impl<'a, R: Ring> SubAssign<&'a Self> for UniPolynomial<R> {
+impl<R: Ring> SubAssign<&Self> for UniPolynomial<R> {
     fn sub_assign(&mut self, rhs: &Self) {
         *self = self.clone() - rhs;
     }
@@ -442,17 +440,17 @@ impl<R: Ring> Div for UniPolynomial<R> {
     type Output = Self;
 
     fn div(self, divisor: Self) -> Self::Output {
-        if let Some((q, r)) = self.divide_with_q_and_r(&divisor) {
+        if let Some((q, _)) = self.divide_with_q_and_r(&divisor) {
             return q;
         }
         panic!("Dividing by zero polynomial")
     }
 }
 
-impl<'a, R: Ring> Div<&'a Self> for UniPolynomial<R> {
+impl<R: Ring> Div<&Self> for UniPolynomial<R> {
     type Output = Self;
     fn div(self, divisor: &Self) -> Self::Output {
-        if let Some((q, r)) = self.divide_with_q_and_r(divisor) {
+        if let Some((q, _)) = self.divide_with_q_and_r(divisor) {
             return q;
         }
         panic!("Dividing by zero polynomial")
@@ -463,7 +461,7 @@ impl<R: Ring> DivAssign for UniPolynomial<R> {
         *self = self.clone() / rhs;
     }
 }
-impl<'a, R: Ring> DivAssign<&'a Self> for UniPolynomial<R> {
+impl<R: Ring> DivAssign<&Self> for UniPolynomial<R> {
     fn div_assign(&mut self, rhs: &Self) {
         *self = self.clone() / rhs;
     }
@@ -473,17 +471,17 @@ impl<R: Ring> Rem for UniPolynomial<R> {
     type Output = Self;
 
     fn rem(self, divisor: Self) -> Self::Output {
-        if let Some((q, r)) = self.divide_with_q_and_r(&divisor) {
+        if let Some((_, r)) = self.divide_with_q_and_r(&divisor) {
             return r;
         }
         panic!("Dividing by zero polynomial")
     }
 }
 
-impl<'a, R: Ring> Rem<&'a Self> for UniPolynomial<R> {
+impl<R: Ring> Rem<&Self> for UniPolynomial<R> {
     type Output = Self;
     fn rem(self, divisor: &Self) -> Self::Output {
-        if let Some((q, r)) = self.divide_with_q_and_r(divisor) {
+        if let Some((_, r)) = self.divide_with_q_and_r(divisor) {
             return r;
         }
         panic!("Dividing by zero polynomial")
@@ -494,7 +492,7 @@ impl<R: Ring> RemAssign for UniPolynomial<R> {
         *self = self.clone() % rhs;
     }
 }
-impl<'a, R: Ring> RemAssign<&'a Self> for UniPolynomial<R> {
+impl<R: Ring> RemAssign<&Self> for UniPolynomial<R> {
     fn rem_assign(&mut self, rhs: &Self) {
         *self = self.clone() % rhs;
     }
@@ -522,19 +520,19 @@ impl<R: Ring> Display for UniPolynomial<R> {
                 first = false;
 
                 match i {
-                    0 => write!(f, "{}", coeff)?,
+                    0 => write!(f, "{coeff}")?,
                     1 => {
                         if *coeff == R::ONE {
                             write!(f, "x")?
                         } else {
-                            write!(f, "{}x", coeff)?
+                            write!(f, "{coeff}x")?
                         }
                     }
                     _ => {
                         if *coeff == R::ONE {
-                            write!(f, "x^{}", i)?
+                            write!(f, "x^{i}")?
                         } else {
-                            write!(f, "{}x^{}", coeff, i)?
+                            write!(f, "{coeff}x^{i}")?
                         }
                     }
                 }
@@ -549,11 +547,11 @@ mod tests {
     use super::*;
     use crate::ring::Zq17;
     use rand::rng;
-    use std::ops::Neg;
+    use serde_json;
 
     // Helper function to create test polynomials
     fn create_test_poly(coeffs: Vec<u64>) -> UniPolynomial<Zq17> {
-        UniPolynomial::from_coefficients(coeffs.into_iter().map(|x| Zq17::new(x)).collect())
+        UniPolynomial::from_coefficients(coeffs.into_iter().map(Zq17::new).collect())
     }
 
     #[test]
@@ -878,5 +876,40 @@ mod tests {
         let p5 = create_test_poly(vec![2]); // 2
         let p6 = create_test_poly(vec![3]); // 3
         assert_eq!(p5.fft_mul(&p6), p5.clone() * p6.clone());
+    }
+
+    #[test]
+    fn test_serialization() {
+        let poly = create_test_poly(vec![1, 2, 3, 4]);
+
+        // Test serialization
+        let serialized = serde_json::to_string(&poly).unwrap();
+        let deserialized: UniPolynomial<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(poly, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_zero_poly() {
+        let poly = UniPolynomial::<Zq17>::zero();
+
+        let serialized = serde_json::to_string(&poly).unwrap();
+        let deserialized: UniPolynomial<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(poly, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_large_poly() {
+        let mut coeffs = vec![];
+        for i in 0..100 {
+            coeffs.push(Zq17::new(i));
+        }
+        let poly = UniPolynomial::new(coeffs);
+
+        let serialized = serde_json::to_string(&poly).unwrap();
+        let deserialized: UniPolynomial<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(poly, deserialized);
     }
 }

@@ -1,5 +1,6 @@
 use crate::ring::poly_ring::PolyRing;
 use crate::ring::MatrixElement;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
@@ -14,10 +15,13 @@ pub type PolynomialMatrix<R> = GenericMatrix<R>;
 pub type PolyRingMatrix<R, const DEGREE_BOUND: u64> = GenericMatrix<PolyRing<R, DEGREE_BOUND>>;
 
 /// A generic matrix implementation that can work with any type implementing MatrixElement
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenericMatrix<T: MatrixElement> {
+    #[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
     pub rows: usize,
+    #[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
     pub cols: usize,
+    #[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
     pub data: Vec<Vec<T>>,
 }
 
@@ -259,7 +263,7 @@ impl<T: MatrixElement> Display for GenericMatrix<T> {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
-                write!(f, "{}", elem)?;
+                write!(f, "{elem}")?;
             }
             writeln!(f, "]")?;
         }
@@ -269,17 +273,15 @@ impl<T: MatrixElement> Display for GenericMatrix<T> {
 
 #[cfg(test)]
 mod poly_matrix_tests {
-    use super::*;
+    use crate::matrix_tests;
     use crate::poly::UniPolynomial;
     use crate::ring::Zq17;
-    use crate::{matrix_tests, polynomial_matrix_tests};
 
     matrix_tests!(UniPolynomial<Zq17>, rand::rng());
 }
 
 #[cfg(test)]
 mod ring_matrix_tests {
-    use super::*;
     use crate::matrix_tests;
     use crate::ring::Zq17;
 
@@ -295,4 +297,46 @@ mod poly_ring_matrix_tests {
 
     matrix_tests!(PolyRing<Zq17, 4>, rand::rng());
     polynomial_matrix_tests!(PolyRing<Zq17, 4>, rand::rng());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ring::Zq17;
+    use serde_json;
+
+    #[test]
+    fn test_serialization() {
+        let mut matrix = GenericMatrix::<Zq17>::new(2, 2);
+        matrix.set(0, 0, Zq17::new(1)).unwrap();
+        matrix.set(0, 1, Zq17::new(2)).unwrap();
+        matrix.set(1, 0, Zq17::new(3)).unwrap();
+        matrix.set(1, 1, Zq17::new(4)).unwrap();
+
+        let serialized = serde_json::to_string(&matrix).unwrap();
+        let deserialized: GenericMatrix<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(matrix, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_zero_matrix() {
+        let matrix = GenericMatrix::<Zq17>::new(3, 3);
+
+        let serialized = serde_json::to_string(&matrix).unwrap();
+        let deserialized: GenericMatrix<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(matrix, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_random_matrix() {
+        let mut rng = rand::rng();
+        let matrix = GenericMatrix::<Zq17>::random(&mut rng, 4, 4);
+
+        let serialized = serde_json::to_string(&matrix).unwrap();
+        let deserialized: GenericMatrix<Zq17> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(matrix, deserialized);
+    }
 }

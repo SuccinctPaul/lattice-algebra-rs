@@ -4,6 +4,7 @@ use rand::distr::uniform::{Error, SampleBorrow, SampleUniform, UniformInt, Unifo
 use rand::distr::Distribution;
 use rand::Rng;
 
+#[allow(unused)]
 pub trait GaussianSampler<R: Ring> {
     fn sample(&mut self, sigma: f64) -> R;
 }
