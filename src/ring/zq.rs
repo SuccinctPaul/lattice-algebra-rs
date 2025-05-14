@@ -61,7 +61,11 @@ impl<const MODULUS: u64> Ring for Zq<MODULUS> {
     const MAX: Self = Self { value: MODULUS - 1 };
 
     fn rand(rng: &mut impl rand::RngCore) -> Self {
-        Self::new(rng.next_u64())
+        use crate::ring::sample::UniformZq;
+        use rand::distr::uniform::UniformSampler;
+        use rand::distr::Distribution;
+        let sampler = UniformZq::new(Self::ZERO, Self::MAX).unwrap();
+        Distribution::sample(&sampler, rng)
     }
     fn square(&self) -> Self {
         *self * *self
