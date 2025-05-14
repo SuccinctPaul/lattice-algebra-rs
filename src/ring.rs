@@ -1,7 +1,7 @@
 pub mod poly_ring;
 
 pub(crate) mod reduction;
-mod sample; // TODO: sample
+mod sample;
 mod traits;
 pub mod zq;
 /// export the trait
