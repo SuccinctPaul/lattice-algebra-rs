@@ -1,6 +1,7 @@
 # Lattice Algebra Rust
 [![CI](https://github.com/SuccinctPaul/lattice-algebra-rs/workflows/CI/badge.svg)](https://github.com/ejmahler/RustFFT/actions?query=workflow%3ACI)
 ![minimum rustc 1.70](https://img.shields.io/badge/rustc-1.70+-red.svg)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SuccinctPaul/lattice-algebra-rs)
 
 A high-performance Rust library for lattice-based cryptography and algebra, providing efficient implementations of polynomial rings, matrices, and vector operations over finite fields.
 
