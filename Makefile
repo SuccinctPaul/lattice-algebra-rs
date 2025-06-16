@@ -9,25 +9,22 @@ help: # Display this help.
 ##@ Build
 .PHONY: build
 build: # Build the Ream binary into `target` directory.
-	cargo build --release
+	@cargo build --verbose --release
 
 .PHONY: test
 test: # Run all tests.
-	cargo test --workspace -- --nocapture
+	@cargo test --release --workspace -- --nocapture
 
-##@ Release
-.PHONY: changelog release
-changelog: ## auto generate changelog with git-cliff, install by 'cargo install git-cliff'
-	@git cliff v0.6.0..main -o
-
-release: ## release changelog
-	@git cliff v0.6.0..main  --bump  -o CHANGELOG.md
+##@ release
+.PHONY: changelog
+changelog: ## auto generate changelog with git-cliff, install by 'cargo install git-cliff' when release
+	@git cliff --bump  -o CHANGELOG.md
 
 
 ##@ Others
 .PHONY: clean
 clean: # Run `cargo clean`.
-	cargo clean
+	@cargo clean
 
 .PHONY: lint pr
 lint: # Run `clippy` and `rustfmt`.
@@ -42,5 +39,6 @@ lint: # Run `clippy` and `rustfmt`.
 
 
 pr: # Run before 'make pr'
+	make build && \
 	make lint && \
 	make test
