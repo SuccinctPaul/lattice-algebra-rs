@@ -15,12 +15,21 @@ build: # Build the Ream binary into `target` directory.
 test: # Run all tests.
 	cargo test --workspace -- --nocapture
 
+##@ Release
+.PHONY: changelog release
+changelog: ## auto generate changelog with git-cliff, install by 'cargo install git-cliff'
+	@git cliff v0.6.0..main -o
+
+release: ## release changelog
+	@git cliff v0.6.0..main  --bump  -o CHANGELOG.md
+
+
 ##@ Others
 .PHONY: clean
 clean: # Run `cargo clean`.
 	cargo clean
 
-.PHONY: lint
+.PHONY: lint pr
 lint: # Run `clippy` and `rustfmt`.
 	cargo +nightly fmt --all
 	cargo clippy --all --all-targets --no-deps -- --deny warnings

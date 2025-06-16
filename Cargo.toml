@@ -9,8 +9,8 @@ keywords = ["cryptography", "lattice", "algebra"]
 categories = ["cryptography", "algorithms", "math", "science"]
 
 [dependencies]
-rand = "0.9.1"
-rustfft = "6.3.0"
+rand = { version = "0.9.1", features = ["default"] }
+rustfft = "6.4.0"
 serde = { version = "1.0.216", features = ["derive"] }
 
 [dev-dependencies]
