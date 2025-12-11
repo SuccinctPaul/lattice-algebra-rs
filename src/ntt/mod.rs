@@ -35,7 +35,7 @@ mod ntt_core;
 mod params;
 mod twiddle;
 
-pub use ntt_core::NttOperator;
+pub use ntt_core::{NttOperator, NttOperatorOptimized};
 pub use params::{is_ntt_friendly, primitive_root, NttParams};
 pub use twiddle::TwiddleFactors;
 
