@@ -14,7 +14,7 @@
 //! When NTT is available (q ≡ 1 mod 2n), we use negacyclic NTT for
 //! O(n log n) multiplication.
 
-use crate::ntt::{is_ntt_friendly, NttOperator};
+use crate::ntt::{is_ntt_friendly, NttOperatorOptimized};
 use crate::poly::UniPolynomial;
 use crate::ring::MatrixElement;
 use crate::ring::{PolynomialQuotientRing, Ring};
@@ -202,13 +202,17 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
     }
 
     /// NTT multiplication for a specific dimension.
+    ///
+    /// Uses `NttOperatorOptimized` with precomputed twiddle factors for
+    /// better performance (avoids recomputing ω^k in each butterfly).
     fn ntt_multiply_sized<const N: usize>(a: &[R], b: &[R]) -> Vec<R> {
         // Check NTT compatibility at runtime
         if !is_ntt_friendly::<R>(N) {
             return Self::mul_schoolbook_negacyclic(a, b, N);
         }
 
-        let ntt = NttOperator::<R, N>::new();
+        // Use optimized NTT with precomputed twiddle factors
+        let ntt = NttOperatorOptimized::<R, N>::new();
 
         // Convert slices to fixed-size arrays
         let mut a_arr = [R::ZERO; N];

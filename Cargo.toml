@@ -2,16 +2,27 @@
 name = "lattice-algebra-rs"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.70.0"  # Minimum supported Rust version
+rust-version = "1.70.0"
 description = "A Rust library for lattice-based cryptography and algebra"
 readme = "README.md"
 keywords = ["cryptography", "lattice", "algebra"]
 categories = ["cryptography", "algorithms", "math", "science"]
 
+[features]
+default = []
+parallel = ["dep:rayon"]
+
 [dependencies]
 rand = { version = "0.9.1", features = ["default"] }
+rayon = { version = "1.10", optional = true }
 rustfft = "6.4.0"
 serde = { version = "1.0.216", features = ["derive"] }
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = "1.0.133"
+
+# Uncomment to enable benchmarks:
+# [[bench]]
+# name = "benchmarks"
+# harness = false
