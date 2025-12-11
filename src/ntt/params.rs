@@ -238,7 +238,7 @@ mod tests {
         // 3329 % 512 = 257 ≠ 1, so 3329 does NOT support N=256 directly
         // (Kyber uses incomplete NTT / special technique)
         assert!(!is_ntt_friendly::<Zq3329>(256)); // 2*256 = 512, 3329 % 512 = 257 ≠ 1
-        assert!(is_ntt_friendly::<Zq3329>(128));  // 2*128 = 256, 3329 % 256 = 1 ✓
+        assert!(is_ntt_friendly::<Zq3329>(128)); // 2*128 = 256, 3329 % 256 = 1 ✓
 
         // q = 17 = 1 + 16 = 1 + 2^4
         // Supports N = 8 (since 17 ≡ 1 (mod 16))

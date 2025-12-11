@@ -72,8 +72,16 @@ mod basic_ntt_tests {
         let ntt = NttOperator::<Zq17, 8>::new();
 
         // Constant polynomial p(x) = 1
-        let mut data = vec![Zq17::ONE, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO,
-                           Zq17::ZERO, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO];
+        let mut data = vec![
+            Zq17::ONE,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+        ];
         let original = data.clone();
 
         ntt.forward(&mut data);
@@ -101,7 +109,10 @@ mod negacyclic_ntt_tests {
         ntt.forward_negacyclic(&mut data);
         ntt.inverse_negacyclic(&mut data);
 
-        assert_eq!(data, original, "Negacyclic NTT roundtrip should preserve data");
+        assert_eq!(
+            data, original,
+            "Negacyclic NTT roundtrip should preserve data"
+        );
     }
 
     #[test]
@@ -161,11 +172,27 @@ mod polynomial_multiplication_tests {
         let ntt = NttOperator::<Zq17, 8>::new();
 
         // a(x) = 1
-        let a = vec![Zq17::ONE, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO,
-                     Zq17::ZERO, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO];
+        let a = vec![
+            Zq17::ONE,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+        ];
         // b(x) = x + 1
-        let b = vec![Zq17::ONE, Zq17::ONE, Zq17::ZERO, Zq17::ZERO,
-                     Zq17::ZERO, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO];
+        let b = vec![
+            Zq17::ONE,
+            Zq17::ONE,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+        ];
 
         let c = ntt.multiply(&a, &b);
         let expected = b.clone(); // 1 * (x + 1) = x + 1
@@ -224,8 +251,10 @@ mod polynomial_multiplication_tests {
             let c_ntt = ntt.multiply_negacyclic(&a, &b);
             let c_naive = naive_negacyclic_mul(&a, &b, 8);
 
-            assert_eq!(c_ntt, c_naive, 
-                "NTT negacyclic multiplication should match naive implementation");
+            assert_eq!(
+                c_ntt, c_naive,
+                "NTT negacyclic multiplication should match naive implementation"
+            );
         }
     }
 
@@ -271,8 +300,16 @@ mod polynomial_multiplication_tests {
         let mut rng = rand::rng();
 
         // Identity element is [1, 0, 0, ..., 0]
-        let one = vec![Zq17::ONE, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO,
-                       Zq17::ZERO, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO];
+        let one = vec![
+            Zq17::ONE,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+        ];
 
         for _ in 0..5 {
             let a: Vec<Zq17> = (0..8).map(|_| Zq17::rand(&mut rng)).collect();
@@ -327,8 +364,10 @@ mod optimized_ntt_tests {
             let c_std = ntt_std.multiply_negacyclic(&a, &b);
             let c_opt = ntt_opt.multiply_negacyclic(&a, &b);
 
-            assert_eq!(c_std, c_opt, 
-                "Optimized NTT should produce same results as standard");
+            assert_eq!(
+                c_std, c_opt,
+                "Optimized NTT should produce same results as standard"
+            );
         }
     }
 }
@@ -395,7 +434,7 @@ mod larger_dimension_tests {
         // 3329 % 512 = 3329 - 6*512 = 3329 - 3072 = 257 ≠ 1
         // So 3329 doesn't directly support N=256 negacyclic NTT in standard form
         // Kyber uses a different approach with incomplete NTT
-        
+
         // For this test, use q = 7681 which supports N = 256
         // 7681 - 1 = 7680 = 15 * 512 = 15 * 2^9
         let ntt = NttOperator::<Zq7681, 256>::new();
@@ -444,14 +483,30 @@ mod edge_cases {
         let ntt = NttOperator::<Zq17, 8>::new();
 
         // x
-        let x = vec![Zq17::ZERO, Zq17::ONE, Zq17::ZERO, Zq17::ZERO,
-                     Zq17::ZERO, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO];
+        let x = vec![
+            Zq17::ZERO,
+            Zq17::ONE,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+        ];
 
         // x * x = x^2
         let x2 = ntt.multiply_negacyclic(&x, &x);
 
-        let expected = vec![Zq17::ZERO, Zq17::ZERO, Zq17::ONE, Zq17::ZERO,
-                           Zq17::ZERO, Zq17::ZERO, Zq17::ZERO, Zq17::ZERO];
+        let expected = vec![
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ONE,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+            Zq17::ZERO,
+        ];
 
         assert_eq!(x2, expected, "x * x should equal x^2");
     }
