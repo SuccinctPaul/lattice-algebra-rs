@@ -1,0 +1,120 @@
+# 快速开始
+
+本页展示**当前代码库中已经可用**的 API。所有示例均对应 `src/` 中的真实实现，可直接在测试或示例工程中运行。
+
+## 环境要求
+
+- Rust ≥ 1.70（MSRV）
+- 依赖：`rand 0.9`、`rustfft`（通用 FFT 回退）、`serde`
+- 可选 feature：`parallel`（rayon 并行）
+
+```toml
+[dependencies]
+lattice-algebra-rs = { path = "../" }
+```
+
+## 标量环 `Zq<MODULUS>`
+
+`Zq` 是 const 泛型参数化的模环，内部使用 [Barrett 归约](/design/scalar-ring)：
+
+```rust
+use lattice_algebra_rs::ring::zq::Zq;
+
+type Zq17 = Zq<17>;   // 测试环；实际方案用 Zq<8380417> 等
+
+let a = Zq17::new(5);
+let b = Zq17::new(13);
+let c = a + b;                    // 18 mod 17 = 1
+assert_eq!(c, Zq17::new(1));
+
+let inv = Zq17::new(5).inverse(); // Some(7)
+let p = Zq17::new(2).pow(10);     // 平方-乘法快速幂
+let s = Zq17::new(5).square();    // 平方
+```
+
+## 通用多项式 `UniPolynomial<R>`
+
+系数采用**升幂**存储（`coeffs[i]` 为 `x^i` 系数），支持除法、求值、导数等通用运算——这部分主要服务于 zkSNARK 场景（插值、商多项式），性能关键路径则走 [L2 商环](/design/polynomial-ring)：
+
+```rust
+use lattice_algebra_rs::poly::UniPolynomial;
+use lattice_algebra_rs::ring::zq::Zq;
+
+type Zq17 = Zq<17>;
+let p = UniPolynomial::<Zq17>::from_coefficients(vec![
+    Zq17::new(1), Zq17::new(2), Zq17::new(3),
+]);
+let v = p.evaluate(&Zq17::new(2));      // Horner 求值
+let (q, r) = p.divide_with_q_and_r(&other).unwrap(); // 带余除法
+let d = p.derivative();
+```
+
+## 多项式商环 `PolyRing<R, N>`
+
+`PolyRing<R, DEGREE_BOUND>` 即 `Z_q[X]/(X^N + 1)`（negacyclic 环）。乘法会**自动分派**：
+
+- 若 `N` 为 2 的幂且 `q ≡ 1 (mod 2N)` → 预计算 twiddle 表的 negacyclic NTT（O(n log n)）；
+- 否则 → schoolbook + negacyclic 折叠（O(n²)，或经 rustfft 通用 FFT 回退）。
+
+```rust
+use lattice_algebra_rs::ring::poly_ring::PolyRing;
+use lattice_algebra_rs::ring::zq::Zq;
+
+type Zq17 = Zq<17>;
+type R = PolyRing<Zq17, 8>;   // Z_17[X]/(X^8 + 1)，q=17 ≡ 1 (mod 16)，走 NTT
+
+let a = R::from_coefficients(vec![Zq17::new(1), Zq17::new(2)]);
+let b = R::from_coefficients(vec![Zq17::new(3), Zq17::new(4)]);
+let c = a * b;                // NTT 卷积 + negacyclic 归约
+
+// x^3 · x^2 = x^5 ≡ -x (mod X^8+1)
+let x3 = R::from_coefficients(vec![Zq17::ZERO, Zq17::ZERO, Zq17::ZERO, Zq17::ONE]);
+let x2 = R::from_coefficients(vec![Zq17::ZERO, Zq17::ZERO, Zq17::ONE]);
+assert_eq!((x3 * x2).coefficients(), vec![Zq17::ZERO, -Zq17::ONE]);
+
+assert!(R::is_ntt_available());  // 运行时检查 NTT 可用性
+```
+
+## 向量与矩阵（模格雏形）
+
+`GenericVector<T>` / `GenericMatrix<T>` 对任意 `MatrixElement`（`Ring` 或 `PolyRing` 自动实现）提供线性代数：
+
+```rust
+use lattice_algebra_rs::matrix::{GenericMatrix, GenericVector};
+use lattice_algebra_rs::ring::zq::Zq;
+
+type Zq17 = Zq<17>;
+let u = GenericVector::<Zq17>::new(vec![Zq17::new(1), Zq17::new(2)]);
+let v = GenericVector::<Zq17>::new(vec![Zq17::new(3), Zq17::new(4)]);
+let ip = u.inner_product(&v);        // 1·3 + 2·4 = 11
+let h  = u.hadamard_product(&v);     // 逐元素乘
+let m  = GenericMatrix::<Zq17>::random(&mut rand::rng(), 3, 4);
+let w  = m.vector_mul(v.as_slice()); // 矩阵·向量
+```
+
+矩阵 / 向量上叠加 `PolyRing` 元素即得到 ML-KEM / ML-DSA 所需的 `R_q^{k×l}` 结构（[L3 模格层](/design/module-lattice)的当前雏形）。
+
+## NTT 算子（直接使用）
+
+```rust
+use lattice_algebra_rs::ntt::NttOperator;
+use lattice_algebra_rs::ring::zq::Zq;
+
+type Zq17 = Zq<17>;
+let ntt = NttOperator::<Zq17, 8>::new();  // 预计算 ψ/ω 与 twiddle 表
+
+let mut a = vec![Zq17::new(1); 8];
+ntt.forward(&mut a);                      // 系数域 → NTT 域（Cooley–Tukey DIT）
+ntt.inverse(&mut a);                      // NTT 域 → 系数域（Gentleman–Sande DIF）
+
+let b = vec![Zq17::new(2); 8];
+let c = ntt.multiply_negacyclic(&a.clone(), &b);  // negacyclic 乘法
+```
+
+> 注意：`ntt` 模块中同时存在历史遗留的运行时参数版本（`NttTable` / 旧 `NttOperator`，见 `src/ntt/ntt.rs`）与 const 泛型版本（`src/ntt/ntt_core.rs`）。后者是目标设计，前者将在重构中移除，详见[现状审计](/introduction/audit)。
+
+## 下一步
+
+- 了解[分层架构](/design/architecture)与各层设计文档；
+- 查看[现状审计](/introduction/audit)了解已有实现与目标的差距；
+- 查看[路线图](/roadmap)了解实施顺序。

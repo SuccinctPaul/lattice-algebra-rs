@@ -1,9 +1,13 @@
 //! NTT Parameters and Helper Functions
 //!
-//! This module provides utilities for NTT parameter validation and computation,
-//! including primitive root finding and NTT-friendly prime checking.
+//! This module provides utilities for NTT parameter validation and computation.
+//! The underlying number theory (primality, primitive roots, prime
+//! factorization) lives on the scalar-ring layer in
+//! [`crate::ring::number_theory`] and is re-exported here for convenience.
 
 use crate::ring::Ring;
+
+pub use crate::ring::number_theory::{find_primitive_root, prime_factors, primitive_root};
 
 /// NTT Parameters for a specific ring and dimension
 #[derive(Debug, Clone)]
@@ -79,112 +83,6 @@ pub fn is_ntt_friendly<R: Ring>(n: usize) -> bool {
 
     // Check q ≡ 1 (mod 2N)
     q % two_n == 1
-}
-
-/// Finds a primitive n-th root of unity in the ring R.
-///
-/// A primitive n-th root of unity ω satisfies:
-/// - ω^n ≡ 1 (mod q)
-/// - ω^k ≢ 1 (mod q) for all 0 < k < n
-///
-/// # Algorithm
-/// 1. Find a generator g of Z_q* (primitive root modulo q)
-/// 2. Compute ω = g^((q-1)/n)
-///
-/// # Panics
-/// - If n does not divide (q-1)
-/// - If no primitive root is found
-pub fn find_primitive_root<R: Ring>(n: usize) -> R {
-    let q = R::MODULUS;
-    let n = n as u64;
-
-    assert!(
-        (q - 1) % n == 0,
-        "n={} must divide q-1={} for primitive root to exist",
-        n,
-        q - 1
-    );
-
-    // Find a generator of Z_q* (primitive root modulo q)
-    let g = primitive_root::<R>();
-
-    // ω = g^((q-1)/n) is a primitive n-th root of unity
-    let exponent = (q - 1) / n;
-    g.pow(exponent)
-}
-
-/// Finds a primitive root (generator) of the multiplicative group Z_q*.
-///
-/// A primitive root g modulo q is an integer such that its powers generate
-/// all non-zero elements of Z_q.
-///
-/// # Algorithm
-/// For each candidate g from 2 to q-1:
-/// 1. Compute g^((q-1)/p) for each prime factor p of q-1
-/// 2. If all results are ≠ 1, then g is a primitive root
-///
-/// # Panics
-/// If no primitive root is found (should not happen for prime q)
-pub fn primitive_root<R: Ring>() -> R {
-    let q = R::MODULUS;
-    let phi = q - 1; // φ(q) = q - 1 for prime q
-
-    // Get prime factors of q-1
-    let factors = prime_factors(phi);
-
-    // Try candidates starting from 2
-    for g in 2..q {
-        let candidate = R::from(g);
-        let mut is_generator = true;
-
-        for &factor in &factors {
-            let exp = phi / factor;
-            if candidate.pow(exp) == R::ONE {
-                is_generator = false;
-                break;
-            }
-        }
-
-        if is_generator {
-            return candidate;
-        }
-    }
-
-    panic!("No primitive root found for modulus {}", q);
-}
-
-/// Computes the prime factorization of n.
-///
-/// Returns a vector of distinct prime factors (not multiplicities).
-fn prime_factors(mut n: u64) -> Vec<u64> {
-    let mut factors = Vec::new();
-
-    // Check for factor 2
-    if n % 2 == 0 {
-        factors.push(2);
-        while n % 2 == 0 {
-            n /= 2;
-        }
-    }
-
-    // Check for odd factors
-    let mut i = 3u64;
-    while i * i <= n {
-        if n % i == 0 {
-            factors.push(i);
-            while n % i == 0 {
-                n /= i;
-            }
-        }
-        i += 2;
-    }
-
-    // If n is still > 1, it's a prime factor
-    if n > 1 {
-        factors.push(n);
-    }
-
-    factors
 }
 
 /// Computes the bit-reversal of an index for in-place NTT.

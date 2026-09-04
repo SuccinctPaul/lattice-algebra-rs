@@ -210,7 +210,11 @@ impl<T: MatrixElement> GenericMatrix<T> {
         Self {
             rows: self.rows,
             cols: self.cols,
-            data: self.data.iter().map(|x| x.clone() * scalar.clone()).collect(),
+            data: self
+                .data
+                .iter()
+                .map(|x| x.clone() * scalar.clone())
+                .collect(),
         }
     }
 
@@ -234,8 +238,8 @@ impl<T: MatrixElement> GenericMatrix<T> {
                 let a_ik = self.data[self.index(i, k)].clone();
                 for j in 0..other.cols {
                     let idx = i * other.cols + j;
-                    result.data[idx] =
-                        result.data[idx].clone() + a_ik.clone() * other.data[k * other.cols + j].clone();
+                    result.data[idx] = result.data[idx].clone()
+                        + a_ik.clone() * other.data[k * other.cols + j].clone();
                 }
             }
         }
@@ -285,7 +289,11 @@ impl<T: MatrixElement + Send + Sync> GenericMatrix<T> {
             Self {
                 rows: self.rows,
                 cols: self.cols,
-                data: self.data.iter().map(|x| x.clone() * scalar.clone()).collect(),
+                data: self
+                    .data
+                    .iter()
+                    .map(|x| x.clone() * scalar.clone())
+                    .collect(),
             }
         }
     }

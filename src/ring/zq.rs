@@ -1,4 +1,6 @@
+use crate::ring::number_theory::{is_prime_u64, primitive_root};
 use crate::ring::reduction::ModularArithmetic;
+use crate::ring::traits::{CenteredRing, Field, TwoAdicRing};
 use crate::ring::Ring;
 use serde::{Deserialize, Serialize};
 use std::fmt::*;
@@ -12,6 +14,9 @@ pub struct Zq<const MODULUS: u64> {
 }
 
 impl<const MODULUS: u64> Zq<MODULUS> {
+    /// Largest representative, i.e. `MODULUS - 1`.
+    pub const MAX: Self = Self { value: MODULUS - 1 };
+
     /// Creates a new Zq element from a raw value, ensures the value is within [0, MODULUS - 1].
     #[inline]
     pub fn new(value: u64) -> Self {
@@ -58,7 +63,7 @@ impl<const MODULUS: u64> Ring for Zq<MODULUS> {
     const MODULUS: u64 = MODULUS;
     const ZERO: Self = Self { value: 0 };
     const ONE: Self = Self { value: 1 };
-    const MAX: Self = Self { value: MODULUS - 1 };
+    const IS_PRIME: bool = is_prime_u64(MODULUS);
 
     fn rand(rng: &mut impl rand::RngCore) -> Self {
         use crate::ring::sample::UniformZq;
@@ -82,11 +87,64 @@ impl<const MODULUS: u64> Ring for Zq<MODULUS> {
         }
         result
     }
-    fn abs(&self) -> u64 {
-        self.value
-    }
     fn to_u128(&self) -> u128 {
         u128::from(self.value)
+    }
+}
+
+impl<const MODULUS: u64> Field for Zq<MODULUS> {
+    fn inverse(&self) -> Option<Self> {
+        Zq::<MODULUS>::inverse(*self)
+    }
+}
+
+impl<const MODULUS: u64> TwoAdicRing for Zq<MODULUS> {
+    const TWO_ADICITY: u32 = (MODULUS - 1).trailing_zeros();
+
+    fn two_adic_generator(bits: usize) -> Self {
+        assert!(
+            bits as u32 <= Self::TWO_ADICITY,
+            "requested order 2^{} exceeds the 2-adicity ({}) of q = {}",
+            bits,
+            Self::TWO_ADICITY,
+            MODULUS
+        );
+        if bits == 0 {
+            return Self::ONE;
+        }
+        assert!(
+            Self::IS_PRIME,
+            "two_adic_generator requires a prime modulus, got q = {MODULUS}"
+        );
+        // g is a generator of Z_q*, so g^((q-1)/2^bits) has order exactly 2^bits.
+        let g = primitive_root::<Self>();
+        g.pow((MODULUS - 1) >> bits)
+    }
+}
+
+impl<const MODULUS: u64> CenteredRing for Zq<MODULUS> {
+    /// Centered representative in `(-q/2, q/2]`.
+    ///
+    /// For even `q` the half-open interval keeps `+q/2`; for odd `q` this is
+    /// exactly the symmetric range `[-(q-1)/2, (q-1)/2]` used by FIPS 204.
+    fn centered(&self) -> i64 {
+        let v = self.value as i64;
+        let q = MODULUS as i64;
+        if 2 * v > q {
+            v - q
+        } else {
+            v
+        }
+    }
+
+    /// `|self|_inf = min(a, q - a)`.
+    fn abs_infinity(&self) -> u64 {
+        let (a, b) = (self.value, MODULUS - self.value);
+        if a < b {
+            a
+        } else {
+            b
+        }
     }
 }
 
@@ -282,10 +340,32 @@ mod tests {
     }
 
     #[test]
-    fn test_abs() {
-        assert_eq!(Zq17::new(0).abs(), 0);
-        assert_eq!(Zq17::new(5).abs(), 5);
-        assert_eq!(Zq17::new(16).abs(), 16);
+    fn test_centered_and_infinity_norm() {
+        // Odd q: symmetric range [-8, 8] for q = 17.
+        assert_eq!(Zq17::new(0).centered(), 0);
+        assert_eq!(Zq17::new(8).centered(), 8);
+        assert_eq!(Zq17::new(9).centered(), -8);
+        assert_eq!(Zq17::new(16).centered(), -1);
+        // abs_infinity = min(a, q - a)
+        assert_eq!(Zq17::new(0).abs_infinity(), 0);
+        assert_eq!(Zq17::new(5).abs_infinity(), 5);
+        assert_eq!(Zq17::new(12).abs_infinity(), 5);
+        assert_eq!(Zq17::new(16).abs_infinity(), 1);
+        // centered and abs_infinity agree in magnitude
+        for i in 0..17u64 {
+            let a = Zq17::new(i);
+            assert_eq!(a.centered().unsigned_abs(), a.abs_infinity());
+            assert!(a.leq_infinity(8));
+            assert!(!a.leq_infinity(7) || a.abs_infinity() <= 7);
+        }
+        assert!(Zq17::new(5).leq_infinity(5));
+        assert!(!Zq17::new(5).leq_infinity(4));
+
+        // Even q = 8: interval is (-4, 4]
+        type Zq8 = Zq<8>;
+        assert_eq!(Zq8::new(4).centered(), 4);
+        assert_eq!(Zq8::new(5).centered(), -3);
+        assert_eq!(Zq8::new(0).centered(), 0);
     }
 
     #[test]

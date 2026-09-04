@@ -47,7 +47,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 /// let b = R::from_coefficients(vec![Zq17::new(3), Zq17::new(4)]);
 /// let c = a * b;  // Uses NTT if available, else negacyclic reduction
 /// ```
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PolyRing<R: Ring, const DEGREE_BOUND: u64> {
     #[serde(bound(serialize = "R: Serialize", deserialize = "R: Deserialize<'de>"))]
     pub inner: UniPolynomial<R>,
@@ -65,9 +65,10 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
         let n = DEGREE_BOUND as usize;
 
         if n == 0 {
-            // Edge case: degree bound 0 means constant polynomials
-            let inner = poly % Self::modulus();
-            return Self { inner };
+            // R[x]/(x^0 + 1) = R[x]/(2): the zero ring for invertible 2.
+            return Self {
+                inner: UniPolynomial::zero(),
+            };
         }
 
         let coeffs = poly.coefficients();
@@ -78,16 +79,19 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
             return Self { inner: poly };
         }
 
-        // Use fast negacyclic reduction for degree < 2n
-        if deg <= 2 * n {
-            let reduced = Self::reduce_negacyclic(&coeffs, n);
-            return Self {
-                inner: UniPolynomial::from_coefficients(reduced),
-            };
+        // Pure ring-op negacyclic fold: x^(n+k) ≡ -x^k, applied per block so
+        // arbitrary input degrees reduce without polynomial division.
+        let mut reduced = vec![R::ZERO; n];
+        for (i, &c) in coeffs.iter().enumerate() {
+            if (i / n) % 2 == 0 {
+                reduced[i % n] = reduced[i % n] + c;
+            } else {
+                reduced[i % n] = reduced[i % n] - c;
+            }
         }
 
-        // Fallback to polynomial division for very high degree
-        let inner = poly % Self::modulus();
+        let mut inner = UniPolynomial::from_coefficients(reduced);
+        inner.normalize();
         Self { inner }
     }
 
@@ -453,7 +457,7 @@ impl<R: Ring, const DEGREE_BOUND: u64> MulAssign for PolyRing<R, DEGREE_BOUND> {
 // Display and Other Traits
 // ============================================================================
 
-impl<R: Ring, const DEGREE_BOUND: u64> Display for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring + Display, const DEGREE_BOUND: u64> Display for PolyRing<R, DEGREE_BOUND> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let coeffs = self.coefficients();
         if coeffs.is_empty() || (coeffs.len() == 1 && coeffs[0] == R::ZERO) {
@@ -491,7 +495,7 @@ impl<R: Ring, const DEGREE_BOUND: u64> Display for PolyRing<R, DEGREE_BOUND> {
     }
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> MatrixElement for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring + Display, const DEGREE_BOUND: u64> MatrixElement for PolyRing<R, DEGREE_BOUND> {
     fn zero() -> Self {
         Self {
             inner: UniPolynomial::zero(),

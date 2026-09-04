@@ -1,0 +1,58 @@
+# L4 · 序列化
+
+格密码的线上格式是**位级**的：ML-KEM 公钥 12-bit 打包、ML-DSA 签名对 γ1 系数每系数 ⌈log2(2γ1)⌉ = 18/20 位打包、t1 每 13 位……`serde`/JSON 只适合调试与测试夹具，不能承载规范格式。本层提供两套正交机制。
+
+## 1. Canonical 序列化（trait 层，对标 ark-serialize）
+
+```rust
+pub trait CanonicalSerialize {
+    fn serialize<W: Write>(&self, w: &mut W) -> Result<(), SerdeError>;
+    fn serialized_size(&self) -> usize;
+    fn compress(&self, _level: CompressionLevel) -> Vec<u8> { /* 默认不压缩 */ }
+}
+pub trait CanonicalDeserialize: Sized {
+    fn deserialize<R: Read>(r: &mut R) -> Result<Self, SerdeError>;
+}
+```
+
+- 为 `Zq` / `PolyRing` / `ModuleVector` / `ModuleMatrix` 提供 blanket 实现（逐系数 LE）；
+- **反序列化是全检查的**：拒绝 ≥ q 的系数、拒绝维度不符——反序列化路径是攻击面（BREACH 类与代理 Implement 漏洞多发地）；
+- `VarInt` 长度前缀用于容器。
+
+## 2. 位打包（方案层钩子，规范格式）
+
+```rust
+/// 把 q-系数流打包为位串（每系数 bits 位，LE 位序，规范一致）
+pub trait BitPack: Sized {
+    const Q_BITS: u32;
+    fn pack_bits(&self, bits_per_coeff: u32, out: &mut BitWriter);
+    fn unpack_bits(bits_per_coeff: u32, input: &mut BitReader) -> Result<Self, SerdeError>;
+    /// 高位压缩：先 mod_switch / high-bits 再打包（ML-KEM d_u/d_v、ML-DSA t1）
+    fn pack_compressed(&self, drop_bits: u32, out: &mut BitWriter);
+}
+```
+
+| 方案对象 | 打包参数 | 说明 |
+| --- | --- | --- |
+| ML-KEM pk 的 Âû | 12-bit / 10–11-bit（d_u） | ct 的 v 用 d_v |
+| ML-DSA γ1 系数 | 18-bit（44/87）/ 20-bit（65） | |
+| ML-DSA t1 | 13-bit | t0 为 13-bit 有符号（drop=13） |
+| ML-DSA c̃ | 原始哈希 32/48/64 字节 | 不打包 |
+| Falcon 公钥 | q = 12289 → 14-bit/系数（NTT 域 h 打包） | FIPS 206 草案，897/1793 字节 |
+| Falcon 签名 | 中心化系数变长编码（上限 17-bit + 转义码，典型约 10 bit/系数） | 规范多档 |
+
+## 与 serde 的关系
+
+| 用途 | 机制 |
+| --- | --- |
+| 单元测试夹具 / JSON 对拍 | serde（已有） |
+| KAT 向量文件（hex） | canonical |
+| 线上格式 / 与其他实现对拍 | canonical + BitPack |
+| 内部 NTT 域缓存 | **不序列化**（表示非规范；需要时先 from_ntt） |
+
+## 测试策略
+
+- **roundtrip property test**：`deserialize(serialize(x)) == x`，覆盖所有打包参数组合；
+- **规范对拍**：FIPS 203/204 KAT 的公私钥/签名十六进制逐字节比对（打包位序错误的直接探测器）；
+- **malformed 注入**：`cargo fuzz` 随机字节流 → `deserialize` 永不 panic、永不产出越界元素；
+- 长度上界：`serialized_size` 与规范文档数字一致（例如 ML-DSA-65 签名恰为 3309 字节）——作为常量断言写进方案层测试。
