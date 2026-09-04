@@ -1,33 +1,12 @@
 use crate::ring::reduction::ModularArithmetic;
 use crate::ring::zq::Zq;
 
-/// Barrett reduction for modular multiplication.
+/// Modular arithmetic for `Zq<MODULUS>`.
 ///
-/// For MODULUS fitting in 64 bits, the product of two elements fits in 128 bits.
-/// We use direct modulo operation which is well-optimized by modern compilers.
-///
-/// # Performance Note
-/// For cryptographic-size moduli (< 64 bits), using native 128-bit division
-/// is often faster than Barrett reduction due to hardware optimization.
-/// Barrett reduction is mainly beneficial for multi-precision arithmetic.
-pub struct Barrett<const MODULUS: u64>;
-
-impl<const MODULUS: u64> Barrett<MODULUS> {
-    /// Creates a new Barrett reducer (placeholder for API compatibility)
-    #[inline(always)]
-    pub const fn new() -> Self {
-        Self
-    }
-
-    /// Reduces x mod MODULUS for x < MODULUS^2
-    ///
-    /// Uses native 128-bit modulo which is efficient for 64-bit moduli.
-    #[inline(always)]
-    pub fn reduce(&self, x: u128) -> u64 {
-        (x % (MODULUS as u128)) as u64
-    }
-}
-
+/// Multiplication uses 128-bit intermediate arithmetic ("Barrett-style"
+/// native modulo), which modern compilers lower to efficient code for
+/// 64-bit moduli. Precondition for all methods: operands are already
+/// reduced, i.e. `< MODULUS`.
 impl<const MODULUS: u64> ModularArithmetic<MODULUS> for Zq<MODULUS> {
     /// Modular addition: (a + b) mod MODULUS
     ///

@@ -5,6 +5,9 @@
 
 A high-performance Rust library for lattice-based cryptography and algebra, providing efficient implementations of polynomial rings, matrices, and vector operations over finite fields.
 
+> **Vision**: a unified algebra foundation — the "arkworks / plonky3 for lattice-based cryptography" — from which both NIST PQC schemes (ML-KEM / ML-DSA / Falcon) **and** lattice-based zkSNARKs (LaBRADOR / GreyHound / LatticeFold-style) derive directly.
+> The full architecture design lives in the docs site: see [`docs/README.md`](docs/README.md) to run it locally (`cd docs && npm install && npm run dev`).
+
 ## Features
 
 - **Polynomial Rings**: Efficient implementation of polynomial rings over finite fields

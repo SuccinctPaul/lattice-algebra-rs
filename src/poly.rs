@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 
+use crate::ring::Field;
 use crate::ring::Ring;
 use rustfft::num_complex::Complex;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
@@ -16,7 +17,7 @@ use std::iter::Sum;
 /// The polynomial is represented in little-endian format:
 /// p(x) = a_0 + a_1 * x + ... + a_n * x^n
 /// where coeffs = [a_0, a_1, ..., a_n]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UniPolynomial<R: Ring> {
     /// Coefficients of the polynomial in ascending order of degree
     #[serde(bound(serialize = "R: Serialize", deserialize = "R: Deserialize<'de>"))]
@@ -24,6 +25,20 @@ pub struct UniPolynomial<R: Ring> {
 }
 
 impl<R: Ring> UniPolynomial<R> {
+    /// The zero polynomial.
+    pub fn zero() -> Self {
+        Self {
+            coeffs: vec![R::ZERO],
+        }
+    }
+
+    /// The constant-one polynomial.
+    pub fn one() -> Self {
+        Self {
+            coeffs: vec![R::ONE],
+        }
+    }
+
     /// Creates a new polynomial from a vector of coefficients.
     ///
     /// # Arguments
@@ -178,8 +193,13 @@ impl<R: Ring> UniPolynomial<R> {
     pub fn is_zero(&self) -> bool {
         self.coeffs.len() == 1 && self.coeffs[0] == R::ZERO
     }
+}
 
+impl<R: Field> UniPolynomial<R> {
     /// Performs polynomial division with remainder.
+    ///
+    /// Division is a field operation (it inverts the divisor's leading
+    /// coefficient), so it requires `R: Field`.
     ///
     /// # Arguments
     /// * `divisor` - The polynomial to divide by
@@ -216,7 +236,9 @@ impl<R: Ring> UniPolynomial<R> {
         let r = remainder[..divisor.degree()].to_vec();
         Some((Self::new(quotient), Self::new(r)))
     }
+}
 
+impl<R: Ring> UniPolynomial<R> {
     /// Converts a polynomial to a vector of complex numbers for FFT.
     /// Pads the vector to the next power of 2 for efficient FFT computation.
     fn to_complex_vec(&self) -> Vec<Complex<f64>> {
@@ -292,7 +314,7 @@ impl<R: Ring> UniPolynomial<R> {
     }
 }
 
-impl<R: Ring> MatrixElement for UniPolynomial<R> {
+impl<R: Ring + Display> MatrixElement for UniPolynomial<R> {
     /// Creates a zero polynomial (constant polynomial with value 0).
     ///
     /// # Returns
@@ -436,7 +458,7 @@ impl<R: Ring> SubAssign<&Self> for UniPolynomial<R> {
     }
 }
 
-impl<R: Ring> Div for UniPolynomial<R> {
+impl<R: Field> Div for UniPolynomial<R> {
     type Output = Self;
 
     fn div(self, divisor: Self) -> Self::Output {
@@ -447,7 +469,7 @@ impl<R: Ring> Div for UniPolynomial<R> {
     }
 }
 
-impl<R: Ring> Div<&Self> for UniPolynomial<R> {
+impl<R: Field> Div<&Self> for UniPolynomial<R> {
     type Output = Self;
     fn div(self, divisor: &Self) -> Self::Output {
         if let Some((q, _)) = self.divide_with_q_and_r(divisor) {
@@ -456,18 +478,18 @@ impl<R: Ring> Div<&Self> for UniPolynomial<R> {
         panic!("Dividing by zero polynomial")
     }
 }
-impl<R: Ring> DivAssign for UniPolynomial<R> {
+impl<R: Field> DivAssign for UniPolynomial<R> {
     fn div_assign(&mut self, rhs: Self) {
         *self = self.clone() / rhs;
     }
 }
-impl<R: Ring> DivAssign<&Self> for UniPolynomial<R> {
+impl<R: Field> DivAssign<&Self> for UniPolynomial<R> {
     fn div_assign(&mut self, rhs: &Self) {
         *self = self.clone() / rhs;
     }
 }
 
-impl<R: Ring> Rem for UniPolynomial<R> {
+impl<R: Field> Rem for UniPolynomial<R> {
     type Output = Self;
 
     fn rem(self, divisor: Self) -> Self::Output {
@@ -478,7 +500,7 @@ impl<R: Ring> Rem for UniPolynomial<R> {
     }
 }
 
-impl<R: Ring> Rem<&Self> for UniPolynomial<R> {
+impl<R: Field> Rem<&Self> for UniPolynomial<R> {
     type Output = Self;
     fn rem(self, divisor: &Self) -> Self::Output {
         if let Some((_, r)) = self.divide_with_q_and_r(divisor) {
@@ -487,19 +509,19 @@ impl<R: Ring> Rem<&Self> for UniPolynomial<R> {
         panic!("Dividing by zero polynomial")
     }
 }
-impl<R: Ring> RemAssign for UniPolynomial<R> {
+impl<R: Field> RemAssign for UniPolynomial<R> {
     fn rem_assign(&mut self, rhs: Self) {
         *self = self.clone() % rhs;
     }
 }
-impl<R: Ring> RemAssign<&Self> for UniPolynomial<R> {
+impl<R: Field> RemAssign<&Self> for UniPolynomial<R> {
     fn rem_assign(&mut self, rhs: &Self) {
         *self = self.clone() % rhs;
     }
 }
 
 /// Implementation of Display trait for pretty printing polynomials
-impl<R: Ring> Display for UniPolynomial<R> {
+impl<R: Ring + Display> Display for UniPolynomial<R> {
     /// Formats the polynomial as a string in standard mathematical notation.
     ///
     /// # Examples

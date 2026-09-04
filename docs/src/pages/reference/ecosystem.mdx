@@ -1,0 +1,34 @@
+# 生态对比
+
+明确"我们站在谁的肩膀上、与谁互补"，避免重复造轮子并找准差异化定位。
+
+## 定位一句话
+
+> **arkworks 之于椭圆曲线 SNARK ≈ 本项目之于格密码**：不是某一个方案的最快实现，而是让**一族方案**共享同一套正确且可组合的代数抽象。
+
+## 对标对象
+
+| 项目 | 定位 | 我们的关系 |
+| --- | --- | --- |
+| [arkworks](https://github.com/arkworks-rs) | EC 上的 SNARK 生态（`ark-ff`/`ark-poly`/`ark-serialize`/…） | **组织方式对标**：trait 体系（`Field`/`FftField`/`CanonicalSerialize`）、crate 分层、KAT 文化 |
+| [Plonky3](https://github.com/Plonky3/Plonky3) | FRI 型 SNARK 的 field/NTT 抽象（`TwoAdicField`、air、challenger） | **技术形态对标**：`TwoAdicRing` ≈ `TwoAdicField`；`Transcript` ≈ `Challenger`；NTT 引擎形态 |
+| [lattice-algebra (Lazarus)](https://github.com/lattice-complete/Lazarus) | 格代数工具库（`lattice-algebra` crate：R_q、module、采样、承诺），服务多方案 | **最直接的同类**：本库在其思路基础上强化 const 泛型参数化、NTT 域表示自由与 SNARK 组件层 |
+| [LaBRADOR](https://github.com/WardBeullens/LaBRADOR) | 论文配套 C 实现（R1CS 证明器） | Z2 阶段的**行为锚点**（协议结构参考 + 对拍目标） |
+| [latticefold (Nethermind)](https://github.com/NethermindEth/latticefold) | LatticeFold 的 Rust 实现 | Z4 阶段折叠组件参考；其环工具的选型教训 |
+| [condor-rs (Nethermind)](https://github.com/nethermindeth/condor-rs) | LatticeFold+ 方向实现 | 同上，关注其 sumcheck/折叠工程化 |
+| [RustCrypto ml-kem / ml-dsa](https://github.com/RustCrypto/signatures) | 规范符合性的生产实现 | **KAT 对拍来源**与 CT 工程参考；不做替代，本库方案层的目标是共享基座后的等价物 |
+| [liboqs / PQClean](https://github.com/open-quantum-safe/liboqs) | C 参考与优化实现全集 | 官方向量来源；跨语言一致性验证锚 |
+| [lattice-estimator](https://github.com/alnesayer/lattice-estimator)（Albrecht 等） | 格攻击成本估算 | 参数校准脚本的上游工具（`scripts/params/`） |
+
+## 差异化要点
+
+1. **同基座双输出**：现有库要么服务 PQC（liboqs/RustCrypto），要么服务 ZK（LaBRADOR/latticefold 各自带环实现）；没有一个是"PQC 与 SNARK 共用同一 R_q/模格/范数/分解栈"。本项目把共享审计点（见 ZK 页）当作一等设计目标。
+2. **表示自由**：系数域 / NTT 域 / 双环显式切换，是方案层性能与 SNARK 双环技巧的前提；多数教学式库把表示焊死在结构体里。
+3. **XOF 驱动的确定性**：接口吃种子与标签而非 `Rng`，对 FIPS 规范与 KAT 天然友好。
+4. **文档即设计**：本站 Mermaid 架构图与 trait 地图随代码演进（CI 校验 doctest + 文档构建），而非常见"论文复刻 + 零文档"。
+
+## 不做的事
+
+- 不追求全参数集全平台的最快（SIMD 极限优化让位给正确性与通用性，性能预算集中在 NTT 与模乘热路径）；
+- 不做基于哈希的 SLH-DSA、code-based（Classic McEliece）等非格 NIST 候选；
+- 不在基座层引入 heavy 依赖（GPU、大框架）；`sha3`/`zeroize`/`rand`/`rayon` 级别的轻依赖为上限。
