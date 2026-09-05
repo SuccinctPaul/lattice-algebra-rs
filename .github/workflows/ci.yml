@@ -2,9 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,18 +17,15 @@ env:
 
 jobs:
   test:
-    name: Test
-    runs-on: ${{ matrix.os }}
+    name: Test (${{ matrix.rust }})
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        os: [ ubuntu-latest ]
-        rust: [ stable, 1.81.0 ]
+        rust: [stable, '1.85.0'] # 1.85.0 = declared MSRV
         include:
-          - os: ubuntu-latest
-            rust: stable
-            clippy: true
-            fmt: true
-
+          - rust: stable
+            lint: true
     steps:
       - uses: actions/checkout@v4
 
@@ -31,21 +33,83 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          components: ${{ matrix.rust == 'stable' && 'clippy,rustfmt' || '' }}
+          components: ${{ matrix.lint && 'clippy,rustfmt' || '' }}
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
-        if: matrix.fmt
+        if: matrix.lint
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        if: matrix.clippy
-        run: cargo clippy -- -D warnings
+        if: matrix.lint
+        run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
 
       - name: Build
-        run: cargo build --verbose --release
+        run: cargo build --workspace --locked --verbose
 
       - name: Run tests
-        run: cargo test --verbose --release
+        run: cargo test --workspace --locked --verbose
+
+      - name: Compile benchmarks
+        if: matrix.lint
+        run: cargo bench --workspace --locked --no-run
+
+  docs-build:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install dependencies
+        working-directory: docs
+        run: npm ci
+
+      - name: Build site
+        working-directory: docs
+        run: npm run build
+
+      - name: Upload Pages artifact
+        # Only pushes to main carry a deployable artifact; PRs just verify the build.
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/dist/public
+
+  docs-deploy:
+    name: Docs deploy
+    # Deploys only on pushes to main; PRs verify the build above.
+    # Kept separate from docs-build so PR runs never request the
+    # `github-pages` environment (its protection rules would block them).
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: docs-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # Never cancel an in-flight deployment; the site could end up half-published.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Configure Pages
+        # enablement: true creates the Pages site on first deploy, so no
+        # manual repo setup is needed.
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

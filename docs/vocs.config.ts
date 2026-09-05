@@ -1,6 +1,12 @@
 import { defineConfig } from 'vocs/config'
 
 export default defineConfig({
+  // Serves the site under the GitHub Pages project path
+  // (https://<user>.github.io/lattice-algebra-rs).
+  basePath: '/lattice-algebra-rs',
+  // Prerender every page to static HTML so the `dist` output can be hosted
+  // on GitHub Pages (the default 'dynamic' strategy emits a Node server).
+  renderStrategy: 'full-static',
   title: 'Lattice Algebra RS',
   titleTemplate: '%s · Lattice Algebra RS',
   description:

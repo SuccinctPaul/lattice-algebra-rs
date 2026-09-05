@@ -5,7 +5,10 @@ members = ["crates/algebra", "crates/pqc", "crates/zk"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.70.0"
+# MSRV floor verified in CI (matrix: stable + this). The transitive
+# dependency tree (via rand/criterion) contains edition-2024 crates,
+# which pin the floor at 1.85 regardless of our own edition-2021 code.
+rust-version = "1.85.0"
 
 [workspace.dependencies]
 rand = { version = "0.9.1", features = ["default"] }
