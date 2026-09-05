@@ -21,6 +21,9 @@
 //!   (FIPS 203 noise, `CBDη`).
 //! - [`sample_in_ball_signs`]: `τ`-sparse ±1 challenge positions
 //!   (FIPS 204 `SampleInBall`).
+//! - [`DiscreteGaussian`]: truncated discrete Gaussian `D_{Z,σ}` via
+//!   precomputed-CDT inversion (the noise primitive for Gaussian-signature
+//!   schemes such as Falcon / FN-DSA).
 
 use crate::crypto::xof::Xof;
 use crate::ring::Ring;
@@ -216,6 +219,74 @@ pub fn sample_in_ball_signs(stream: &mut BitStream<'_, impl Xof>, tau: u32, n: u
     signs
 }
 
+/// Truncated discrete Gaussian `D_{Z,σ}` sampled by precomputed-CDT inversion.
+///
+/// The support is cut at `tail = ⌈12σ⌉`, which costs less than `2^-90`
+/// statistical distance against the true discrete Gaussian. The cumulative
+/// table is built once in `2^127` fixed point; each draw consumes 16 stream
+/// bytes and one binary search — no rejection loop, deterministic given the
+/// [`Xof`] stream.
+///
+/// Intended for Falcon / FN-DSA-grade noise (σ up to a few hundred; the
+/// table is `O(σ)`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiscreteGaussian {
+    /// Standard deviation `σ`.
+    pub sigma: f64,
+    /// Support bound; every draw lies in `[-tail, tail]`.
+    pub tail: i64,
+    /// Strictly increasing `2·tail` fixed-point cut points `P(X < k)` for
+    /// interior atoms `k ∈ (-tail, tail)`, scaled to `2^127`.
+    cdt: Vec<u128>,
+}
+
+impl DiscreteGaussian {
+    /// Builds the CDT for standard deviation `sigma > 0`.
+    pub fn new(sigma: f64) -> Self {
+        assert!(
+            sigma.is_finite() && sigma > 0.0,
+            "sigma must be a positive finite number"
+        );
+        let tail = ((sigma * 12.0).ceil() as i64).max(1);
+        // Unnormalized symmetric atom weights w_i = exp(-i²/(2σ²)).
+        let weight = |i: i64| (-(i * i) as f64 / (2.0 * sigma * sigma)).exp();
+        let total: f64 = weight(0) + 2.0 * (1..=tail).map(weight).sum::<f64>();
+
+        // Fixed-point cut points; the `+1` shift keeps entries strictly
+        // increasing even where f64 rounding would repeat a value.
+        let scale = (1u128 << 127) as f64;
+        let mut cdt: Vec<u128> = Vec::with_capacity(2 * tail as usize);
+        let mut cum = 0.0f64;
+        for i in -tail..tail {
+            cum += weight(i);
+            let point = (cum / total * scale) as u128;
+            let prev = cdt.last().copied().unwrap_or(0);
+            cdt.push(point.max(prev + 1));
+        }
+        Self { sigma, tail, cdt }
+    }
+
+    /// Draws one sample on `[-tail, tail]`.
+    pub fn sample(&self, stream: &mut BitStream<'_, impl Xof>) -> i64 {
+        // 16 bytes -> u128, halved to a uniform on [0, 2^127): the same
+        // support the cut points are scaled to.
+        let mut buf = [0u8; 16];
+        stream.read_bytes(&mut buf);
+        let mut y = 0u128;
+        for (i, &b) in buf.iter().enumerate() {
+            y |= (b as u128) << (8 * i);
+        }
+        y >>= 1;
+        let k = self.cdt.partition_point(|&p| p <= y);
+        k as i64 - self.tail
+    }
+
+    /// Draws `n` samples.
+    pub fn sample_many(&self, stream: &mut BitStream<'_, impl Xof>, n: usize) -> Vec<i64> {
+        (0..n).map(|_| self.sample(stream)).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +389,54 @@ mod tests {
         let coeffs = sample_uniform_ntt_coeffs::<Zq<8380417>>(&mut s, 256);
         assert_eq!(coeffs.len(), 256);
         assert!(coeffs.iter().all(|c| c.to_u128() < 8380417));
+    }
+
+    #[test]
+    fn gaussian_is_deterministic() {
+        fn draws() -> Vec<i64> {
+            let g = DiscreteGaussian::new(3.2);
+            let mut x = Shake128Xof::new(b"gaussian-det");
+            let mut s = BitStream::new(&mut x);
+            g.sample_many(&mut s, 16)
+        }
+        assert_eq!(draws(), draws());
+    }
+
+    #[test]
+    fn gaussian_stays_in_tail_and_centers_correctly() {
+        let sigma = 3.2f64;
+        let g = DiscreteGaussian::new(sigma);
+        assert_eq!(g.tail, 39, "tail must be ceil(12 sigma)");
+
+        let mut x = Shake128Xof::new(b"gaussian-moments");
+        let mut s = BitStream::new(&mut x);
+        let n = 8000;
+        let draws = g.sample_many(&mut s, n);
+
+        assert!(draws.iter().all(|v| v.abs() <= g.tail));
+        let mean = draws.iter().sum::<i64>() as f64 / n as f64;
+        // One standard error is sigma/sqrt(n) ~ 0.036; allow 4x.
+        assert!(mean.abs() < 0.15, "mean drifted: {mean}");
+
+        let var = draws.iter().map(|v| (v * v) as f64).sum::<f64>() / n as f64;
+        // Truncation at 12 sigma lowers the second moment negligibly.
+        assert!(
+            (var - sigma * sigma).abs() < 0.1 * sigma * sigma,
+            "variance off: {var} vs {}",
+            sigma * sigma
+        );
+    }
+
+    #[test]
+    fn gaussian_small_sigma_peaks_at_zero() {
+        let g = DiscreteGaussian::new(0.3);
+        assert_eq!(g.tail, 4, "tail must be at least 1");
+
+        let mut x = Shake128Xof::new(b"gaussian-tight");
+        let mut s = BitStream::new(&mut x);
+        let draws = g.sample_many(&mut s, 2000);
+        let zeros = draws.iter().filter(|&&v| v == 0).count();
+        // P(0) ~ 0.598 for sigma = 0.3; allow > 4 standard errors of slack.
+        assert!(zeros > 1100, "zero atom under-weighted: {zeros}/2000");
     }
 }

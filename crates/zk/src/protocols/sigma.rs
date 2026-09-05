@@ -43,17 +43,17 @@
 //! honest-verifier zero-knowledge (HVZK); malicious-verifier ZK and
 //! blinding are deferred (Z3).
 
-use crate::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded, BitStream};
-use crate::crypto::transcript::Transcript;
-use crate::crypto::xof::{Shake256Xof, Xof};
-use crate::module::ModuleVector;
-use crate::poly::sparse::SparsePolynomial;
 use crate::protocols::commitment::{CommitmentKey, LatticeCommitment, SisParams};
-use crate::ring::poly_ring::PolyRing;
-use crate::ring::traits::CenteredRing;
-use crate::ring::zq::Zq;
-use crate::ring::PolynomialQuotientRing;
-use crate::ring::Ring;
+use algebra::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded, BitStream};
+use algebra::crypto::transcript::Transcript;
+use algebra::crypto::xof::{Shake256Xof, Xof};
+use algebra::module::ModuleVector;
+use algebra::poly::sparse::SparsePolynomial;
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::traits::CenteredRing;
+use algebra::ring::zq::Zq;
+use algebra::ring::PolynomialQuotientRing;
+use algebra::ring::Ring;
 
 const Q: i64 = 8_380_417;
 
@@ -156,7 +156,7 @@ where
         return false;
     }
     // A·z == w + c·t (exact, in the ring).
-    let op = crate::ntt::NttOperatorOptimized::<Zq<8380417>, N>::new();
+    let op = algebra::ntt::NttOperatorOptimized::<Zq<8380417>, N>::new();
     let az = key.a_hat().mul_vec_ntt(&proof.z.to_ntt(&op)).from_ntt(&op);
     let ct = t.mul_scalar(&c);
     let rhs = proof.w.clone() + ct;
@@ -194,7 +194,7 @@ where
     }
 
     let b_z = u64::try_from(P::B_Z).expect("B_Z positive");
-    let op = crate::ntt::NttOperatorOptimized::<Zq<8380417>, N>::new();
+    let op = algebra::ntt::NttOperatorOptimized::<Zq<8380417>, N>::new();
     let mut rng_seed = *randomness;
 
     for _ in 0..128 {
@@ -337,7 +337,7 @@ mod tests {
         // output (s_ext, v) with A·s_ext = v·t and the documented norms.
         let (key, s, t) = setup_instance(11);
 
-        let op = crate::ntt::NttOperatorOptimized::<Zq<8380417>, RING_DIM>::new();
+        let op = algebra::ntt::NttOperatorOptimized::<Zq<8380417>, RING_DIM>::new();
         let mut xof = Shake256Xof::new(&[]);
         xof.absorb(b"extractor-mask");
         let mut stream = BitStream::new(&mut xof);

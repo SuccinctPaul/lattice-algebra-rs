@@ -9,12 +9,12 @@
 //! coefficient, no rejection): every 32-bit value is a valid coefficient of
 //! this ring.
 
-use crate::crypto::xof::{Shake128Xof, Xof};
-use crate::ring::poly_ring::PolyRing;
-use crate::ring::traits::MatrixElement;
-use crate::ring::zq::Zq;
-use crate::ring::PolynomialQuotientRing;
-use crate::ring::Ring;
+use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::traits::MatrixElement;
+use algebra::ring::zq::Zq;
+use algebra::ring::PolynomialQuotientRing;
+use algebra::ring::Ring;
 
 /// The Z2 ring: `Z_{2^32}[X]/(X^64+1)`.
 pub type Z2Ring = PolyRing<Zq<4294967296>, 64>;

@@ -2,8 +2,21 @@
 
 The authoritative inventory of every module a lattice-cryptography base
 library needs, what each one owns, and its implementation status. This is the
-contract between the design docs and `src/`: new code lands in the module that
-owns it, and this page is updated the same day.
+contract between the design docs and the workspace: new code lands in the
+module that owns it, and this page is updated the same day.
+
+## Crate layout
+
+Since W1 the repository is a cargo workspace; modules live in three crates
+that share one dependency direction, plus a facade that re-exports everything
+under the historical single-crate paths:
+
+| Crate (lib name) | Path | Modules |
+| --- | --- | --- |
+| `lattice-algebra` (`algebra`) | `crates/algebra` | `ring`, `ntt`, `poly`, `module`, `crypto`, `matrix`, `utils` (L0–L4) |
+| `lattice-pqc` (`pqc`) | `crates/pqc` | `mldsa` (L6 PQC) |
+| `lattice-zk` (`zk`) | `crates/zk` | `protocols` (L5–L6 ZK line) |
+| `lattice-algebra-rs` | `src/lib.rs` | facade: `pub use` of all of the above |
 
 ```mermaid
 flowchart TB
@@ -11,7 +24,7 @@ flowchart TB
         MLDSA["mldsa (ML-DSA-44/65/87)"]
         MLKEM["mlkem (planned)"]
         FALCON["falcon (planned)"]
-        ZK["protocols: zkSNARK line (planned)"]
+        ZK["protocols: zkSNARK line"]
     end
     subgraph L5["L5 · Protocol components"]
         COMMIT["commit: Ajtai/SIS"]

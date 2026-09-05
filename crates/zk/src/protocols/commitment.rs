@@ -7,14 +7,14 @@
 //! is therefore parameterized by the MSIS instance
 //! `(q, K, L, ‖·‖∞ ≤ 2·B_S)` (see the slack analysis in the Z1 docs).
 
-use crate::crypto::xof::Shake128Xof;
-use crate::module::ModuleMatrixNtt;
-use crate::module::ModuleVector;
-use crate::ntt::NttOperatorOptimized;
-use crate::ring::poly_ring::PolyRing;
-use crate::ring::zq::Zq;
-use crate::ring::PolynomialQuotientRing;
-use crate::ring::Ring;
+use algebra::crypto::xof::Shake128Xof;
+use algebra::module::ModuleMatrixNtt;
+use algebra::module::ModuleVector;
+use algebra::ntt::NttOperatorOptimized;
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::zq::Zq;
+use algebra::ring::PolynomialQuotientRing;
+use algebra::ring::Ring;
 use std::marker::PhantomData;
 
 /// Ring shared by the Z1 instances: the ML-DSA ring.

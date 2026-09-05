@@ -65,7 +65,7 @@ classDiagram
 | `NttConfig` + runtime `NttTable`/`NttOperator` (`ntt.rs`, `traits.rs`) | deleted; constants absorbed into `TwoAdicRing` | ✅ |
 | `GenericVector`/`GenericMatrix` as public API | replaced by `ModuleVector`/`ModuleMatrix` (dimensions in types, lattice semantics) | ✅ for scheme use; containers now internal |
 | `UniformZq` (rand-0.9 sampler) | kept for generic/debug paths; scheme sampling lives in `crypto::sampling` | ✅ |
-| `GaussianSampler` stub | to be realized as `DiscreteGaussian` (Falcon milestone) | 📋 |
+| `GaussianSampler` stub | removed; realized as the `DiscreteGaussian` precomputed-CDT sampler in `crypto::sampling` | ✅ |
 | Barrett module | reduction strategy enum (native 128-bit today; Montgomery/lazy planned) | ✅ core / 📋 strategies |
 
 ## Layering rules (dependency direction)

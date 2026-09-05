@@ -1,0 +1,20 @@
+[package]
+name = "lattice-zk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Lattice-based zkSNARK building blocks: Ajtai commitments, Sigma-protocols, sumcheck, gadget IPA, Nova-style folding"
+readme = "README.md"
+
+[lib]
+name = "zk"
+
+[dependencies]
+lattice-algebra.workspace = true
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "protocols"
+harness = false

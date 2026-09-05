@@ -38,12 +38,12 @@
 //! is the machinery the full LaBRADOR recursion (Z3) layers into a complete
 //! shortness proof.
 
-use crate::crypto::transcript::Transcript;
-use crate::crypto::xof::{Shake128Xof, Xof};
 use crate::protocols::z2_ring::{
     matrix_from_seed, ring_from_seed, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring, D,
 };
-use crate::ring::MatrixElement;
+use algebra::crypto::transcript::Transcript;
+use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::ring::MatrixElement;
 
 /// Commitment-key dimensions: `A_com ∈ R^{N_COMMIT×M_VARS}`.
 pub const N_COMMIT: usize = 8;
@@ -726,7 +726,7 @@ mod tests {
         let table = constraint_residuals(&r1cs, &proof.z_prime);
         let claimed: Z2Ring = table.iter().fold(
             Z2Ring {
-                inner: crate::poly::UniPolynomial::zero(),
+                inner: algebra::poly::UniPolynomial::zero(),
             },
             |a, b| a + b.clone(),
         );

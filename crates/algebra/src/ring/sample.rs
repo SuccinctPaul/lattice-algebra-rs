@@ -1,13 +1,7 @@
 use crate::ring::zq::Zq;
-use crate::ring::Ring;
 use rand::distr::uniform::{Error, SampleBorrow, SampleUniform, UniformInt, UniformSampler};
 use rand::distr::Distribution;
 use rand::Rng;
-
-#[allow(unused)]
-pub trait GaussianSampler<R: Ring> {
-    fn sample(&mut self, sigma: f64) -> R;
-}
 
 // Make UniformZq generic over MODULUS
 #[derive(Clone, Copy, Debug)]

@@ -1,0 +1,29 @@
+[package]
+name = "lattice-algebra"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "L0-L4 algebraic foundation: scalar rings, negacyclic polynomial rings, NTT, module lattices, XOF and sampling"
+readme = "README.md"
+
+[lib]
+name = "algebra"
+
+[features]
+default = []
+parallel = ["dep:rayon"]
+
+[dependencies]
+rand.workspace = true
+rustfft.workspace = true
+serde.workspace = true
+sha3.workspace = true
+rayon = { version = "1.10", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+serde_json.workspace = true
+
+[[bench]]
+name = "foundation"
+harness = false

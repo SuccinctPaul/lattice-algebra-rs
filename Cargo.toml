@@ -1,8 +1,25 @@
-[package]
-name = "lattice-algebra-rs"
+[workspace]
+resolver = "2"
+members = ["crates/algebra", "crates/pqc", "crates/zk"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.70.0"
+
+[workspace.dependencies]
+rand = { version = "0.9.1", features = ["default"] }
+rustfft = "6.4.0"
+serde = { version = "1.0.216", features = ["derive"] }
+sha3 = "0.10"
+serde_json = "1.0.133"
+lattice-algebra = { path = "crates/algebra" }
+
+[package]
+name = "lattice-algebra-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 description = "A Rust library for lattice-based cryptography and algebra"
 readme = "README.md"
 keywords = ["cryptography", "lattice", "algebra"]
@@ -10,20 +27,9 @@ categories = ["cryptography", "algorithms", "math", "science"]
 
 [features]
 default = []
-parallel = ["dep:rayon"]
+parallel = ["lattice-algebra/parallel"]
 
 [dependencies]
-rand = { version = "0.9.1", features = ["default"] }
-rayon = { version = "1.10", optional = true }
-rustfft = "6.4.0"
-serde = { version = "1.0.216", features = ["derive"] }
-sha3 = "0.10"
-
-[dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-serde_json = "1.0.133"
-
-# Uncomment to enable benchmarks:
-# [[bench]]
-# name = "benchmarks"
-# harness = false
+lattice-algebra = { workspace = true }
+lattice-pqc = { path = "crates/pqc" }
+lattice-zk = { path = "crates/zk" }

@@ -13,7 +13,7 @@
 //! opening response, so the sumcheck replaces Z2's single γ-combination with
 //! round-by-round folding.
 
-use crate::ring::MatrixElement;
+use algebra::ring::MatrixElement;
 
 /// A completed sumcheck: the per-round linear messages plus the final
 /// evaluation of the folded table at the challenge point.
@@ -123,9 +123,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::xof::{Shake128Xof, Xof};
-    use crate::ring::traits::MatrixElement;
-    use crate::ring::zq::Zq;
+    use algebra::crypto::xof::{Shake128Xof, Xof};
+    use algebra::ring::traits::MatrixElement;
+    use algebra::ring::zq::Zq;
 
     type Rq = Zq<8380417>;
 

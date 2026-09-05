@@ -11,17 +11,20 @@ flowchart LR
         M1["M1 · NTT/L2 cleanup<br/>NttDomain, SparsePolynomial"]
         M2["M2 · L3 modules + L4 infra<br/>ModuleVector/Matrix, ExpandA,<br/>XOF, samplers, transcripts, bit packing"]
         M3["M3 · ML-DSA 44/65/87<br/>sign/verify + encodings + tests"]
-    end
-    subgraph NEXT["Next"]
-        M4["M4 · ML-KEM + KATs"]
-        M5["M5 · Falcon"]
         M6["M6 · Z1 Σ-protocols"]
         M7["M7 · Z2 batched openings"]
         M8["M8 · Z3 sumcheck + IPA"]
         M9["M9 · Z4 folding + SNARK"]
+        W1["W1 · Multi-crate workspace<br/>algebra / pqc / zk + facade"]
     end
-    M0 --> M1 --> M2 --> M3 --> M4
-    M3 --> M6 --> M7 --> M8 --> M9
+    subgraph NEXT["Next"]
+        M4["M4 · ML-KEM + KATs"]
+        M5["M5 · Falcon"]
+    end
+    M0 --> M1 --> M2 --> M3
+    M3 --> M6 --> M7 --> M8 --> M9 --> W1
+    W1 --> M4
+    W1 --> M5
 ```
 
 ## Milestones and acceptance criteria
@@ -78,6 +81,13 @@ flowchart LR
 - `protocols::fold`: Nova-style folding over the Z2 ring — relaxed R1CS instances with homomorphic commitment updates, cross-term absorption, folding verifier, IVC chain test (6 folds, all verify);
 - **gate (met)**: all folded chain instances pass verify_folded; r=0 identity; tampered error rejected. Full compact IVC (non-transparent) deferred to the research layer.
 
+### ✅ W1 · Multi-crate workspace
+
+- Split the single crate into a cargo workspace: [`lattice-algebra`](/design/module-map) (L0–L4: ring / ntt / poly / module / crypto / matrix), `lattice-pqc` (ML-DSA), `lattice-zk` (protocols), plus the `lattice-algebra-rs` facade that re-exports every module under its historical path;
+- public-API audit: all 353 public items carried over verbatim (before/after surface diff empty);
+- primitives audit: `crypto::sampling` gains the `DiscreteGaussian` precomputed-CDT sampler (the Falcon noise primitive); the dead `ring::sample::GaussianSampler` stub removed;
+- **gate (met)**: `cargo test --workspace` (454 tests), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` all clean.
+
 ### ZK line remaining work (details in the [ZK page](/schemes/zk-snark))
 
 - **Remaining**: ZK blinding; estimator calibration; official KAT/ACVP vector alignment.
@@ -87,5 +97,5 @@ flowchart LR
 1. Before merge: `cargo test` + `cargo clippy -D warnings` + `cargo fmt --check`, no warnings;
 2. KAT-first: freeze vectors, then implement (red → green);
 3. docs same-day: new traits update the relevant design page and the [trait map](/reference/trait-map);
-4. performance: criterion benchmarks with CI thresholds once the bench harness lands;
+4. performance: criterion benches ship per crate (`cargo bench --workspace` — algebra foundation, ML-DSA keygen/sign/verify, Z1–Z4 protocols); wire CI thresholds before the next release;
 5. shared audit points (norms/centering/decomposition/FS separation) are mandatory review items for the L3/L4 APIs both lines depend on.
