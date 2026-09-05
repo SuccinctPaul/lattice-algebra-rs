@@ -32,10 +32,10 @@
 //! `slack_bound(D, drop)` per coefficient — the mechanism full LaBRADOR
 //! recursion uses to keep opened values short.
 
-use crate::crypto::transcript::Transcript;
-use crate::crypto::xof::{Shake128Xof, Xof};
 use crate::protocols::z2_ring::{matrix_from_seed, ring_from_u32, ring_to_u32, Z2Ring, D};
-use crate::ring::MatrixElement;
+use algebra::crypto::transcript::Transcript;
+use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::ring::MatrixElement;
 
 /// Ajtai key for the IPA (`A_com ∈ R^{N×M}`).
 #[derive(Debug, Clone, PartialEq, Eq)]

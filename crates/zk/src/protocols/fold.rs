@@ -24,10 +24,10 @@
 //! The IVC prover chains folds; every folded instance is checkable by
 //! [`verify_folded`].
 
-use crate::crypto::transcript::Transcript;
-use crate::crypto::xof::{Shake128Xof, Xof};
 use crate::protocols::z2_ring::{matrix_from_seed, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring, D};
-use crate::ring::MatrixElement;
+use algebra::crypto::transcript::Transcript;
+use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::ring::MatrixElement;
 
 fn u32s_to_bytes(v: &[u32]) -> Vec<u8> {
     v.iter().flat_map(|x| x.to_le_bytes()).collect()
@@ -219,25 +219,14 @@ pub fn verify_folded<const N: usize, const M: usize, const GATES: usize>(
     r1cs: &ToyR1cs,
     inst: &RelaxedInstance<M, GATES>,
 ) -> bool {
-    eprintln!(
-        "verify_folded called, z.len()={} error.len()={}",
-        inst.z.len(),
-        inst.error.len()
-    );
     if inst.z.len() != M || inst.error.len() != GATES {
         return false;
     }
     if key.commit_witness(&inst.z) != inst.c_z {
-        eprintln!("vf: c_z mismatch");
         return false;
     }
     let ce_check = key.commit_error(&inst.error);
     if ce_check != inst.c_e {
-        eprintln!(
-            "vf: c_e mismatch: A_e·E={:?} c_e={:?}",
-            &ring_to_u32(&ce_check[0])[..2],
-            &ring_to_u32(&inst.c_e[0])[..2]
-        );
         return false;
     }
     crate::protocols::z2::constraint_residuals(r1cs, &inst.z) == inst.error

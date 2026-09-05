@@ -1,0 +1,20 @@
+[package]
+name = "lattice-pqc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "NIST PQC schemes on the lattice-algebra foundation: ML-DSA (FIPS 204), with ML-KEM and FN-DSA planned"
+readme = "README.md"
+
+[lib]
+name = "pqc"
+
+[dependencies]
+lattice-algebra.workspace = true
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "mldsa"
+harness = false

@@ -20,16 +20,16 @@ pub mod params;
 
 pub use params::{MlDsa44, MlDsa65, MlDsa87, MlDsaParams, D, N, Q};
 
-use crate::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded, BitStream};
-use crate::crypto::xof::{Shake128Xof, Shake256Xof, Xof};
-use crate::module::{rounding, ModuleMatrixNtt, ModuleVector};
-use crate::ntt::NttOperatorOptimized;
-use crate::poly::sparse::SparsePolynomial;
-use crate::ring::poly_ring::PolyRing;
-use crate::ring::traits::CenteredRing;
-use crate::ring::zq::Zq;
-use crate::ring::PolynomialQuotientRing;
-use crate::ring::Ring;
+use algebra::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded, BitStream};
+use algebra::crypto::xof::{Shake128Xof, Shake256Xof, Xof};
+use algebra::module::{rounding, ModuleMatrixNtt, ModuleVector};
+use algebra::ntt::NttOperatorOptimized;
+use algebra::poly::sparse::SparsePolynomial;
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::traits::CenteredRing;
+use algebra::ring::zq::Zq;
+use algebra::ring::PolynomialQuotientRing;
+use algebra::ring::Ring;
 use std::marker::PhantomData;
 
 const Q_U64: u64 = Q as u64;
@@ -455,14 +455,10 @@ pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
                 if bit == 1 {
                     hint_count += 1;
                 }
-                if j < 4 {
-                    eprintln!("sign dbg j={j}: rc={rc} zc={} bit={bit}", z_centered[j]);
-                }
                 row[j] = bit;
             }
             h.push(row);
         }
-        eprintln!("sign hint_count={hint_count}");
         let hint_too_heavy = hint_count > P::OMEGA;
         // ‖c·t0‖∞ ≥ γ2 forces a restart.
         let ct0_heavy = ct0.infinity_norm() >= u64::try_from(P::GAMMA2).unwrap();

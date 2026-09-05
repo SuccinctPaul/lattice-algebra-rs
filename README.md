@@ -1,75 +1,83 @@
 # Lattice Algebra Rust
-[![CI](https://github.com/SuccinctPaul/lattice-algebra-rs/workflows/CI/badge.svg)](https://github.com/ejmahler/RustFFT/actions?query=workflow%3ACI)
+
+[![CI](https://github.com/SuccinctPaul/lattice-algebra-rs/workflows/CI/badge.svg)](https://github.com/SuccinctPaul/lattice-algebra-rs/actions?query=workflow%3ACI)
 ![minimum rustc 1.70](https://img.shields.io/badge/rustc-1.70+-red.svg)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SuccinctPaul/lattice-algebra-rs)
 
-A high-performance Rust library for lattice-based cryptography and algebra, providing efficient implementations of polynomial rings, matrices, and vector operations over finite fields.
+A multi-crate Rust workspace for lattice-based cryptography: one algebraic
+foundation from which both NIST PQC schemes (ML-KEM / ML-DSA / Falcon) and
+lattice-based zkSNARKs (LaBRADOR / GreyHound / LatticeFold-style) derive
+directly.
 
-> **Vision**: a unified algebra foundation — the "arkworks / plonky3 for lattice-based cryptography" — from which both NIST PQC schemes (ML-KEM / ML-DSA / Falcon) **and** lattice-based zkSNARKs (LaBRADOR / GreyHound / LatticeFold-style) derive directly.
-> The full architecture design lives in the docs site: see [`docs/README.md`](docs/README.md) to run it locally (`cd docs && npm install && npm run dev`).
+> **Vision**: the "arkworks / plonky3 for lattice-based cryptography".
+> The full architecture design lives in the docs site: see
+> [`docs/README.md`](docs/README.md) to run it locally
+> (`cd docs && npm install && npm run dev`).
 
-## Features
+## Workspace layout
 
-- **Polynomial Rings**: Efficient implementation of polynomial rings over finite fields
-  - FFT-based polynomial multiplication (O(n log n) complexity)
-  - Generic polynomial operations (addition, multiplication, division)
-  - Support for polynomial rings with degree bounds
-
-- **Matrix Operations**: Generic matrix implementation supporting various element types
-  - Basic matrix operations (addition, multiplication, transposition)
-  - Matrix-vector operations
-  - Efficient storage and computation
-  - Support for different matrix types (ring matrices, polynomial matrices)
-
-- **Vector Arithmetic**: Efficient vector operations for cryptographic applications
-  - Generic vector implementation with type-safe operations
-  - Support for various element types (rings, polynomials)
-  - Vector operations (inner product, Hadamard product)
-  - Efficient random vector generation
-
-## Requirements
-
-- Rust 1.70.0 or later
-- Dependencies:
-  - rand = "0.9.1"
-  - rustfft = "6.3.0"
-  - serde = { version = "1.0.216", features = ["derive"] }
+| Crate | Path | Contents |
+| --- | --- | --- |
+| `lattice-algebra` | [`crates/algebra`](crates/algebra) | L0–L4 foundation: scalar rings (`Zq`), negacyclic polynomial rings (`PolyRing`), capability traits (`Ring`/`Field`/`TwoAdicRing`/`CenteredRing`), NTT + NTT-domain views, module-lattice vectors/matrices, XOF / transcript / sampling crypto |
+| `lattice-pqc` | [`crates/pqc`](crates/pqc) | NIST PQC schemes on the foundation: **ML-DSA** (FIPS 204) keygen / sign / verify for all three parameter sets. ML-KEM and FN-DSA planned |
+| `lattice-zk` | [`crates/zk`](crates/zk) | Lattice zkSNARK building blocks: Ajtai/SIS commitments, Lyubashevsky Σ-protocols, batch opening, ring-sumcheck, gadget IPA, Nova-style folding / IVC |
+| `lattice-algebra-rs` | [`src`](src/lib.rs) | Facade crate re-exporting everything under the historical single-crate paths |
 
 ## Usage
 
-Add this to your `Cargo.toml`:
+Everything through the facade (historical paths keep working):
 
 ```toml
 [dependencies]
 lattice-algebra-rs = "0.1.0"
 ```
 
-Basic example:
+```rust
+use lattice_algebra_rs::module::ModuleVector;
+use lattice_algebra_rs::mldsa::{MlDsa65, MlDsaParams};
+use lattice_algebra_rs::protocols::commitment::CommitmentKey;
+```
+
+Or depend on individual crates directly:
+
+```toml
+[dependencies]
+lattice-algebra = "0.1.0"
+lattice-pqc = "0.1.0"
+lattice-zk = "0.1.0"
+```
 
 ```rust
-use lattice_algebra_rs::ring::Zq17;
-use lattice_algebra_rs::matrix::vector_arithmatic::GenericVector;
-use lattice_algebra_rs::poly::UniPolynomial;
-
-// Create a vector over Zq17
-let v = GenericVector::new(vec![Zq17::new(1), Zq17::new(2), Zq17::new(3)]);
-
-// Perform vector operations
-let a = GenericVector::new(vec![Zq17::new(1), Zq17::new(2)]);
-let b = GenericVector::new(vec![Zq17::new(3), Zq17::new(4)]);
-let sum = a.clone() + b.clone();
-assert_eq!(sum, GenericVector::new(vec![Zq17::new(4), Zq17::new(6)]));
-let dot = a.inner_product(&b);
-assert_eq!(dot, Zq17::new(11));
+use algebra::ring::zq::Zq;
+use pqc::mldsa::{self, MlDsa87, MlDsaParams};
+use zk::protocols::sigma;
 ```
+
+## Requirements
+
+- Rust 1.70.0 or later
+- Runtime dependencies of the foundation: `rand`, `rustfft`, `serde`, `sha3`
+
+## Development
+
+```sh
+cargo test --workspace        # 474 tests (unit + integration + doc)
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+cargo bench --workspace       # criterion: foundation, ML-DSA, Z1-Z4 protocols
+```
+
+Each crate carries its own `README.md` (see `crates/<name>/README.md`),
+runnable `examples/`, integration tests in `crates/<name>/tests/`, and
+criterion benchmarks in `crates/<name>/benches/`.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 ## License
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
 
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
 
 ## Acknowledgements
 
