@@ -25,7 +25,7 @@ pub type RingMatrix<R> = GenericMatrix<R>;
 pub type PolynomialMatrix<R> = GenericMatrix<R>;
 
 /// A matrix over a polynomial ring R[x]/(x^d+1)
-pub type PolyRingMatrix<R, const DEGREE_BOUND: u64> = GenericMatrix<PolyRing<R, DEGREE_BOUND>>;
+pub type PolyRingMatrix<R, const DEGREE_BOUND: usize> = GenericMatrix<PolyRing<R, DEGREE_BOUND>>;
 
 /// Threshold for parallel operations (row count)
 #[cfg(feature = "parallel")]

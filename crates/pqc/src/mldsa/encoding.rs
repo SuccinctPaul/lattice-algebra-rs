@@ -1,9 +1,9 @@
 //! ML-DSA wire-format encodings (FIPS 204 §7).
 
-/// Ceiling division by 8 (MSRV 1.70 friendly; `div_ceil` needs 1.73).
+/// Ceiling division by 8.
 #[inline]
 pub(crate) fn div_ceil8(x: usize) -> usize {
-    (x + 7) / 8
+    x.div_ceil(8)
 }
 
 use super::params::N;
@@ -17,7 +17,7 @@ pub(crate) fn bit_len(x: u64) -> u32 {
 /// each into a byte string.
 pub(crate) fn simple_bit_pack(w: &[u64; N], w_max: u64) -> Vec<u8> {
     let bits = bit_len(w_max) as usize;
-    let mut out = vec![0u8; div_ceil8(N * bits as usize)];
+    let mut out = vec![0u8; div_ceil8(N * bits)];
     let mut pos = 0usize;
     for &c in w {
         debug_assert!(c <= w_max, "coefficient {c} exceeds w_max {w_max}");
@@ -54,7 +54,7 @@ pub(crate) fn simple_bit_unpack(bytes: &[u8], w_max: u64) -> [u64; N] {
 /// `(2^{d−1}−1, 2^{d−1})` for `t0`).
 pub(crate) fn bit_pack(w: &[i64], a: i64, b: i64) -> Vec<u8> {
     let bits = bit_len((a + b) as u64) as usize;
-    let mut out = vec![0u8; div_ceil8(N * bits as usize)];
+    let mut out = vec![0u8; div_ceil8(N * bits)];
     let mut pos = 0usize;
     for &c in w {
         let v = (b - c) as u64;
