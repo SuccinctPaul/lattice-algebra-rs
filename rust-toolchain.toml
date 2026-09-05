@@ -1,0 +1,6 @@
+# Toolchain pin (re-verified M0, 2026-09-05): 1.82 was the original baseline.
+# Bumped twice during M0: (1) >= 1.85 for edition2024 in the transitive dep
+# tree, (2) 1.94.1 because the alloy-2.4.x manifests declare MSRV 1.94.1.
+[toolchain]
+channel = "1.81.0"
+components = ["rustfmt", "clippy"]
