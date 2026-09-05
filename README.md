@@ -71,9 +71,16 @@ Each crate carries its own `README.md` (see `crates/<name>/README.md`),
 runnable `examples/`, integration tests in `crates/<name>/tests/`, and
 criterion benchmarks in `crates/<name>/benches/`.
 
+## Project
+
+- [Contributing](CONTRIBUTING.md) — workflow, merge gate, conventions
+- [Security policy](SECURITY.md) — disclosure; claims register in the docs
+- [Changelog](CHANGELOG.md) — generated with git-cliff from conventional commits
+- License: Apache-2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and open a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 ## License
 

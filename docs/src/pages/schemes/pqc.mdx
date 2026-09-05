@@ -1,6 +1,6 @@
 # NIST PQC Mapping
 
-How the lattice NIST schemes land **directly** on the base library: every specification step maps to a base API, and schemes reduce to *parameter tables + call order + packing rules*.
+How the lattice NIST schemes land **directly** on the base library — all of it inside the `lattice-pqc` crate (`pqc::mldsa`), which depends only on `lattice-algebra`.: every specification step maps to a base API, and schemes reduce to *parameter tables + call order + packing rules*.
 
 > Scope: signatures = ML-DSA (FIPS 204, **implemented**) + Falcon/FN-DSA (FIPS 206 draft, planned). KEM = ML-KEM (FIPS 203, planned). SLH-DSA (FIPS 205) is hash-based, not lattice — out of scope.
 
@@ -56,7 +56,7 @@ Acceptance (all green in CI):
 - exact encoded sizes: signatures 2420 / 3309 / 4627 B, public keys 1312 / 1952 / 2592 B, secret keys 2560 / 4032 / 4896 B;
 - key roundtrip through the canonical byte encodings.
 
-Scheduled: official KAT/ACVP vector alignment (byte-exact NTT ordering and rejection-stream accounting against the reference implementation).
+Scheduled: official KAT/ACVP vector alignment (byte-exact NTT ordering and rejection-stream accounting against the reference implementation). Measured keygen/sign/verify costs: [Performance](/reference/performance). Deployment readiness: [Security status](/introduction/security-status).
 
 ## ML-KEM (FIPS 203) — planned
 

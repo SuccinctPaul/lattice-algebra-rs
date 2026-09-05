@@ -1,0 +1,45 @@
+# Security Status
+
+What this toolchain **does and does not claim**. Written for practitioners
+deciding where this code belongs — and where it does not (yet). We consider
+an explicit claims page more useful than silence.
+
+## Claimed today
+
+| Claim | Evidence |
+| --- | --- |
+| Spec-shaped implementations: ML-DSA follows FIPS 204 step-by-step; every spec step maps to a documented base API | [PQC mapping](/schemes/pqc), encodings with exact byte sizes asserted |
+| Reference-exact derivation primitives | RejBounded nibble formulas, SampleInBall ordering, `ExpandMask` chunking and `power2round`/`decompose`/hint are differential-tested against the reference bit tricks |
+| Arithmetic correctness | 474 tests, including ring-axiom property tests over 15 moduli (2 … 2³², prime and composite), NTT-vs-schoolbook cross-checks, NTT-homomorphism tests |
+| Determinism and reproducibility | All samplers and derivations are XOF-driven (seed + domain label, no bare RNG); same inputs ⇒ same outputs, KAT-friendly by construction |
+| Semantic rejection behavior | Tampered message / wrong context / wrong key / corrupted or truncated signatures, tampered proofs and folded instances are rejected — tested |
+| No unsafe code | The workspace compiles with zero `unsafe` blocks |
+
+## Not claimed (yet)
+
+| Item | Status | Why it matters |
+| --- | --- | --- |
+| **Constant time** | ❌ not implemented — arithmetic is variable-time; signing has data-dependent loops | Side-channel resistance is a *hard* requirement for production secret-key operations. Do not deploy the signing/KEM paths with secret keys near adversaries. CT hardening is a declared milestone (secret-independent control flow, no secret-indexed table lookups, CT option in samplers). |
+| **Third-party audit** | ❌ none | No external review has been performed. Treat all claims on this page as engineering evidence, not assurance. |
+| **Official KAT/ACVP alignment** | 📋 in progress for ML-DSA | Self-consistency and property tests are in place; byte-exact agreement against the reference NTT ordering and rejection streams is the remaining hardening step. ML-KEM/FN-DSA inherit this requirement before their milestone closes. |
+| **Concrete security levels** | 📋 estimator calibration pending | Z1/Z2 slack bounds are proven *relations* (e.g. `‖s_ext‖∞ ≤ 2·B_Z`), but no NIST security level is claimed until the [lattice estimator](https://github.com/malb/lattice-estimator) calibrates the Module-SIS/LWE instances. |
+| **Production hardening** | ❌ out of scope today | No zeroization, no fuzzing harness for the decoders yet, no `no_std` story, MSRV pinned to 1.70. |
+
+## Where this toolchain belongs today
+
+- ✅ Research and prototyping of lattice schemes and proofs
+- ✅ Cross-checking a paper's protocol against a working implementation
+- ✅ Teaching and studying how FIPS 203/204 map onto algebra primitives
+- ✅ As the shared substrate for a *family* of experiments (PQC ↔ ZK) that
+  must reuse the same norms, decompositions and challenge derivations
+- ⚠️ Pre-production integrations, with the table above as the risk register
+- ❌ Production deployments holding real secret keys (use
+  [RustCrypto](https://github.com/RustCrypto) or
+  [liboqs](https://github.com/open-quantum-safe/liboqs) today)
+
+## Reporting
+
+Security-relevant bugs in the claimed rows above (correctness, determinism,
+rejection behavior) are in scope for responsible disclosure — open a GitHub
+issue or contact the maintainers directly. Claims in the "not claimed"
+section are roadmap items, not vulnerabilities.

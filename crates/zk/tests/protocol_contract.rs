@@ -34,7 +34,9 @@ fn sigma_instance() -> (
     let s: ModuleVector<Z1Ring, L, RING_DIM> = ModuleVector::from_fn(|i| {
         PolyRing::from_coefficients(
             (0..RING_DIM)
-                .map(|j| Z1Ring::new((((i * 3 + j) % 9) - 4).rem_euclid(8_380_417) as u64))
+                .map(|j| {
+                    Z1Ring::new((((i as i64) * 3 + j as i64) % 9 - 4).rem_euclid(8_380_417) as u64)
+                })
                 .collect(),
         )
     });
@@ -140,11 +142,13 @@ fn sumcheck_verifier_accepts_honest_claim_and_rejects_bad_rounds() {
     .is_none());
 
     // The final evaluation is the table at the derived point — recompute it.
+    // Round g of the fold interpolates bit (G-1-g) (top bit first): index j
+    // and j + len/2 differ in that bit when the vector is halved.
     let mut eval = Z1Ring::ZERO;
     for (idx, &x) in table.iter().enumerate() {
         let mut term = Z1Ring::ONE;
         for (g, r) in challenges.iter().enumerate() {
-            let bit = ((idx >> g) & 1) == 1;
+            let bit = ((idx >> (G - 1 - g)) & 1) == 1;
             let coef = if bit { *r } else { Z1Ring::ONE - *r };
             term *= coef;
         }

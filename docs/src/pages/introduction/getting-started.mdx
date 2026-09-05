@@ -1,16 +1,31 @@
 # Quickstart
 
-Runnable examples against the **current** API. Every snippet matches real signatures in `src/`.
+Runnable examples against the **current** API. Every snippet matches real
+signatures in the workspace — the ML-DSA and ZK blocks are exactly what
+`crates/pqc/examples` and `crates/zk/examples` run.
 
 ## Requirements
 
 - Rust ≥ 1.70 (MSRV)
-- Dependencies: `rand 0.9`, `sha3` (SHAKE), `rustfft` (generic FFT fallback), `serde`
-- Optional features: `parallel` (rayon)
+- Runtime dependencies of the foundation: `rand 0.9`, `sha3` (SHAKE),
+  `rustfft` (generic FFT fallback), `serde`
+
+## Which crate do I need?
+
+| You want | Depend on |
+| --- | --- |
+| Ring / NTT / module / sampler primitives | `lattice-algebra` (lib name `algebra`) |
+| ML-DSA signatures | `lattice-pqc` (lib name `pqc`) |
+| Ajtai commitments, Σ-protocols, sumcheck, folding | `lattice-zk` (lib name `zk`) |
+| All of it, historical single-crate paths | `lattice-algebra-rs` (facade) |
 
 ```toml
+# pick your combination
 [dependencies]
-lattice-algebra-rs = "0.1"
+lattice-algebra = "0.1"      # use algebra::ring::...
+lattice-pqc     = "0.1"      # use pqc::mldsa::...
+lattice-zk      = "0.1"      # use zk::protocols::...
+# or: lattice-algebra-rs = "0.1"  # everything under one crate name
 ```
 
 ## Scalar ring `Zq<MODULUS>`
@@ -19,7 +34,7 @@ Const-generic modular ring with Barrett-style reduction:
 
 ```rust
 use lattice_algebra_rs::ring::zq::Zq;
-use lattice_algebra_rs::ring::traits::{CenteredRing, Field, TwoAdicRing};
+use lattice_algebra_rs::ring::traits::{CenteredRing, Field, Ring, TwoAdicRing};
 
 type Zq17 = Zq<17>;   // toy; real schemes use Zq<8380417> etc.
 
@@ -118,6 +133,59 @@ assert!(mldsa::verify(&vk, b"context", b"hello lattice world", &sigma));
 assert_eq!(sigma.len(), 3309);          // ML-DSA-65 signature size
 assert_eq!(vk.to_bytes().len(), 1952);  // public key size
 ```
+
+## A lattice ZK proof (Z1)
+
+Knowledge of a short preimage of an Ajtai/SIS commitment, proven with a
+Lyubashevsky Σ-protocol under Fiat–Shamir — the same object LaBRADOR-style
+systems build on:
+
+```rust
+use algebra::module::ModuleVector;
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::PolynomialQuotientRing;
+use algebra::ring::zq::Zq;
+use zk::protocols::commitment::{CommitmentKey, LatticeCommitment, RING_DIM, Z1Instance};
+use zk::protocols::sigma::{fs_prove, fs_verify};
+
+type Z1Ring = Zq<8380417>;
+const K: usize = 4;
+const L: usize = 3;
+
+let key: CommitmentKey<Z1Instance, K, L, RING_DIM> = CommitmentKey::setup(&[7u8; 32]);
+
+// witness: a short secret s (coefficients in [-4, 4])
+let s: ModuleVector<Z1Ring, L, RING_DIM> = ModuleVector::from_fn(|i| {
+    PolyRing::from_coefficients(
+        (0..RING_DIM)
+            .map(|j| Z1Ring::new((((i as i64) * 3 + j as i64) % 9 - 4).rem_euclid(8_380_417) as u64))
+            .collect(),
+    )
+});
+let t = key.commit(&s); // statement: t = A·s
+
+let proof = fs_prove::<Z1Instance, K, L, RING_DIM>(&key, &s, &t, &[0x11u8; 32]).unwrap();
+assert!(fs_verify::<Z1Instance, K, L, RING_DIM>(&key, &t, &proof));
+```
+
+Complete runnable versions live in `crates/zk/examples/`:
+
+```sh
+cargo run -p lattice-zk --example sigma_nizk
+cargo run -p lattice-zk --example folding_ivc   # Nova-style IVC chain (Z4)
+```
+
+## Reproduce the numbers
+
+Every claim about performance is a checked-in criterion benchmark:
+
+```sh
+cargo bench --workspace
+```
+
+See [Performance](/reference/performance) for quoted numbers and
+methodology, and [Security status](/introduction/security-status) for what
+this toolchain does and does not claim.
 
 ## Next steps
 

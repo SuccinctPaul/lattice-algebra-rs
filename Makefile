@@ -1,4 +1,4 @@
-# Heavily inspired by Reth: https://github.com/paradigmxyz/reth/blob/4c39b98b621c53524c6533a9c7b52fc42c25abd6/Makefile
+# Developer workflow for the lattice-algebra-rs workspace.
 .DEFAULT_GOAL := help
 
 ##@ Help
@@ -8,37 +8,63 @@ help: # Display this help.
 
 ##@ Build
 .PHONY: build
-build: # Build the Ream binary into `target` directory.
-	@cargo build --verbose --release
+build: # Build all workspace crates (debug).
+	@cargo build --workspace --all-targets
 
+.PHONY: build-release
+build-release: # Build all workspace crates (release).
+	@cargo build --workspace --release
+
+##@ Quality gates (CI parity)
 .PHONY: test
-test: # Run all tests.
-	@cargo test --release --workspace -- --nocapture
+test: # Run the full test suite (unit + integration + doc).
+	@cargo test --workspace
 
-##@ release
+.PHONY: lint
+lint: # Run rustfmt check and clippy with warnings denied.
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets --no-deps -- --deny warnings
+
+.PHONY: fix
+fix: # Apply rustfmt fixes.
+	cargo fmt --all
+
+.PHONY: check
+check: # Fast typecheck of every target.
+	cargo check --workspace --all-targets
+
+.PHONY: gate
+gate: # The full merge gate: fmt + clippy + tests (what CI runs).
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets --no-deps -- --deny warnings
+	cargo test --workspace
+
+##@ Benchmarks & docs
+.PHONY: bench
+bench: # Run all criterion benchmarks.
+	@cargo bench --workspace
+
+.PHONY: bench-compile
+bench-compile: # Compile benchmarks without running them.
+	@cargo bench --workspace --no-run
+
+.PHONY: doc
+doc: # Build rustdoc for every crate (opens in browser).
+	@cargo doc --workspace --no-deps --open
+
+.PHONY: docs
+docs: # Build the design site (vocs) into docs/dist.
+	cd docs && npm install && npm run build
+
+.PHONY: docs-dev
+docs-dev: # Serve the design site with live reload.
+	cd docs && npm install && npm run dev
+
+##@ Release
 .PHONY: changelog
-changelog: ## auto generate changelog with git-cliff, install by 'cargo install git-cliff' when release
-	@git cliff --bump  -o CHANGELOG.md
+changelog: # Regenerate CHANGELOG.md with git-cliff (cargo install git-cliff).
+	@git cliff -o CHANGELOG.md
 
-
-##@ Others
 .PHONY: clean
-clean: # Run `cargo clean`.
+clean: # Remove build artifacts.
 	@cargo clean
-
-.PHONY: lint pr
-lint: # Run `clippy` and `rustfmt`.
-	cargo +nightly fmt --all
-	cargo clippy --all --all-targets --no-deps -- --deny warnings
-
-	# clippy for bls with supranational feature
-	cargo clippy --all-targets --no-deps -- --deny warnings
-
-	# cargo sort
-	cargo sort --grouped
-
-
-pr: # Run before 'make pr'
-	make build && \
-	make lint && \
-	make test

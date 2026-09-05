@@ -23,13 +23,15 @@ Point-in-time audit of the codebase against the [target architecture](/design/ar
 | L1 | Shoup-style lazy twiddles, SIMD kernels | 📋 performance milestone |
 | L2 | Cyclic ring (`mod X^n − 1`) for Falcon / SNARK parameters | 📋 |
 | L4 | Canonical binary serialization (serde stays test-only) | 📋 |
-| L4 | Discrete Gaussian sampler (CDT + fast Fourier sampling) | 📋 Falcon milestone |
+| L4 | Discrete Gaussian: **CDT sampler done** (`crypto::sampling::DiscreteGaussian`); FFT/peikert-style sampling for large σ | 📋 Falcon milestone |
+| L5 | ZK completeness: blinding (full ZK beyond Z1's HVZK), estimator-calibrated parameters | 📋 |
 | L6 | ML-KEM (incl. the spec's layered NTT instance), Falcon | 📋 M4/M5 |
-| L5 | Ajtai commitments, Σ-protocols, batched openings, sumcheck, folding | 📋 Z1–Z4 |
 | Eng | Official KAT/ACVP vector files for ML-DSA; cross-checks against reference implementations | 📋 (self-consistency + property tests in place) |
-| Eng | Criterion benchmarks in CI | 📋 |
+| Eng | Constant-time arithmetic, zeroization, decoder fuzzing | 📋 see [security status](/introduction/security-status) |
+| Eng | Criterion benchmarks **landed** (`cargo bench --workspace`); CI thresholds | ✅ benches / 📋 thresholds |
 
 ## Regression rules
 
-- Every migration keeps `cargo test` green; the ring-axiom suite is the safety net for L0 changes.
+- Every migration keeps `cargo test --workspace` green (474 tests); the ring-axiom suite is the safety net for L0 changes.
+- The quickstart snippets are guarded by `doc_snippet_check.rs` tests — documentation code cannot rot.
 - Shared audit points (norms, centered representatives, decomposition, FS domain separation) are review-mandatory — both PQC and ZK correctness rest on them.
