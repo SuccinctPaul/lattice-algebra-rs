@@ -37,19 +37,30 @@ impl<const MODULUS: u64> ModularArithmetic<MODULUS> for Zq<MODULUS> {
 
     /// Modular multiplication: (a * b) mod MODULUS
     ///
-    /// Uses 128-bit arithmetic to avoid overflow.
+    /// Power-of-two moduli (the LaBRADOR-style `q = 2^32` instance) reduce
+    /// by masking; everything else uses 128-bit arithmetic to avoid
+    /// overflow. The branch folds away under monomorphization in release
+    /// builds and is perfectly predicted in debug builds.
     ///
     /// # Precondition
     /// a, b < MODULUS
     #[inline(always)]
     fn mod_mul(a: u64, b: u64) -> u64 {
-        ((a as u128 * b as u128) % (MODULUS as u128)) as u64
+        if (MODULUS & (MODULUS - 1)) == 0 {
+            a.wrapping_mul(b) & (MODULUS - 1)
+        } else {
+            ((a as u128 * b as u128) % (MODULUS as u128)) as u64
+        }
     }
 
     /// Barrett reduction for arbitrary 128-bit value
     #[inline(always)]
     fn barrett_reduce(x: u128) -> u64 {
-        (x % (MODULUS as u128)) as u64
+        if (MODULUS & (MODULUS - 1)) == 0 {
+            (x as u64) & (MODULUS - 1)
+        } else {
+            (x % (MODULUS as u128)) as u64
+        }
     }
 }
 
@@ -93,11 +104,8 @@ mod tests {
     fn test_mod_mul_kyber_modulus() {
         // Test with Kyber's modulus q = 3329
         type Zq3329 = Zq<3329>;
-        assert_eq!(Zq3329::mod_mul(1000, 2000), (1000u64 * 2000 % 3329) as u64);
-        assert_eq!(
-            Zq3329::mod_mul(3328, 3328),
-            ((3328u64 * 3328) % 3329) as u64
-        );
+        assert_eq!(Zq3329::mod_mul(1000, 2000), 1000u64 * 2000 % 3329);
+        assert_eq!(Zq3329::mod_mul(3328, 3328), (3328u64 * 3328) % 3329);
     }
 
     #[test]

@@ -128,7 +128,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
                     let u = a[k + j];
                     a[k + j] = u + t;
                     a[k + j + half_m] = u - t;
-                    w = w * omega_m;
+                    w *= omega_m;
                 }
             }
         }
@@ -175,7 +175,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
                     let u = a[k + j + half_m];
                     a[k + j] = t + u;
                     a[k + j + half_m] = (t - u) * w;
-                    w = w * omega_m_inv;
+                    w *= omega_m_inv;
                 }
             }
         }
@@ -185,7 +185,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
 
         // Scale by N^(-1)
         for elem in a.iter_mut() {
-            *elem = *elem * self.params.n_inv;
+            *elem *= self.params.n_inv;
         }
     }
 
@@ -208,7 +208,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
 
         // Pre-multiply by powers of ψ
         for (i, elem) in a.iter_mut().enumerate() {
-            *elem = *elem * self.twiddles.psi_powers[i];
+            *elem *= self.twiddles.psi_powers[i];
         }
 
         // Standard forward NTT
@@ -227,7 +227,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
 
         // Post-multiply by powers of ψ^(-1)
         for (i, elem) in a.iter_mut().enumerate() {
-            *elem = *elem * self.twiddles.psi_inv_powers[i];
+            *elem *= self.twiddles.psi_inv_powers[i];
         }
     }
 
@@ -331,7 +331,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
         assert_eq!(b_ntt.len(), N);
 
         for (a, &b) in a_ntt.iter_mut().zip(b_ntt.iter()) {
-            *a = *a * b;
+            *a *= b;
         }
     }
 }
@@ -389,7 +389,7 @@ impl<R: Ring, const N: usize> NttOperatorOptimized<R, N> {
             let mut w = R::ONE;
             for _ in 0..half_m {
                 stage.push(w);
-                w = w * omega_m;
+                w *= omega_m;
             }
             forward_twiddles.push(stage);
         }
@@ -405,7 +405,7 @@ impl<R: Ring, const N: usize> NttOperatorOptimized<R, N> {
             let mut w = R::ONE;
             for _ in 0..half_m {
                 stage.push(w);
-                w = w * omega_m_inv;
+                w *= omega_m_inv;
             }
             inverse_twiddles.push(stage);
         }
@@ -418,8 +418,8 @@ impl<R: Ring, const N: usize> NttOperatorOptimized<R, N> {
         for _ in 0..N {
             psi_powers.push(psi_pow);
             psi_inv_powers.push(psi_inv_pow);
-            psi_pow = psi_pow * params.psi;
-            psi_inv_pow = psi_inv_pow * params.psi_inv;
+            psi_pow *= params.psi;
+            psi_inv_pow *= params.psi_inv;
         }
 
         Self {
@@ -475,7 +475,7 @@ impl<R: Ring, const N: usize> NttOperatorOptimized<R, N> {
         bit_reverse_permutation(a);
 
         for elem in a.iter_mut() {
-            *elem = *elem * self.n_inv;
+            *elem *= self.n_inv;
         }
     }
 
@@ -483,7 +483,7 @@ impl<R: Ring, const N: usize> NttOperatorOptimized<R, N> {
     pub fn forward_negacyclic(&self, a: &mut [R]) {
         assert_eq!(a.len(), N);
         for (i, elem) in a.iter_mut().enumerate() {
-            *elem = *elem * self.psi_powers[i];
+            *elem *= self.psi_powers[i];
         }
         self.forward(a);
     }
@@ -493,7 +493,7 @@ impl<R: Ring, const N: usize> NttOperatorOptimized<R, N> {
         assert_eq!(a.len(), N);
         self.inverse(a);
         for (i, elem) in a.iter_mut().enumerate() {
-            *elem = *elem * self.psi_inv_powers[i];
+            *elem *= self.psi_inv_powers[i];
         }
     }
 

@@ -17,6 +17,7 @@ rand = { version = "0.9.1", features = ["default"] }
 rayon = { version = "1.10", optional = true }
 rustfft = "6.4.0"
 serde = { version = "1.0.216", features = ["derive"] }
+sha3 = "0.10"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

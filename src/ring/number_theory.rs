@@ -200,7 +200,7 @@ mod tests {
         assert_eq!(prime_factors(15), vec![3, 5]);
         assert_eq!(prime_factors(96), vec![2, 3]);
         assert_eq!(prime_factors(3328), vec![2, 13]); // 3329 - 1
-        assert_eq!(prime_factors(8380416), vec![2, 997]); // 8380417 - 1
+        assert_eq!(prime_factors(8380416), vec![2, 3, 11, 31]); // 8380417 - 1 = 2^13 * 1023
     }
 
     #[test]

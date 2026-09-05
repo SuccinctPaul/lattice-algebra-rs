@@ -1,0 +1,72 @@
+# Z1 · Ajtai Commitments & Lyubashevsky Σ-Protocols
+
+**Status: implemented** (`src/protocols::{commitment, sigma}`) — the first landing component of the lattice zkSNARK roadmap: an Ajtai/SIS commitment scheme and a Lyubashevsky-style approximate-knowledge proof compiled to an FS-NIZK, with extractor tests and a full slack analysis, all built on the same L0–L4 base as ML-DSA.
+
+## Ajtai/SIS commitments
+
+`C = A·s` where `A ∈ R_q^{K×L}` derives from a seed (`ExpandA`, NTT-domain resident) and `s` is a short witness (`‖s‖∞ ≤ B_S`). Binding follows from Module-SIS: two colliding openings give the short kernel vector `s − s'`.
+
+```rust
+use lattice_algebra_rs::protocols::commitment::*;
+
+type Key = CommitmentKey<Z1Instance, 8, 6, 256>;
+let key = Key::setup(&[1u8; 32]);
+let c = key.commit(&witness);     // witness: ModuleVector with ‖·‖∞ ≤ B_S
+```
+
+The `LatticeCommitment` trait is generic over the ring and dimensions; `CommitmentKey<P, K, L, N>` implements it for any `SisParams`.
+
+## The Σ-protocol (Lyubashevsky-style, approximate knowledge)
+
+Instance: `(A, t = A·s)`; witness: short `s`.
+
+```text
+prover                                verifier
+y ← centered uniform, ‖y‖∞ < B_Y
+w = A·y                      ──w──▶   store w
+                             ◀──c──   c ← SampleInBall(τ)   (FS: H(key‖t‖w))
+z = y + c·s                  ──z──▶   A·z = w + c·t   and   ‖z‖∞ ≤ B_Z
+```
+
+- Non-interactive via Fiat–Shamir: `c = H(domain ‖ key ‖ t ‖ w)` (transcript with length-encoded labels).
+- Completeness via **rejection sampling**: the prover re-samples `y` until `‖z‖∞ ≤ B_Z` (≈ 63% per attempt on the Z1 instance).
+- **HVZK**: the rejection loop makes `z`'s distribution independent of `s` (honest-verifier ZK; full ZK via blinding is Z3).
+
+```rust
+let proof = fs_prove::<Z1Instance, K, L, 256>(&key, &s, &t, &randomness)?;
+assert!(fs_verify::<Z1Instance, K, L, 256>(&key, &t, &proof));
+```
+
+## Extraction (relaxed relation)
+
+Forking two accepting transcripts that share `w` but differ in the challenge yields the relaxed witness:
+
+```text
+s_ext = z1 − z2 ,   v = c1 − c2      satisfying      A·s_ext = v·t   exactly
+```
+
+The extractor test ([`extractor_recovers_relaxed_relation`](https://github.com/)) checks, on real protocol data: the exact relaxed relation, the honest-case refinement `s_ext = v·s`, and all slack bounds below.
+
+## Slack analysis (norm accounting)
+
+| Quantity | Bound | Source |
+| --- | --- | --- |
+| witness `‖s‖∞` | ≤ B_S = 4 | relation |
+| mask `‖y‖∞` | < B_Y = 2^19 | centered-uniform sampler |
+| challenge `‖c‖₁` | = TAU = 39 | sparse ±1 (SampleInBall) |
+| `‖c·s‖∞` | ≤ TAU·B_S = 156 | convolution spread |
+| response `‖z‖∞` | ≤ B_Z = B_Y − TAU·B_S = 524132 | prover rejection gate |
+| extracted `‖s_ext‖∞` | ≤ 2·B_Z = 1048264 | forking extractor |
+| multiplier `v = c1 − c2` | `‖v‖∞ ≤ 2`, `‖v‖₁ ≤ 2·TAU = 78` | forking extractor |
+
+Consequences:
+
+1. **Binding** reduces to MSIS `(q = 8380417, K = 8, L = 6, ‖·‖∞ ≤ 2·B_S = 8)`;
+2. **Soundness** reduces to MSIS with the extracted bounds `(‖s_ext‖∞ ≤ 2·B_Z, ‖v‖₁ ≤ 2·TAU)` plus the challenge-space entropy (`log₂ C(256,39) + 39 ≈ 205 bits`);
+3. The MSIS parameter sets must be **calibrated with the lattice-estimator** before quoting a NIST security level — the calibration script and archived runs belong to `scripts/params/` (open item).
+
+## What Z1 deliberately does *not* provide
+
+- Full (malicious-verifier) zero knowledge — HVZK only; blinding lands with Z3.
+- General statements — the protocol covers knowledge of a short pre-image of a *module vector statement* `t`; R1CS/CCS arithmetization arrives with Z2/Z3.
+- Short non-interactive security proofs under QROM — the FS composition follows the standard Kromgar-style argument; a formal QROM analysis is out of scope for Z1.

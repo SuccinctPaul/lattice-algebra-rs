@@ -1,53 +1,53 @@
 # Lattice Algebra RS
 
-> **定位：格密码生态的 arkworks / plonky3。**
-> 一套统一的代数基础库，向上同时支撑 **NIST PQC 方案**（ML-KEM / ML-DSA / Falcon）与 **lattice-based zkSNARK**（LaBRADOR / GreyHound / LatticeFold 风格）。
+> **Positioning: the arkworks / plonky3 of lattice-based cryptography.**
+> One unified algebra foundation from which **NIST PQC schemes** (ML-KEM / ML-DSA / Falcon) and **lattice-based zkSNARKs** (LaBRADOR / GreyHound / LatticeFold-style) derive directly.
 
-## 为什么需要一个统一基座
+## Why a unified foundation
 
-所有主流格密码方案几乎共享同一套数学结构：
+Nearly all mainstream lattice schemes share the same mathematical objects:
 
-- **标量环** `Z_q`（NTT 友好素数，如 `q = 8380417`、`q = 3329`、`q = 12289`）
-- **多项式商环** `R_q = Z_q[X]/(X^n + 1)`（negacyclic，`n = 256/512/1024`）
-- **模格** `R_q^{k×m}` 上的矩阵 / 向量运算
-- **NTT**（`q ≡ 1 (mod 2n)` 时的 O(n log n) 乘法）
-- **结构化采样**（均匀、CBD、稀疏挑战、离散高斯）
-- **Fiat–Shamir** 与 hash-to-polynomial
+- **Scalar ring** `Z_q` (NTT-friendly primes: 8380417, 3329, 12289, 2^32, …)
+- **Polynomial quotient ring** `R_q = Z_q[X]/(X^n + 1)` (negacyclic, n = 256/512/1024)
+- **Module lattices**: matrices and vectors over `R_q`
+- **NTT** for `O(n log n)` multiplication when `q ≡ 1 (mod 2n)`
+- **Structured sampling** (uniform, CBD, sparse challenges, discrete Gaussian)
+- **Fiat–Shamir** and hash-to-polynomial
 
-区别只在于**参数**与**上层协议组合方式**。过去为每个方案从 spec 手写一套实现，导致：
+Schemes differ only in **parameters** and **how these pieces are composed**. Implementing each scheme from its specification by hand leads to:
 
-1. 同样的环运算 / NTT / 采样被反复实现，无法互相复用与交叉验证；
-2. 参数硬编码，无法做通用性的研究实验（换 q、换 n、换采样分布）；
-3. PQC 方案与 ZK 协议之间没有共享的承诺、范数、分解等原语。
+1. ring arithmetic, NTTs and samplers re-implemented per scheme, impossible to cross-check;
+2. hard-coded parameters, blocking research experiments;
+3. no shared commitment/norm/decomposition primitives between PQC and ZK lines.
 
-本项目的目标是把这些公共结构抽成 **trait 驱动、const 泛型参数化** 的基础库，让每个具体方案变成"参数表 + 薄协议层"。
+This project factors the common structure into a **capability-trait-driven, const-generic** base library so that every scheme becomes "a parameter table + a thin protocol layer".
 
 ```mermaid
 flowchart TB
-    subgraph PQC["NIST PQC 方案层"]
+    subgraph PQC["NIST PQC schemes"]
         KEM["ML-KEM<br/>(FIPS 203, Kyber)"]
         DSA["ML-DSA<br/>(FIPS 204, Dilithium)"]
-        FNDSA["FN-DSA / Falcon<br/>(FIPS 206 草案)"]
+        FNDSA["FN-DSA / Falcon<br/>(FIPS 206 draft)"]
     end
-    subgraph ZK["Lattice ZK / SNARK 层"]
-        SIGMA["Lyubashevsky Σ-协议"]
+    subgraph ZK["Lattice ZK / SNARK line"]
+        SIGMA["Lyubashevsky Σ-protocols"]
         LAB["LaBRADOR"]
         GH["GreyHound"]
         LF["LatticeFold+"]
     end
-    subgraph PROTO["协议组件层 L5"]
-        COMMIT["Ajtai/SIS 承诺"]
-        IPA["内积论证 / sumcheck"]
-        FS["Fiat–Shamir / transcript"]
+    subgraph PROTO["Protocol components (L5)"]
+        COMMIT["Ajtai/SIS commitments"]
+        IPA["Inner-product args / sumcheck"]
+        FS["Fiat–Shamir / transcripts"]
     end
-    subgraph BASE["代数基座 L0–L4（本库）"]
-        RING["标量环 Zq + Barrett/Montgomery"]
-        NTT["NTT 引擎（twiddle 表）"]
-        POLY["多项式商环 Rq（negacyclic）"]
-        MOD["模格层 Rq^k / Rq^(k×l) + gadget 分解"]
-        SAMP["采样：uniform / CBD / Gaussian"]
+    subgraph BASE["Algebra foundation L0–L4 (this crate)"]
+        RING["Scalar ring Zq + Barrett/Montgomery"]
+        NTT["NTT engine (twiddles)"]
+        POLY["Polynomial ring Rq (negacyclic)"]
+        MOD["Module layer Rq^k / Rq^(k×l) + gadgets"]
+        SAMP["Samplers: uniform / CBD / Gaussian"]
         HASH["XOF / hash-to-Rq"]
-        SER["canonical 序列化"]
+        SER["Canonical serialization"]
     end
     KEM --> MOD
     DSA --> MOD
@@ -65,22 +65,27 @@ flowchart TB
     POLY --> RING
 ```
 
-## 设计即文档
+## Status
 
-本站采用"**设计文档 = 使用文档 = 参考文档**"三位一体的组织方式：
+- **L0–L2** (scalar rings with `Ring`/`Field`/`TwoAdicRing`/`CenteredRing`, NTT engine with explicit NTT-domain representation, polynomial rings, sparse challenges): **implemented**.
+- **L3** (module vectors/matrices with type-level dimensions, NTT-domain caching, ExpandA, rounding/hints): **implemented**.
+- **L4** (XOF, samplers, Fiat–Shamir transcripts, bit packing): **implemented**.
+- **L6 PQC**: **ML-DSA-44/65/87 implemented and tested**; ML-KEM and Falcon scheduled next.
+- **L5/L6 ZK**: designed, scheduled per the [roadmap](/roadmap).
 
-| 板块 | 内容 | 面向 |
+See the [module map](/design/module-map) for the authoritative inventory, and the [quickstart](/introduction/getting-started) for runnable examples.
+
+## Documentation as design
+
+This site follows a "design = usage = reference" organization:
+
+| Section | Contents | Audience |
 | --- | --- | --- |
-| [入门](/introduction/getting-started) | 现有 API 的可运行示例 | 使用者 |
-| [架构设计](/design/architecture) | L0–L6 分层设计、trait 能力体系、关键决策 | 使用者 + 贡献者 |
-| [上层方案](/schemes/pqc) | PQC 方案到基座 API 的映射表 | 实现者 |
-| [参考](/reference/trait-map) | trait 地图、参数集、生态对比 | 实现者 + 研究者 |
-| [路线图](/roadmap) | 里程碑、验收标准 | 所有人 |
+| [Getting started](/introduction/getting-started) | runnable examples of the current API | users |
+| [Design](/design/architecture) | layering, capability traits, key decisions | users + contributors |
+| [Module map](/design/module-map) | the complete module inventory and status | contributors |
+| [Schemes](/schemes/pqc) | PQC algorithms mapped to base APIs | implementers |
+| [Reference](/reference/trait-map) | trait map, parameter sets, ecosystem | implementers + researchers |
+| [Roadmap](/roadmap) | milestones and acceptance criteria | everyone |
 
-所有架构图使用 Mermaid 绘制，与代码仓库同步演进；每个设计页面中的代码示例标注了「当前 API」或「设计目标 API」两种状态。
-
-## 当前状态
-
-- **已有**：`Zq<MODULUS>` 标量环（Barrett 归约）、`UniPolynomial`、`PolyRing<R, N>`（negacyclic，NTT 自动分派）、通用矩阵 / 向量、均匀采样、serde 支持。
-- **设计完成、待实现**：模格层、XOF/采样、Fiat–Shamir、序列化、方案层。
-- 详见 [现状审计与差距分析](/introduction/audit) 与 [路线图](/roadmap)。
+All architecture diagrams are Mermaid and evolve together with the code.

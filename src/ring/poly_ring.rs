@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter::Sum;
-use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A polynomial ring R[x]/(x^n+1) where R is a base ring and n is the degree bound.
 ///
@@ -48,12 +48,12 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 /// let c = a * b;  // Uses NTT if available, else negacyclic reduction
 /// ```
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PolyRing<R: Ring, const DEGREE_BOUND: u64> {
+pub struct PolyRing<R: Ring, const DEGREE_BOUND: usize> {
     #[serde(bound(serialize = "R: Serialize", deserialize = "R: Deserialize<'de>"))]
     pub inner: UniPolynomial<R>,
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> PolyRing<R, DEGREE_BOUND> {
     /// Creates a new PolyRing element from a polynomial.
     ///
     /// The polynomial is automatically reduced modulo `x^n + 1`.
@@ -62,7 +62,7 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
     /// - O(n) for polynomials of degree < 2n (using negacyclic reduction)
     /// - O(n²) for higher degree polynomials (fallback to division)
     pub fn new(poly: UniPolynomial<R>) -> Self {
-        let n = DEGREE_BOUND as usize;
+        let n = DEGREE_BOUND;
 
         if n == 0 {
             // R[x]/(x^0 + 1) = R[x]/(2): the zero ring for invertible 2.
@@ -84,9 +84,9 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
         let mut reduced = vec![R::ZERO; n];
         for (i, &c) in coeffs.iter().enumerate() {
             if (i / n) % 2 == 0 {
-                reduced[i % n] = reduced[i % n] + c;
+                reduced[i % n] += c;
             } else {
-                reduced[i % n] = reduced[i % n] - c;
+                reduced[i % n] -= c;
             }
         }
 
@@ -121,10 +121,10 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
 
         for (i, &c) in coeffs.iter().enumerate() {
             if i < n {
-                result[i] = result[i] + c;
+                result[i] += c;
             } else {
                 // x^(n+k) ≡ -x^k, so subtract
-                result[i - n] = result[i - n] - c;
+                result[i - n] -= c;
             }
         }
 
@@ -159,7 +159,7 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
     /// 2. q ≡ 1 (mod 2n) where q is the modulus of R
     #[inline]
     pub fn is_ntt_available() -> bool {
-        let n = DEGREE_BOUND as usize;
+        let n = DEGREE_BOUND;
         n.is_power_of_two() && is_ntt_friendly::<R>(n)
     }
 
@@ -251,7 +251,7 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
             for (j, &bj) in b.iter().enumerate() {
                 let k = i + j;
                 if k < product.len() {
-                    product[k] = product[k] + ai * bj;
+                    product[k] += ai * bj;
                 }
             }
         }
@@ -261,14 +261,14 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolyRing<R, DEGREE_BOUND> {
     }
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> PolynomialQuotientRing for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> PolynomialQuotientRing for PolyRing<R, DEGREE_BOUND> {
     type PolyCoeff = R;
 
     /// Returns the modulus polynomial x^n + 1.
     ///
     /// This defines the anticyclic (negacyclic) lattice structure.
     fn modulus() -> UniPolynomial<Self::PolyCoeff> {
-        let n = DEGREE_BOUND as usize;
+        let n = DEGREE_BOUND;
         if n == 0 {
             vec![R::from(2)]
         } else {
@@ -287,13 +287,13 @@ impl<R: Ring, const DEGREE_BOUND: u64> PolynomialQuotientRing for PolyRing<R, DE
     }
 
     fn rand(rng: &mut impl RngCore, degree: usize) -> Self {
-        let n = DEGREE_BOUND as usize;
+        let n = DEGREE_BOUND;
         let actual_degree = degree.min(n.saturating_sub(1));
         Self::new(UniPolynomial::rand(rng, actual_degree))
     }
 
     fn rand_with_bound_degree(rng: &mut impl RngCore) -> Self {
-        let n = DEGREE_BOUND as usize;
+        let n = DEGREE_BOUND;
         if n == 0 {
             Self::rand(rng, 0)
         } else {
@@ -341,7 +341,7 @@ impl<T> Pipe for T {}
 // Arithmetic Operations
 // ============================================================================
 
-impl<R: Ring, const DEGREE_BOUND: u64> Add for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> Add for PolyRing<R, DEGREE_BOUND> {
     type Output = Self;
 
     /// Polynomial addition in the ring.
@@ -356,14 +356,14 @@ impl<R: Ring, const DEGREE_BOUND: u64> Add for PolyRing<R, DEGREE_BOUND> {
     }
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> AddAssign for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> AddAssign for PolyRing<R, DEGREE_BOUND> {
     #[inline]
     fn add_assign(&mut self, rhs: Self) {
         self.inner += rhs.inner;
     }
 }
 
-impl<'a, R: Ring, const DEGREE_BOUND: u64> Add<&'a Self> for PolyRing<R, DEGREE_BOUND> {
+impl<'a, R: Ring, const DEGREE_BOUND: usize> Add<&'a Self> for PolyRing<R, DEGREE_BOUND> {
     type Output = Self;
 
     #[inline]
@@ -374,7 +374,19 @@ impl<'a, R: Ring, const DEGREE_BOUND: u64> Add<&'a Self> for PolyRing<R, DEGREE_
     }
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> Sub for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> Neg for PolyRing<R, DEGREE_BOUND> {
+    type Output = Self;
+
+    /// Coefficient-wise negation (additive inverse in the ring).
+    #[inline]
+    fn neg(self) -> Self {
+        Self {
+            inner: self.inner.negate(),
+        }
+    }
+}
+
+impl<R: Ring, const DEGREE_BOUND: usize> Sub for PolyRing<R, DEGREE_BOUND> {
     type Output = Self;
 
     /// Polynomial subtraction in the ring.
@@ -386,7 +398,7 @@ impl<R: Ring, const DEGREE_BOUND: u64> Sub for PolyRing<R, DEGREE_BOUND> {
     }
 }
 
-impl<'a, R: Ring, const DEGREE_BOUND: u64> Sub<&'a Self> for PolyRing<R, DEGREE_BOUND> {
+impl<'a, R: Ring, const DEGREE_BOUND: usize> Sub<&'a Self> for PolyRing<R, DEGREE_BOUND> {
     type Output = Self;
 
     #[inline]
@@ -397,14 +409,14 @@ impl<'a, R: Ring, const DEGREE_BOUND: u64> Sub<&'a Self> for PolyRing<R, DEGREE_
     }
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> SubAssign for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> SubAssign for PolyRing<R, DEGREE_BOUND> {
     #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         self.inner -= rhs.inner;
     }
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> Mul for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> Mul for PolyRing<R, DEGREE_BOUND> {
     type Output = Self;
 
     /// Polynomial multiplication in Z_q[x]/(x^n + 1).
@@ -413,7 +425,7 @@ impl<R: Ring, const DEGREE_BOUND: u64> Mul for PolyRing<R, DEGREE_BOUND> {
     /// - O(n log n) if NTT is available
     /// - O(n²) otherwise
     fn mul(self, rhs: Self) -> Self::Output {
-        let n = DEGREE_BOUND as usize;
+        let n = DEGREE_BOUND;
 
         if n == 0 {
             return Self::new(self.inner * rhs.inner);
@@ -428,11 +440,11 @@ impl<R: Ring, const DEGREE_BOUND: u64> Mul for PolyRing<R, DEGREE_BOUND> {
     }
 }
 
-impl<'a, R: Ring, const DEGREE_BOUND: u64> Mul<&'a Self> for PolyRing<R, DEGREE_BOUND> {
+impl<'a, R: Ring, const DEGREE_BOUND: usize> Mul<&'a Self> for PolyRing<R, DEGREE_BOUND> {
     type Output = Self;
 
     fn mul(self, rhs: &'a Self) -> Self::Output {
-        let n = DEGREE_BOUND as usize;
+        let n = DEGREE_BOUND;
 
         if n == 0 {
             return Self::new(self.inner * &rhs.inner);
@@ -447,7 +459,7 @@ impl<'a, R: Ring, const DEGREE_BOUND: u64> Mul<&'a Self> for PolyRing<R, DEGREE_
     }
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> MulAssign for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> MulAssign for PolyRing<R, DEGREE_BOUND> {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.clone() * rhs;
     }
@@ -457,7 +469,7 @@ impl<R: Ring, const DEGREE_BOUND: u64> MulAssign for PolyRing<R, DEGREE_BOUND> {
 // Display and Other Traits
 // ============================================================================
 
-impl<R: Ring + Display, const DEGREE_BOUND: u64> Display for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring + Display, const DEGREE_BOUND: usize> Display for PolyRing<R, DEGREE_BOUND> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let coeffs = self.coefficients();
         if coeffs.is_empty() || (coeffs.len() == 1 && coeffs[0] == R::ZERO) {
@@ -495,7 +507,7 @@ impl<R: Ring + Display, const DEGREE_BOUND: u64> Display for PolyRing<R, DEGREE_
     }
 }
 
-impl<R: Ring + Display, const DEGREE_BOUND: u64> MatrixElement for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring + Display, const DEGREE_BOUND: usize> MatrixElement for PolyRing<R, DEGREE_BOUND> {
     fn zero() -> Self {
         Self {
             inner: UniPolynomial::zero(),
@@ -511,9 +523,14 @@ impl<R: Ring + Display, const DEGREE_BOUND: u64> MatrixElement for PolyRing<R, D
     }
 }
 
-impl<R: Ring, const DEGREE_BOUND: u64> Sum for PolyRing<R, DEGREE_BOUND> {
+impl<R: Ring, const DEGREE_BOUND: usize> Sum for PolyRing<R, DEGREE_BOUND> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Self::zero(), Self::add)
+        iter.fold(
+            Self {
+                inner: UniPolynomial::zero(),
+            },
+            Self::add,
+        )
     }
 }
 

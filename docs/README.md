@@ -1,39 +1,39 @@
-# 设计文档站（VOCs）
+# Design Docs (VOCs)
 
-本目录是基于 [Vocs](https://vocs.dev) 的项目文档站，承载**架构设计 / 使用文档 / 参考文档**三位一体的内容，原生支持 Mermaid 图表。
+This directory hosts the project documentation site built with [Vocs](https://vocs.dev): **design = usage = reference** documentation in English, with native Mermaid diagram support.
 
-## 本地开发
+## Local development
 
 ```bash
 cd docs
 npm install
-npm run dev        # 开发服务器（热更新）
-npm run build      # 产出 dist/（SSR + 静态资源）
-npm run preview    # 本地预览构建产物
+npm run dev        # dev server (hot reload)
+npm run build      # build dist/ (SSR + static assets)
+npm run preview    # preview the built site
 ```
 
-## 结构
+## Layout
 
 ```text
 docs/
-├── vocs.config.ts        # 站点配置（标题、侧边栏）
-├── src/pages/            # 所有页面（MDX），路径即 URL
-│   ├── index.mdx             # 愿景与定位
-│   ├── introduction/         # 快速开始、现状审计
-│   ├── design/               # L0–L4 分层设计（架构核心）
-│   ├── schemes/              # PQC 映射、lattice ZK/zkSNARK 路线
-│   ├── reference/            # trait 地图、参数集、生态对比
-│   └── roadmap.mdx           # 里程碑与验收标准
+├── vocs.config.ts        # site config (title, sidebar)
+├── src/pages/            # all pages (MDX); file path = URL
+│   ├── index.mdx             # vision & positioning
+│   ├── introduction/         # quickstart, audit & gap analysis
+│   ├── design/               # architecture, module map, L0–L4 designs
+│   ├── schemes/              # PQC mapping, lattice ZK / zkSNARK roadmap
+│   ├── reference/            # trait map, parameter sets, ecosystem
+│   └── roadmap.mdx           # milestones & acceptance criteria
 └── package.json
 ```
 
-## 写作约定
+## Writing conventions
 
-- 图表一律使用 ` ```mermaid ` 代码块（vocs 内置渲染）；
-- 代码示例标注「当前 API」或「设计目标 API」；「当前 API」示例须与 `src/` 真实签名一致；
-- 修改公共 trait / 新增模块时，**同一天内**更新对应设计页与 `reference/trait-map`（PR 模板勾选项）；
-- 参数变更必须同步 `reference/parameter-sets`，SNARK 参数需附 lattice-estimator 运行记录。
+- Diagrams use ` ```mermaid ` fenced blocks (rendered natively by vocs).
+- Code examples are labeled "current API" or "design target"; "current API" snippets must match real signatures in `src/` and are exercised by doc tests where possible.
+- Public traits/modules ship their doc-page updates in the same PR (`reference/trait-map` and `design/module-map` are PR-template checkboxes).
+- Parameter changes must update `reference/parameter-sets`; SNARK parameter changes additionally require an archived lattice-estimator run.
 
-## 版本注意
+## Version note
 
-`waku` 依赖被钉在 `1.0.0-beta.6`：vocs 2.8.5 的 `ScrollRestoration` 依赖 waku beta 的 `unstable_events` 路由 API，`1.0.0-rc.0` 起该 API 变更会导致白屏（症状：页面 SSR HTML 正常但客户端水合后 DOM 清空，报 `Cannot read properties of undefined (reading 'on')`）。升级 vocs 时同步复核该 pin。
+`waku` is pinned to `1.0.0-beta.6`: vocs 2.8.5's `ScrollRestoration` relies on the waku-beta `unstable_events` router API, which changed in `1.0.0-rc.0` (symptom: SSR HTML renders, then the client hydrates to a blank page with `Cannot read properties of undefined (reading 'on')`). Re-check this pin when upgrading vocs.

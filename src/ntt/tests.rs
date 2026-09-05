@@ -13,9 +13,6 @@ type Zq97 = Zq<97>;
 // q = 257: 257 = 1 + 256 = 1 + 2^8, supports N ≤ 128
 type Zq257 = Zq<257>;
 
-// q = 3329: Kyber's modulus, 3329 = 1 + 13*256 = 1 + 13*2^8, supports N = 256
-type Zq3329 = Zq<3329>;
-
 // q = 7681: NTT-friendly prime, 7681 = 1 + 15*512 = 1 + 15*2^9
 type Zq7681 = Zq<7681>;
 
@@ -28,7 +25,7 @@ mod basic_ntt_tests {
         let ntt = NttOperator::<Zq17, 8>::new();
 
         // Test with simple input
-        let original: Vec<Zq17> = (0..8).map(|i| Zq17::new(i)).collect();
+        let original: Vec<Zq17> = (0..8).map(Zq17::new).collect();
         let mut data = original.clone();
 
         ntt.forward(&mut data);
@@ -136,31 +133,17 @@ mod polynomial_multiplication_tests {
     use super::*;
     use crate::ring::Ring;
 
-    /// Naive polynomial multiplication for reference
-    fn naive_poly_mul<R: Ring>(a: &[R], b: &[R], n: usize) -> Vec<R> {
-        let mut c = vec![R::ZERO; n];
-        for i in 0..n {
-            for j in 0..n {
-                let k = i + j;
-                if k < n {
-                    c[k] = c[k] + a[i] * b[j];
-                }
-            }
-        }
-        c
-    }
-
     /// Naive negacyclic polynomial multiplication (mod x^n + 1)
     fn naive_negacyclic_mul<R: Ring>(a: &[R], b: &[R], n: usize) -> Vec<R> {
         let mut c = vec![R::ZERO; n];
-        for i in 0..n {
-            for j in 0..n {
+        for (i, &ai) in a.iter().enumerate() {
+            for (j, &bj) in b.iter().enumerate() {
                 let k = i + j;
                 if k < n {
-                    c[k] = c[k] + a[i] * b[j];
+                    c[k] += ai * bj;
                 } else {
                     // x^n = -1, so x^k = -x^(k-n) for k >= n
-                    c[k - n] = c[k - n] - a[i] * b[j];
+                    c[k - n] -= ai * bj;
                 }
             }
         }
@@ -210,11 +193,20 @@ mod polynomial_multiplication_tests {
             let b: Vec<Zq17> = (0..8).map(|_| Zq17::rand(&mut rng)).collect();
 
             let c_ntt = ntt.multiply(&a, &b);
-            let c_naive = naive_poly_mul(&a, &b, 8);
 
-            // Note: NTT multiply is cyclic, so we need to check modulo
-            // For now, just verify structure
-            assert_eq!(c_ntt.len(), 8);
+            // NTT multiply is cyclic convolution mod (x^8 - 1): build the full
+            // schoolbook product, then fold high-order terms back positively.
+            let mut full = [Zq17::ZERO; 15];
+            for (i, &ai) in a.iter().enumerate() {
+                for (j, &bj) in b.iter().enumerate() {
+                    full[i + j] += ai * bj;
+                }
+            }
+            let mut expected = vec![Zq17::ZERO; 8];
+            for (i, &c) in full.iter().enumerate() {
+                expected[i % 8] += c;
+            }
+            assert_eq!(c_ntt, expected);
         }
     }
 

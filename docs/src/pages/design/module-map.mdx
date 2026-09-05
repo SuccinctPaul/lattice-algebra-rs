@@ -1,0 +1,147 @@
+# Module Map
+
+The authoritative inventory of every module a lattice-cryptography base
+library needs, what each one owns, and its implementation status. This is the
+contract between the design docs and `src/`: new code lands in the module that
+owns it, and this page is updated the same day.
+
+```mermaid
+flowchart TB
+    subgraph L6["L6 · Schemes"]
+        MLDSA["mldsa (ML-DSA-44/65/87)"]
+        MLKEM["mlkem (planned)"]
+        FALCON["falcon (planned)"]
+        ZK["protocols: zkSNARK line (planned)"]
+    end
+    subgraph L5["L5 · Protocol components"]
+        COMMIT["commit: Ajtai/SIS"]
+        SIGMA["sigma: Lyubashevsky"]
+        IPA["ipa / sumcheck"]
+        FOLD["fold: LatticeFold+"]
+    end
+    subgraph L4["L4 · Crypto infrastructure"]
+        XOF["crypto::xof"]
+        SAMP["crypto::sampling"]
+        TR["crypto::transcript"]
+        BITS["crypto::bits"]
+        SER["crypto::serialize"]
+    end
+    subgraph L3["L3 · Module lattices"]
+        MOD["module"]
+    end
+    subgraph L2["L2 · Polynomials"]
+        POLY["poly: UniPolynomial / PolyRing / SparsePolynomial"]
+    end
+    subgraph L1["L1 · NTT engine"]
+        NTT["ntt: NttOperator / NttDomain"]
+    end
+    subgraph L0["L0 · Scalar rings"]
+        RING["ring: Zq + Ring/Field/TwoAdicRing/CenteredRing"]
+        NT["ring::number_theory"]
+    end
+    MLDSA --> MOD
+    MLDSA --> SAMP
+    MLDSA --> TR
+    MLDSA --> BITS
+    ZK --> COMMIT
+    ZK --> IPA
+    COMMIT --> MOD
+    IPA --> MOD
+    SIGMA --> COMMIT
+    MOD --> POLY
+    MOD --> SAMP
+    POLY --> NTT
+    SAMP --> XOF
+    TR --> XOF
+    NTT --> RING
+    NTT --> NT
+```
+
+## Status legend
+
+- ✅ implemented and tested
+- 🚧 in progress (this milestone)
+- 📋 designed, implementation scheduled (see [roadmap](/roadmap))
+
+## L0 — Scalar rings
+
+| Module | Owns | Status |
+| --- | --- | --- |
+| `ring` | `Zq<q>` const-generic ring; slim `Ring`; capability traits `Field`, `TwoAdicRing`, `CenteredRing`; compile-time `IS_PRIME` | ✅ |
+| `ring::number_theory` | const Miller–Rabin, primitive roots, prime factorization, modexp | ✅ |
+| `ring::reduction` | modular arithmetic strategies (native 128-bit modulo today; Montgomery/lazy planned) | ✅ |
+| `ring::sample` | rand-0.9 `UniformZq` sampler (debug/generic paths; scheme sampling lives in `crypto::sampling`) | ✅ |
+
+## L1 — NTT engine
+
+| Module | Owns | Status |
+| --- | --- | --- |
+| `ntt` | `NttOperator` / `NttOperatorOptimized` (CT-DIT, GS-DIF, negacyclic twist), precomputed twiddles, `is_ntt_friendly` | ✅ |
+| `ntt` (M1) | `NttDomain<R, N>` explicit NTT-domain representation with `to_ntt` / `from_ntt` on `PolyRing` | ✅ |
+
+Legacy runtime-parameter NTT (`ntt.rs`, `traits.rs`) was **deleted** in M0; the
+const-generic engine is the only path.
+
+## L2 — Polynomials
+
+| Module | Owns | Status |
+| --- | --- | --- |
+| `poly::UniPolynomial` | generic polynomials: division (Field), evaluation, derivative, FFT fallback multiplication | ✅ |
+| `poly::PolyRing` | `Zq[X]/(X^N + 1)`, automatic NTT/schoolbook dispatch, ring semantics | ✅ |
+| `poly::SparsePolynomial` | τ-sparse ±1 challenges (SampleInBall output) with fast `mul_dense` | ✅ |
+
+## L3 — Module lattices
+
+| Module | Owns | Status |
+| --- | --- | --- |
+| `module` | `ModuleVector<R, K, N>`, `ModuleMatrix<R, K, L, N>` with dimensions in types; NTT-domain variants (`ModuleMatrixNtt`) so `Â` can stay transformed; `expand_from_seed` (ExpandA); norms; rounding: `power2round`, `decompose`, `make_hint`, `use_hint` (shared by ML-DSA and ZK shortness proofs) | ✅ |
+
+## L4 — Cryptographic infrastructure
+
+| Module | Owns | Status |
+| --- | --- | --- |
+| `crypto::xof` | `Xof` trait + SHAKE128/256; domain-separated, length-encoded absorb; incremental squeeze | ✅ |
+| `crypto::sampling` | scheme samplers, XOF-driven and deterministic: uniform over `R_q` (masked rejection, coefficient and NTT domain), `RejBounded(η)` centered uniform (reference-exact for η ∈ {2,4}), `CBD(η)`, `SampleInBall(τ)`; discrete Gaussian deferred to the Falcon milestone | ✅ (Gaussian 📋) |
+| `crypto::transcript` | Fiat–Shamir transcript (`absorb`/`challenge_bytes`), domain-label discipline | ✅ |
+| `crypto::bits` | bit-level packing/unpacking of coefficient vectors (12/13/18/20-bit), LE bit order per FIPS conventions | ✅ |
+| `crypto::serialize` | canonical binary serialization + roundtrip/fuzz tests (serde stays test-only) | 📋 |
+
+## L5 — Protocol components (ZK line)
+
+| Module | Owns | Status |
+| --- | --- | --- |
+| `protocols::commitment` | Ajtai/SIS commitments `C = A·s` with short `s` (`LatticeCommitment` trait, `ExpandA` key) | ✅ (Z1) |
+| `protocols::sigma` | Lyubashevsky-style approximate-knowledge Σ-protocol, FS-NIZK, forking extractor, slack analysis | ✅ (Z1) |
+| `protocols::z2_ring` | `Z_{2^32}[X]/(X^64+1)` instance: raw-coefficient expansion, power-of-two fast path, toy-R1CS generator (squaring gates, ring Newton inverse) | ✅ (Z2) |
+| `protocols::z2` | LaBRADOR-style batched opening: binding link + masked constraint consistency (`t*`, `q*`), ≤ 10 KB proofs for 10^4 ring constraints; gadget split + approximate linear check with provable slack | ✅ (Z2) |
+| `protocols::sumcheck` | multilinear ring-sumcheck (`prove`/`verify` over any commutative ring, transcript-bound challenges) | ✅ (Z3) |
+| `protocols::ipa` | gadget-IPA: inner-product arguments on Ajtai-committed vectors + approximate opening with provable slack | ✅ (Z3) |
+| `protocols::fold` | LatticeFold+/IVC folding: relaxed R1CS instances `(z, E, c_z, c_E)`, homomorphic fold `z' = z1 + rz2`, `E' = E1 + r²E2 + rT` (cross terms), folding verifier. Transparent (not ZK); full compact IVC deferred | ✅ (Z4) |
+
+## L6 — Schemes
+
+| Module | Owns | Status |
+| --- | --- | --- |
+| `mldsa` | ML-DSA-44/65/87 (FIPS 204): parameter ZSTs, `SigningKey`/`VerifyingKey`, deterministic & hedged signing, hint machinery, FIPS encodings; per-set API modules (`mldsa::mldsa_65::…`) | ✅ (KAT alignment 📋) |
+| `mlkem` | ML-KEM-512/768/1024 (FIPS 203), incl. the layered NTT instance | 📋 (M4) |
+| `falcon` | Falcon-512/1024 (FIPS 206 draft), float FFT sampler sub-module | 📋 (M5) |
+
+## Cross-cutting
+
+| Concern | Owner | Status |
+| --- | --- | --- |
+| Ring-axiom property tests (≥ 8 moduli) | `ring::axiom_tests` | ✅ (15 moduli) |
+| KAT framework (FIPS vectors, ACVP) | `tests/kats/` + per-scheme tests | 🚧 (M3) |
+| Benchmarks (criterion) | `benches/` | 📋 |
+| Documentation site (this site) | `docs/` | ✅ |
+
+## Rules of thumb
+
+1. **New capability → new trait in the owning layer**, not an extension of a
+   layer-agnostic trait.
+2. **Dependencies point downward only**; the allowed edge set is drawn in the
+   diagram above.
+3. **Determinism**: scheme-facing APIs take seeds/labels (XOF-driven), not bare
+   RNGs; randomness is injected once at the top.
+4. **Every module ships with its tests in the same PR**; scheme modules also
+   ship KATs or documented cross-checks.

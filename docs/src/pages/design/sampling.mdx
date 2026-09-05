@@ -1,87 +1,51 @@
-# L4 · 采样层
+# L4 · Sampling
 
-格密码的安全性 = **问题难度 × 参数 × 采样分布的正确性**。ML-DSA 的 MSIS 归约要求挑战与噪声的分布精确匹配规范；Falcon 的高斯采样直接决定签名的泄漏面。因此采样层是独立的 L4 子系统：**接口吃 XOF（确定性），分布是类型**。
+Lattice security = problem hardness × parameters × **sampling correctness**. MSIS-based soundness requires challenges and noise to match the specified distributions exactly, so the sampling layer is a standalone subsystem: **the interface takes XOF streams (deterministic); distributions are functions with exact semantics.**
 
-## 采样器家族
+## Sampler family
 
 ```mermaid
 flowchart TD
-    S["Distribution trait（分布 = 类型）"]
-    S --> U["Uniform&lt;q&gt;<br/>均匀 [0,q)"]
-    S --> UB["RejBounded&lt;η1/η2&gt;<br/>有界均匀拒绝采样<br/>(ML-DSA s/y, Falcon mask)"]
-    S --> REJ["RejNTT<br/>NTT 域高精度拒绝采样<br/>(ML-DSA ExpandA)"]
-    S --> CBD["CBD&lt;η&gt;<br/>中心二项分布<br/>(ML-KEM 噪声)"]
-    S --> BALL["SampleInBall&lt;τ&gt;<br/>τ-稀疏 ±1 挑战<br/>(ML-DSA c)"]
-    S --> G["DiscreteGaussian&lt;σ&gt;<br/>离散高斯<br/>(Falcon, 部分旧方案)"]
-    U --> DONE["已实现：UniformZq（rand 0.9 UniformSampler）"]
-    CBD --> TODO["待实现"]
-    BALL --> TODO
-    REJ --> TODO
-    UB --> TODO
-    G --> TODO
+    S["Samplers (crypto::sampling), all XOF-driven"]
+    S --> U["sample_uniform_coeff / coeffs<br/>full-width uniform via masked rejection<br/>(generalized CoeffFromThreeBytes)"]
+    S --> RN["sample_uniform_ntt_coeffs<br/>same stream shape, NTT-domain intent (RejNTTPoly)"]
+    S --> RB["sample_rej_bounded(η)<br/>centered uniform on [−η, η]<br/>(FIPS 204 RejBounded; reference nibble mapping)"]
+    S --> C["sample_cbd(η)<br/>centered binomial on [−η, η]<br/>(FIPS 203 noise)"]
+    S --> IB["sample_in_ball_signs(τ, n)<br/>τ-sparse ±1 challenge<br/>(FIPS 204 SampleInBall)"]
+    S --> G["DiscreteGaussian(σ)<br/>CDT + fast Fourier sampling<br/>(planned — Falcon milestone)"]
 ```
 
-## 接口设计
+## Design
 
 ```rust
-/// XOF trait（本层配套，见哈希页）
-pub trait Xof {
-    fn absorb(&mut self, data: &[u8]);
-    fn squeeze(&mut self, out: &mut [u8]);
-    /// 常用语法糖：块式挤出（SHAKE 一次 r=136/168 字节块）
-    fn squeeze_block<const R: usize>(&mut self) -> [u8; R];
-}
+/// Bit reader over an XOF stream (LSB-first within each byte).
+pub struct BitStream<'a, X: Xof> { /* ... */ }
 
-/// 分布 trait：所有采样器统一入口
-pub trait Distribution {
-    type Output;
-    /// 从 XOF 流采样（确定性、域分隔）
-    fn sample(&self, stream: &mut impl XofStream) -> Self::Output;
-}
+pub fn sample_uniform_coeff<R: Ring>(stream: &mut BitStream<'_, impl Xof>) -> R;
+pub fn sample_rej_bounded<R: Ring>(stream: &mut BitStream<'_, impl Xof>, eta: u32) -> i64;
+pub fn sample_cbd<R: Ring>(stream: &mut BitStream<'_, impl Xof>, eta: u32) -> i64;
+pub fn sample_in_ball_signs(stream: &mut BitStream<'_, impl Xof>, tau: u32, n: usize) -> Vec<i8>;
 ```
 
-设计要点：
+1. **Streams, not RNGs.** Callers absorb seeds and labels into an `Xof` first; samplers consume the stream. Determinism, KATs and reproducible signing follow.
+2. **Rejection is an internal detail**; the external semantics is the exact distribution. Every implementation ships acceptance-range and statistical tests.
+3. **Bit conventions match the specifications**: bits LSB-first within bytes, bytes in stream order.
+4. **Parameter errors are compile-time** where possible (`CBD::<3>`-style generics at the module layer); bounds are checked at runtime with clear panics.
 
-1. **XofStream 抽象**：分布实现消费的是"字节流"（带域分隔前缀），而不是完整 XOF——同一分布既能从 SHAKE 流采样，也能从测试用伪随机流采样。
-2. **拒绝采样是分布的内部细节**，但对外的语义是"精确分布"；每个实现必须带**接受率测试**（统计检验）。
-3. **方案参数经泛型注入**：`CBD::<3>`、`SampleInBall::<39>`——参数错误在编译期暴露，而不是运行时。
+## Implementation notes
 
-## 各分布实现要点
+- `sample_uniform_coeff` generalizes FIPS 204 `CoeffFromThreeBytes`: `bitlen(q−1)` bits assembled little-endian, masked, reject `≥ q`. Acceptance ≈ 0.9998 for `q = 8380417`.
+- `sample_rej_bounded` follows the reference implementation bit-for-bit for `η ∈ {2, 4}` (nibble sampling: η=2 accepts `t < 15` and maps `2 − (t mod 5)` via the multiply-shift trick; η=4 accepts `t < 9` and maps `4 − t`). Other η use a generic uniform-on-`[−η, η]` fallback.
+- `sample_in_ball_signs` consumes 8 sign bytes (64 sign bits, used in order) plus one rejection byte per filled position — exactly FIPS 204 `SampleInBall`.
+- The Gaussian sampler (CDT base + fast Fourier sampling) is a Falcon-milestone item and will be feature-gated with its non-CT status documented.
 
-### CBD(η) — 中心二项分布
+## Testing
 
-`Σ(2b_i − 1)`（每系数 2η 随机位）。用于 ML-KEM 全部噪声与 ML-DSA 的 `s1, s2`（η = 2/4）。实现：XOF 块内位重用 + 位掩码，无分支。范数恒 ≤ η，`is_bounded` 可特化为常量比较。
-
-### SampleInBall(τ) — 稀疏挑战
-
-τ 个非零位置、全 ±1（FIPS 204：先 RejBounded 采样位置，再用符号位）。实现用拒绝式 Fisher–Yates；**必须验证**输出恰有 τ 个非零且位置分布均匀（KAT 直接对拍 FIPS 204 附录）。
-
-### RejBounded(η1) — 有界均匀
-
-`[−η1+1, η1]` 中心化（ML-DSA 的 y、s）。从字节流取 η1+1 位，中心化映射，拒绝超界。
-
-### RejNTT / 高精度均匀 — ExpandA
-
-NTT 域系数需要覆盖 `q` 的接近满区间（ML-DSA：3 字节采样、丢弃高 4 位、拒绝 ≥ q）。这是 `ModuleMatrix::expand_from_seed` 的底层（见 L3）。
-
-### DiscreteGaussian(σ) — Falcon 核心
-
-FIPS 206 草案 Falcon 路径：
-
-- **base sampler**：CDT（累积分布表）+ 高精度比较，σ₀ 固定（约 1.17·… 基准值），常时时间表扫描（无早退）；
-- **fast Fourier sampling**：利用 falcon 环结构的 Gram 矩阵 LU 分解（由 `sk` 计算），把多维高斯化为 base 采样的组合，需要浮点 FFT——独立子模块 `gaussian::fft_sampler`，**显式标注非常时时间**（与规范参考实现一致的权衡，掩码化是后续研究项）；
-- 精度策略：`f64` 对齐参考实现；提供 `gaussian_fidelity` 测试（Kolmogorov–Smirnov 检验 + 与参考 CDT 对拍）。
-
-> `ring/sample.rs` 中已声明的 `GaussianSampler` trait 将迁移至此并落地。
-
-## 安全与测试
-
-| 测试 | 目的 |
+| Test | Purpose |
 | --- | --- |
-| KAT 对拍（FIPS 203/204 附录向量） | 分布精确性 |
-| 卡方 / KS 统计检验 | 大样本分布形状 |
-| 接受率（rejection rate）上界断言 | 防拒绝循环偏置 / DoS |
-| 域分隔一致性（不同 label 输出不同） | 防 label 冲突 |
-| `cargo fuzz`（XOF 流字节翻转 → 不 panic、分布不漂移） | 鲁棒性 |
-
-采样输出默认携带 `Debug` 禁用（密钥材料不应打印）：输出类型实现 `Debug` 时输出 `[REDACTED]`。
+| determinism (same stream → same output) | XOF-driven semantics |
+| range containment + both-tails presence | distribution sanity |
+| full-coverage sweep for small `q` | uniformity |
+| mean test for CBD (`|mean| < 0.2` at n = 4000) | centered binomial shape |
+| exact `τ` non-zeros for SampleInBall | challenge structure |
+| termination under rejection (Dilithium modulus, NTT-domain sampler) | no livelock |

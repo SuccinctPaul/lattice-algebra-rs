@@ -126,9 +126,6 @@ mod tests {
     // Test with a small prime: q = 17
     type Zq17 = Zq<17>;
 
-    // Test with q = 97 (97 = 1 + 96 = 1 + 32*3, supports N=32)
-    type Zq97 = Zq<97>;
-
     #[test]
     fn test_is_ntt_friendly() {
         // q = 3329 = 1 + 3328 = 1 + 13 * 256 = 1 + 13 * 2^8

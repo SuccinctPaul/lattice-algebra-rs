@@ -4,7 +4,7 @@
 //! is used with — small test primes, NIST PQC moduli and SNARK-friendly
 //! power-of-two moduli alike (≥ 8 instances; currently 15).
 
-use crate::ring::traits::{CenteredRing, Field, TwoAdicRing};
+use crate::ring::traits::{CenteredRing, TwoAdicRing};
 use crate::ring::zq::Zq;
 use crate::ring::Ring;
 use rand::rngs::StdRng;
@@ -48,7 +48,13 @@ fn check_triples<R: Ring>(mut f: impl FnMut(R, R, R) -> bool) {
     for &a in &elems {
         for &b in &elems {
             for &c in &elems {
-                assert!(f(a, b, c), "axiom violated for a={a}, b={b}, c={c}");
+                assert!(
+                    f(a, b, c),
+                    "axiom violated for a={}, b={}, c={}",
+                    a.to_u128(),
+                    b.to_u128(),
+                    c.to_u128()
+                );
             }
         }
     }
@@ -60,7 +66,12 @@ fn check_pairs<R: Ring>(mut f: impl FnMut(R, R) -> bool) {
     elems.push(R::rand(&mut rng));
     for &a in &elems {
         for &b in &elems {
-            assert!(f(a, b), "axiom violated for a={a}, b={b}");
+            assert!(
+                f(a, b),
+                "axiom violated for a={}, b={}",
+                a.to_u128(),
+                b.to_u128()
+            );
         }
     }
 }
@@ -160,7 +171,8 @@ macro_rules! ring_axiom_tests {
                     for a in representatives::<$ty>() {
                         let c = a.centered();
                         // centered stays in (-q/2, q/2]
-                        assert!(c > -q / 2 && c <= (q + 1) / 2, "centered {c} out of range for q={q}");
+                        // exactly (-q/2, q/2], without integer-division truncation
+                        assert!(2 * c > -q && 2 * c <= q, "centered {c} out of range for q={q}");
                         // centered(a) ≡ a (mod q)
                         assert_eq!((c as i128).rem_euclid(q as i128) as u64, a.to_u128() as u64 % <$ty as Ring>::MODULUS);
                         // |c| == abs_infinity
