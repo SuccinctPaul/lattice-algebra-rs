@@ -1,0 +1,80 @@
+# Performance
+
+Criterion benchmarks live in each crate (`cargo bench --workspace`). This
+page quotes representative numbers with the full methodology so you can
+reproduce or challenge them — and states plainly what these numbers are
+*not*.
+
+## Methodology
+
+- **Machine**: Apple M4 Pro (2026-09), `rustc 1.93.0`
+- **Harness**: criterion 0.5, release profile (`cargo bench`), 100 samples
+- **Scope**: `crates/*/benches/` — every number on this page is produced by
+  a benchmark checked into the repository, not a hand-tuned micro-kernel
+- Reproduce with:
+
+```sh
+cargo bench --workspace                     # everything
+cargo bench -p lattice-pqc --bench mldsa    # one suite
+```
+
+## ML-DSA (FIPS 204) — `lattice-pqc`
+
+| Operation | ML-DSA-44 | ML-DSA-65 | ML-DSA-87 |
+| --- | --- | --- | --- |
+| KeyGen | 110 µs | 186 µs | 282 µs |
+| Sign (deterministic) | 334 µs | 1.06 ms | 736 µs |
+| Sign (randomized) | 528 µs | 507 µs | 726 µs |
+| Verify | 191 µs | 298 µs | 499 µs |
+
+Sizes are fixed by the specification (sig 2420 / 3309 / 4627 B) and asserted
+by tests, not benchmarks.
+
+## Algebra foundation — `lattice-algebra`
+
+| Benchmark | Time | Note |
+| --- | --- | --- |
+| `R_q` poly mul, n=256, NTT path | **16.3 µs** | production path |
+| `R_q` poly mul, n=256, schoolbook | 111 µs | reference, O(n²) |
+| Module matvec 4×5, **NTT domain** | **10.5 µs** | `Â` resident in NTT domain |
+| Module matvec 4×5, coefficient domain | 333 µs | transform-per-use anti-pattern |
+| RejBounded(η=2) ×256 | 1.25 µs | FIPS 204 secret/mask shape |
+| CBD(η=2) ×256 | 0.67 µs | FIPS 203 noise shape |
+| DiscreteGaussian(σ=3.2) ×256 | 5.5 µs | CDT build ≈ 0.5 µs, amortized |
+| SHAKE128 absorb(32 B) + squeeze(1 KB) | 1.16 µs | streaming XOF |
+| SHAKE256 → 32 B (one-shot `h256`) | 0.31 µs | |
+
+The two matvec rows are the architecture argument in numbers: **the same
+matrix-vector product differs by ~32× between the two representations**.
+Because `ExpandA` samples `Â` directly in the NTT domain (FIPS 204), the
+production path never pays the coefficient-domain price — this is what
+"representation freedom" means in practice, and it is the same lever the
+SNARK line pulls with double-ring embeddings.
+
+## ZK protocol stack — `lattice-zk`
+
+| Benchmark | Time | Note |
+| --- | --- | --- |
+| Z1 Σ-protocol FS-prove (K=4, L=3, n=256) | 259 µs | rejection-sampled response |
+| Z1 FS-verify | 115 µs | |
+| Z2 batched opening, prove (512 ring gates) | 12.9 ms | toy R1CS |
+| Z2 batched opening, verify | 6.5 ms | |
+| Z3 sumcheck prove (2⁸ table) | 2.9 µs | |
+| Z3 sumcheck verify (2⁸ table) | 18 ns | round-consistency only |
+| Z4 fold (64 ring gates) | 1.73 ms | Nova-style cross-term absorption |
+| Z4 verify_folded | 1.81 ms | |
+
+## What these numbers are not
+
+- **Not constant-time.** See [security status](/introduction/security-status):
+  variable-time arithmetic everywhere. CT hardening is a declared future
+  milestone and will change these numbers.
+- **Not SIMD/assembly-tuned.** Portable safe Rust; the NTT uses precomputed
+  const-generic twiddle tables, no Shoup lazy reduction or AVX/NEON kernels
+  yet (both are on the [roadmap](/roadmap)).
+- **Not apples-to-apples with liboqs/PQClean.** Those are production C
+  implementations with years of platform tuning; comparing against them
+  today would be a category error. The honest current claim is the
+  *relative* row pairs above (NTT vs schoolbook, NTT-domain vs
+  coefficient-domain), which demonstrate the architecture, plus absolute
+  baselines to measure future optimization against.

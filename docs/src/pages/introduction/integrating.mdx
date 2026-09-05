@@ -1,0 +1,103 @@
+# Integration Guide
+
+What an integrator needs to know before wiring these crates into a project:
+dependency footprint, feature flags, stability policy, the API conventions
+every crate follows, and the pitfalls that would otherwise cost you an
+afternoon. Everything here is verified by the workspace's own tests.
+
+## Dependency footprint
+
+| Crate | Gives you | Depends on |
+| --- | --- | --- |
+| `lattice-algebra` | rings, NTT, polynomials, module lattices, XOF/sampling | `rand`, `rustfft`, `serde`, `sha3`, optional `rayon` |
+| `lattice-pqc` | ML-DSA (FIPS 204) | `lattice-algebra` only |
+| `lattice-zk` | Ajtai commitments, Σ-protocols, batched opening, sumcheck, IPA, folding | `lattice-algebra` only |
+| `lattice-algebra-rs` | facade: all of the above | the three crates |
+
+Scheme crates add **no** crypto dependencies of their own — all hashing and
+arithmetic flows through the foundation, so there is exactly one NTT and one
+SHAKE in your dependency graph.
+
+## Feature flags
+
+| Feature | Crate | Effect |
+| --- | --- | --- |
+| `parallel` | `lattice-algebra` | opt-in `rayon` for bulk matrix operations |
+| default | all | empty — you get exactly the code you use |
+
+```sh
+cargo check -p lattice-algebra --features parallel   # opt in
+cargo check -p lattice-algebra --no-default-features # opt out
+```
+
+## MSRV & stability policy
+
+- **MSRV**: declared `1.70.0` across the workspace (`rust-version` in every
+  manifest; e.g. `div_ceil` is avoided for a hand-rolled `div_ceil8`).
+- **Versioning**: pre-1.0 — minor bumps may carry breaking changes, but the
+  changelog (git-cliff, conventional commits) records every one.
+- **Compat promise**: the `lattice-algebra-rs` facade keeps every
+  historical module path (`lattice_algebra_rs::ring::…`,
+  `::mldsa::…`, `::protocols::…`) — code written against the original
+  single crate keeps compiling across the workspace split.
+- **`unsafe`**: the workspace contains zero `unsafe` blocks.
+- **`no_std`**: not yet (`sha3` and allocator use); tracked on the roadmap.
+
+## API conventions (the same in every crate)
+
+Learn these five once, and every module behaves the way you expect:
+
+1. **Determinism is an interface, not a configuration.** Anything that
+   derives randomness takes a seed and a domain label — `&[u8; 32]` plus a
+   label — and never an RNG handle. Same inputs ⇒ same outputs, always.
+2. **Typed failure contract.** Decoders return `Option` (`None` on bad
+   length); provers return `Result` with typed errors
+   (`ProofError::WitnessTooLong`, `RejectionLimit`); verifiers return
+   `bool`. Panics are reserved for violated *documented preconditions*
+   (`assert!` on sigma/tau ranges, table lengths).
+3. **Capability traits gate methods.** `centered()` needs
+   `CenteredRing` in scope, `to_ntt()` needs `TwoAdicRing`,
+   `inverse()` needs `Field`. If a method "doesn't exist", import
+   `algebra::ring::traits::*` first — this is the number-one integration
+   stumble, and it is rustc's trait-scope rules, not missing API.
+4. **Const-generic dimensions.** `PolyRing<R, N>`, `ModuleVector<R, K, N>`,
+   `ModuleMatrix<R, K, L, N>` carry dimensions in types. Scheme crates bind
+   them per parameter set (`MlDsa65` ⇒ K=6, L=5) behind zero-sized marker
+   types.
+5. **Streams advance.** A `Transcript` or `BitStream` consumes its input —
+   two `challenge_bytes` calls return different values by design. Fork by
+   re-creating the transcript from the same seed, not by rewinding.
+
+## Pitfalls we wrote down so you don't hit them
+
+- **`ExpandA` values *are* the NTT domain.**
+  `ModuleMatrixNtt::expand_from_seed` stores the sampled values directly as
+  the NTT-domain representation (that is what FIPS 204 means by sampling Â
+  in the NTT domain). Do not reinterpret them as coefficients; if you need
+  the coefficient-domain matrix, `PolyRing::from_ntt` each entry. The NTT
+  homomorphism then guarantees
+  `A·s == from_ntt(Â·ntt(s))` — tested in `module_lattices.rs`.
+- **Witness bounds are enforced with typed errors.** The Z1 prover rejects
+  `‖s‖∞ > B_S` via `ProofError::WitnessTooLong` — build witnesses with
+  centered coefficients inside the declared bound, or you get an `Err`, not
+  a wrong proof.
+- **`pkDecode` validates length only** — that is FIPS 204 semantics, not an
+  oversight: the encoding carries no redundancy, so a corrupted body decodes
+  to a *different* key which then fails verification. Wrong lengths return
+  `None`. (Both behaviors are pinned by `scheme_contract.rs`.)
+- **Quickstart snippets are load-bearing.** The code on the
+  [Quickstart](/introduction/getting-started) page is compiled and executed
+  in CI by `doc_snippet_check.rs` tests. If your PR breaks them, the docs
+  page is part of your change.
+
+## Reproduce everything
+
+```sh
+make gate            # fmt + clippy -D warnings + full test suite
+make bench           # criterion, all crates
+make docs            # this site
+```
+
+Every number quoted on the [Performance](/reference/performance) page and
+every claim in the [Security status](/introduction/security-status) page
+maps to an artifact these commands produce.

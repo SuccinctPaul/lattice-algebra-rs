@@ -1,7 +1,7 @@
 # Lattice Algebra RS
 
 > **Positioning: the arkworks / plonky3 of lattice-based cryptography.**
-> One unified algebra foundation from which **NIST PQC schemes** (ML-KEM / ML-DSA / Falcon) and **lattice-based zkSNARKs** (LaBRADOR / GreyHound / LatticeFold-style) derive directly.
+> One unified algebra foundation from which **NIST PQC schemes** (ML-DSA today; ML-KEM, FN-DSA next) and **lattice-based zkSNARKs** (LaBRADOR / GreyHound / LatticeFold-style) derive directly — shipped as a three-crate workspace: [`algebra`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/algebra) · [`pqc`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/pqc) · [`zk`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/zk).
 
 ## Why a unified foundation
 
@@ -67,11 +67,22 @@ flowchart TB
 
 ## Status
 
-- **L0–L2** (scalar rings with `Ring`/`Field`/`TwoAdicRing`/`CenteredRing`, NTT engine with explicit NTT-domain representation, polynomial rings, sparse challenges): **implemented**.
-- **L3** (module vectors/matrices with type-level dimensions, NTT-domain caching, ExpandA, rounding/hints): **implemented**.
-- **L4** (XOF, samplers, Fiat–Shamir transcripts, bit packing): **implemented**.
-- **L6 PQC**: **ML-DSA-44/65/87 implemented and tested**; ML-KEM and Falcon scheduled next.
-- **L5/L6 ZK**: designed, scheduled per the [roadmap](/roadmap).
+- **L0–L4 foundation** (capability-trait scalar rings, const-generic NTT engine with explicit NTT-domain representation, module lattices with type-level dimensions, streaming XOF, reference-exact samplers incl. a discrete Gaussian): **implemented**.
+- **L6 PQC**: **ML-DSA-44/65/87 implemented and tested** (FIPS 204 encodings, deterministic + hedged signing); ML-KEM and FN-DSA scheduled next.
+- **L5–L6 ZK**: **Z1–Z4 implemented** — Ajtai/SIS commitments, Lyubashevsky Σ-protocol FS-NIZK, LaBRADOR-style batched opening, ring-sumcheck, gadget-IPA, Nova-style folding/IVC.
+
+## Why trust the foundation (and where it stops)
+
+Every claim below is backed by an artifact in the repository:
+
+| Evidence | Artifact |
+| --- | --- |
+| 474 tests, ring axioms over 15 moduli (2 … 2³²) | `cargo test --workspace` |
+| Reference-exact FIPS samplers (differential tests) | `crypto::sampling` |
+| Spec-step-to-API mapping with exact byte sizes | [PQC mapping](/schemes/pqc) |
+| Criterion benchmarks per crate, methodology quoted | [Performance](/reference/performance) |
+| Explicit claims register — **no constant time, no audit yet** | [Security status](/introduction/security-status) |
+| Module inventory kept in lockstep with code | [Module map](/design/module-map) |
 
 See the [module map](/design/module-map) for the authoritative inventory, and the [quickstart](/introduction/getting-started) for runnable examples.
 
@@ -82,6 +93,7 @@ This site follows a "design = usage = reference" organization:
 | Section | Contents | Audience |
 | --- | --- | --- |
 | [Getting started](/introduction/getting-started) | runnable examples of the current API | users |
+| [Integration guide](/introduction/integrating) | dependency footprint, feature flags, API conventions, pitfalls | integrators |
 | [Design](/design/architecture) | layering, capability traits, key decisions | users + contributors |
 | [Module map](/design/module-map) | the complete module inventory and status | contributors |
 | [Schemes](/schemes/pqc) | PQC algorithms mapped to base APIs | implementers |

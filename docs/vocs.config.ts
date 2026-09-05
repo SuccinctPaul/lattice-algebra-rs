@@ -11,6 +11,8 @@ export default defineConfig({
       text: 'Getting Started',
       items: [
         { text: 'Quickstart', link: '/introduction/getting-started' },
+        { text: 'Integration Guide', link: '/introduction/integrating' },
+        { text: 'Security Status', link: '/introduction/security-status' },
         { text: 'Audit & Gap Analysis', link: '/introduction/audit' },
       ],
     },
@@ -43,6 +45,7 @@ export default defineConfig({
       items: [
         { text: 'Trait Map', link: '/reference/trait-map' },
         { text: 'Parameter Sets', link: '/reference/parameter-sets' },
+        { text: 'Performance', link: '/reference/performance' },
         { text: 'Ecosystem', link: '/reference/ecosystem' },
       ],
     },

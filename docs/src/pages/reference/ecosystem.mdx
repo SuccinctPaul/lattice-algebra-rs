@@ -6,6 +6,20 @@ Where this project stands relative to related work — what we build on, what we
 
 > **arkworks is to elliptic-curve SNARKs what this project is to lattice cryptography**: not the fastest single-scheme implementation, but the composable, correct algebra substrate from which a *family* of schemes derives.
 
+## Choose this toolchain when…
+
+- you are building or studying a **family** of lattice schemes and want one
+  algebra substrate instead of N divergent ring stacks;
+- you need the **PQC ↔ ZK bridge**: the same norms, decompositions,
+  challenge derivations and NTT representation on both sides (the
+  LatticeFold+/GreyHound line of papers assumes exactly this sharing);
+- you want **spec-shaped, differentially-tested** primitives to validate a
+  paper implementation against, with every claim backed by an artifact
+  ([status](/introduction/security-status)).
+
+And when not: you need a production, constant-time, audited ML-KEM/ML-DSA
+deployment **today** — use RustCrypto or liboqs, and revisit here.
+
 ## Reference points
 
 | Project | Positioning | Relationship |
