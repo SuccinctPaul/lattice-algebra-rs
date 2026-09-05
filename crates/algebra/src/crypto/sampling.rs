@@ -89,7 +89,7 @@ fn bit_len(max_value: u64) -> u32 {
 pub fn sample_uniform_coeff<R: Ring>(stream: &mut BitStream<'_, impl Xof>) -> R {
     let q = R::MODULUS;
     let bits = bit_len(q - 1);
-    let nbytes = (bits as usize + 7) / 8;
+    let nbytes = (bits as usize).div_ceil(8);
 
     loop {
         let mut buf = [0u8; 8];

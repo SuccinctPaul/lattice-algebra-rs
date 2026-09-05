@@ -9,10 +9,10 @@
 //!   outer signature passes fresh randomness as `rnd`.
 //! - Context strings must be shorter than 256 bytes (spec limit).
 
-/// Ceiling division by 8 (MSRV 1.70 friendly; `div_ceil` needs 1.73).
+/// Ceiling division by 8.
 #[inline]
 pub(crate) fn div_ceil8(x: usize) -> usize {
-    (x + 7) / 8
+    x.div_ceil(8)
 }
 
 pub mod encoding;

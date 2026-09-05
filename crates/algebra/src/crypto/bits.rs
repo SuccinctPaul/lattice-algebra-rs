@@ -4,10 +4,10 @@
 //! fields (ML-KEM 12-bit public keys, ML-DSA 13/18/20-bit signature parts).
 //! Bit order is little-endian within bytes, matching the specifications.
 
-/// Ceiling division by 8 (MSRV 1.70 friendly; `div_ceil` needs 1.73).
+/// Ceiling division by 8.
 #[inline]
 pub(crate) fn div_ceil8(x: usize) -> usize {
-    (x + 7) / 8
+    x.div_ceil(8)
 }
 
 /// Appends `bits`-per-coefficient encodings of `coeffs` to `out` (bit-LSB
