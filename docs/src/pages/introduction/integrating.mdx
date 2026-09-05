@@ -32,8 +32,10 @@ cargo check -p lattice-algebra --no-default-features # opt out
 
 ## MSRV & stability policy
 
-- **MSRV**: declared `1.70.0` across the workspace (`rust-version` in every
-  manifest; e.g. `div_ceil` is avoided for a hand-rolled `div_ceil8`).
+- **MSRV**: declared `1.85.0` across the workspace (`rust-version` in every
+  manifest, verified in the CI matrix). The floor is set by edition-2024
+  crates in the transitive dependency tree, not by our own edition-2021
+  code.
 - **Versioning**: pre-1.0 — minor bumps may carry breaking changes, but the
   changelog (git-cliff, conventional commits) records every one.
 - **Compat promise**: the `lattice-algebra-rs` facade keeps every

@@ -1,7 +1,7 @@
 # Lattice Algebra Rust
 
 [![CI](https://github.com/SuccinctPaul/lattice-algebra-rs/workflows/CI/badge.svg)](https://github.com/SuccinctPaul/lattice-algebra-rs/actions?query=workflow%3ACI)
-![minimum rustc 1.70](https://img.shields.io/badge/rustc-1.70+-red.svg)
+![minimum rustc 1.85](https://img.shields.io/badge/rustc-1.85+-red.svg)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SuccinctPaul/lattice-algebra-rs)
 
 A multi-crate Rust workspace for lattice-based cryptography: one algebraic
@@ -10,8 +10,9 @@ lattice-based zkSNARKs (LaBRADOR / GreyHound / LatticeFold-style) derive
 directly.
 
 > **Vision**: the "arkworks / plonky3 for lattice-based cryptography".
-> The full architecture design lives in the docs site: see
-> [`docs/README.md`](docs/README.md) to run it locally
+> The full architecture design lives in the docs site:
+> **https://succinctpaul.github.io/lattice-algebra-rs/** (deployed from
+> `main` by CI), or run it locally via [`docs/README.md`](docs/README.md)
 > (`cd docs && npm install && npm run dev`).
 
 ## Workspace layout
@@ -55,7 +56,7 @@ use zk::protocols::sigma;
 
 ## Requirements
 
-- Rust 1.70.0 or later
+- Rust 1.85.0 or later (MSRV, verified in CI)
 - Runtime dependencies of the foundation: `rand`, `rustfft`, `serde`, `sha3`
 
 ## Development

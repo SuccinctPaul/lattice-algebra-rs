@@ -7,10 +7,12 @@ This directory hosts the project documentation site built with [Vocs](https://vo
 ```bash
 cd docs
 npm install
-npm run dev        # dev server (hot reload)
-npm run build      # build dist/ (SSR + static assets)
+npm run dev        # dev server (hot reload) — served under /lattice-algebra-rs
+npm run build      # full static build (HTML emitted to dist/public)
 npm run preview    # preview the built site
 ```
+
+The site is deployed to **https://succinctpaul.github.io/lattice-algebra-rs/** by CI on every push to `main` (`.github/workflows/ci.yml`, `docs-deploy` job). The `basePath` in `vocs.config.ts` must stay in sync with the repository name.
 
 ## Layout
 
