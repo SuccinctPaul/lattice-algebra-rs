@@ -1,0 +1,58 @@
+# Z3 · Ring-Sumcheck & Gadget-IPA
+
+**Status: implemented** (`src/protocols::{sumcheck, ipa}`) — the GreyHound-style components of the lattice zkSNARK roadmap: a multilinear sumcheck over any commutative ring and inner-product arguments on Ajtai-committed vectors with a gadget-based approximate opening. Cross-checked against Z2's batched opening on the same toy R1CS instance with size/time benchmarks.
+
+## Ring-sumcheck (`protocols::sumcheck`)
+
+Proves `Σ_{x ∈ {0,1}^G} T(x) = S` for an explicit truth table `T ∈ R^{2^G}`. The protocol works over **any commutative ring** — no inverses needed: per-round challenges come from a caller-supplied closure (deterministically derived from a shared transcript), and each round message is the pair of partial sums of the folded table.
+
+```rust
+let mut ch = zq_challenger(b"sumcheck-common");
+let proof = prove::<Rq, 10>(&table, &mut ch);           // 1024-entry table, 10 rounds
+
+let mut chv = zq_challenger(b"sumcheck-common");
+let (challenges, final_eval) =
+    verify::<Rq, 10>(&proof, sum, &mut chv).expect("verifies");
+```
+
+- Round consistency: `h_i(0) + h_i(1)` must equal the incoming claim;
+- claim folding: `S_{i+1} = h_i(0) + r_i·(h_i(1) − h_i(0))`;
+- soundness: G rounds of Schwartz–Zippel (2048 random bits per round on the Z2 ring).
+
+Compared to Z2's single γ-combination of gate residuals, the sumcheck gives **round-by-round folding**: a cheating prover is committed to each intermediate folded claim, so soundness holds per round rather than amortized over one big challenge.
+
+## Gadget-IPA (`protocols::ipa`)
+
+Inner-product argument on Ajtai-committed vectors: given `c = A_com·α` and public `u`, prove `⟨α, u⟩ = v`.
+
+- FS challenges `X` (forced non-unit) and `γ` derived from `(key, c, u, d)`;
+- response `α' = α + X·mask` with mask commitment `d = A_com·mask`;
+- checks: the overdetermined binding link `A_com·α' == c + X·d` and the inner-product claim `⟨α', u⟩ == v + X·t*` with `t* = ⟨mask, u⟩`;
+- `X` non-unit blocks the adaptive-`t*` division attack.
+- `ipa_gadget_open` + `approx_slack_bound(D, drop)`: the response can be opened **approximately** through a gadget split (`α' = 2^drop·hi + lo`, `|lo| ≤ 2^{drop−1}`) with the provable per-coefficient slack `D·2^{drop−1}` — the mechanism the full LaBRADOR recursion uses to keep opened values short.
+
+## Z2 × Z3 cross-check
+
+Same toy R1CS instance (1024 squaring gates, same witness) through both proof paths:
+
+| Path | Statement form | Proof size | Prove | Verify |
+| --- | --- | --- | --- | --- |
+| Z2 (batched opening) | binding link + γ-combined masked constraint | 3072 B | ~1.1 s (debug) | ~540 ms (debug) |
+| Z3 (ring-sumcheck) | residual table sumcheck over 2^10 gates | 5376 B | ~97 ms (debug) | ~1.2 ms (debug) |
+
+(Z3 numbers from `cargo test z2_z3_crosscheck -- --nocapture`, debug build; the sumcheck's verifier work is O(G) folds over the publicly recomputable residual table, versus Z2's O(gates) row evaluation — the trade GreyHound makes.)
+
+Both paths assert acceptance on the identical instance/witness pair — the cross-check gate required by the roadmap.
+
+## Tests
+
+- `honest_sumcheck_over_ring_table` (1024 entries, 10 rounds over `Z_8380417`);
+- `wrong_claim_is_rejected`, `tampered_round_message_is_rejected`, `challenge_divergence_detected`;
+- `ipa` prove/verify, gadget opening bounds;
+- `z2_z3_crosscheck_and_benchmarks`: both paths accept the same instance; sizes asserted (3072 B / 5376 B); timings printed.
+
+## What Z3 does *not* claim
+
+- The sumcheck operates on explicitly revealed residual tables — folding the *commitment* itself into the sumcheck (so the table never becomes public) is the full GreyHound design and lands with Z4's folding layer.
+- ZK still deferred (blinding/masking at Z4).
+- Concrete security parameter calibration (lattice-estimator) remains an open hardening item shared with Z1/Z2.

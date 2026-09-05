@@ -72,7 +72,7 @@ impl<R: Ring, const N: usize> TwiddleFactors<R, N> {
         for i in 0..n {
             let j = bit_reverse(i, log_n);
             powers[j] = power;
-            power = power * root;
+            power *= root;
         }
 
         powers
@@ -87,10 +87,8 @@ impl<R: Ring, const N: usize> TwiddleFactors<R, N> {
         let half_m = m / 2;
         let step = N / m;
 
-        let mut twiddles = vec![R::ONE; half_m];
-        for j in 0..half_m {
-            twiddles[j] = self.omega_powers[j * step];
-        }
+        let mut twiddles: Vec<_> = (0..half_m).map(|j| self.omega_powers[j * step]).collect();
+        twiddles[0] = R::ONE;
         twiddles
     }
 
@@ -100,10 +98,10 @@ impl<R: Ring, const N: usize> TwiddleFactors<R, N> {
         let half_m = m / 2;
         let step = N / m;
 
-        let mut twiddles = vec![R::ONE; half_m];
-        for j in 0..half_m {
-            twiddles[j] = self.omega_inv_powers[j * step];
-        }
+        let mut twiddles: Vec<_> = (0..half_m)
+            .map(|j| self.omega_inv_powers[j * step])
+            .collect();
+        twiddles[0] = R::ONE;
         twiddles
     }
 }
@@ -125,71 +123,20 @@ pub struct NegacyclicTwiddles<R: Ring, const N: usize> {
 
     /// Powers of ψ^(-1) for post-processing
     pub psi_inv_powers: Vec<R>,
-
-    /// Twiddle factors for forward NTT stages (using ω = ψ²)
-    pub forward_twiddles: Vec<Vec<R>>,
-
-    /// Twiddle factors for inverse NTT stages
-    pub inverse_twiddles: Vec<Vec<R>>,
-
-    /// N^(-1) for final scaling
-    pub n_inv: R,
 }
 
 impl<R: Ring, const N: usize> NegacyclicTwiddles<R, N> {
     /// Creates precomputed twiddle factors for negacyclic NTT.
     pub fn new() -> Self {
         let params = NttParams::<R, N>::new();
-        let log_n = N.trailing_zeros() as usize;
 
         // Compute sequential powers of ψ
         let psi_powers = Self::compute_sequential_powers(params.psi, N);
         let psi_inv_powers = Self::compute_sequential_powers(params.psi_inv, N);
 
-        // Compute twiddle factors for each stage
-        let mut forward_twiddles = Vec::with_capacity(log_n);
-        let mut inverse_twiddles = Vec::with_capacity(log_n);
-
-        // For Cooley-Tukey DIT
-        for s in 0..log_n {
-            let m = 1 << (s + 1);
-            let half_m = m / 2;
-            let mut stage_twiddles = vec![R::ONE; half_m];
-
-            // ω_m = ψ^(2N/m) = ψ^(2^(log_n - s))
-            let omega_m = params.psi.pow((2 * N as u64) / (m as u64));
-
-            let mut w = R::ONE;
-            for j in 0..half_m {
-                stage_twiddles[j] = w;
-                w = w * omega_m;
-            }
-            forward_twiddles.push(stage_twiddles);
-        }
-
-        // For Gentleman-Sande DIF
-        for s in (0..log_n).rev() {
-            let m = 1 << (s + 1);
-            let half_m = m / 2;
-            let mut stage_twiddles = vec![R::ONE; half_m];
-
-            // ω_m^(-1)
-            let omega_m_inv = params.psi_inv.pow((2 * N as u64) / (m as u64));
-
-            let mut w = R::ONE;
-            for j in 0..half_m {
-                stage_twiddles[j] = w;
-                w = w * omega_m_inv;
-            }
-            inverse_twiddles.push(stage_twiddles);
-        }
-
         Self {
             psi_powers,
             psi_inv_powers,
-            forward_twiddles,
-            inverse_twiddles,
-            n_inv: params.n_inv,
         }
     }
 
@@ -197,9 +144,9 @@ impl<R: Ring, const N: usize> NegacyclicTwiddles<R, N> {
     fn compute_sequential_powers(root: R, n: usize) -> Vec<R> {
         let mut powers = vec![R::ONE; n];
         let mut power = R::ONE;
-        for i in 0..n {
-            powers[i] = power;
-            power = power * root;
+        for p in &mut powers {
+            *p = power;
+            power *= root;
         }
         powers
     }
@@ -235,19 +182,9 @@ mod tests {
     fn test_negacyclic_twiddles() {
         let twiddles = NegacyclicTwiddles::<Zq17, 8>::new();
 
-        // Should have log2(8) = 3 stages
-        assert_eq!(twiddles.forward_twiddles.len(), 3);
-        assert_eq!(twiddles.inverse_twiddles.len(), 3);
-
-        // Stage sizes should be 1, 2, 4
-        assert_eq!(twiddles.forward_twiddles[0].len(), 1);
-        assert_eq!(twiddles.forward_twiddles[1].len(), 2);
-        assert_eq!(twiddles.forward_twiddles[2].len(), 4);
-
-        // First twiddle in each stage should be 1
-        for stage in &twiddles.forward_twiddles {
-            assert_eq!(stage[0], Zq17::ONE);
-        }
+        // Should have N twiddle factors
+        assert_eq!(twiddles.psi_powers.len(), 8);
+        assert_eq!(twiddles.psi_inv_powers.len(), 8);
     }
 
     #[test]

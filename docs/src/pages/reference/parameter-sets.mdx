@@ -1,6 +1,6 @@
-# 参数集
+# Parameter Sets
 
-方案参数集在代码中表现为**零大小标记类型**，例如：
+Scheme parameter sets are zero-sized marker types:
 
 ```rust
 pub struct MlDsa65;
@@ -8,59 +8,58 @@ impl MlDsaParams for MlDsa65 {
     const K: usize = 6;
     const L: usize = 5;
     const ETA: u32 = 4;
-    // ...
+    /* ... */
 }
 ```
 
-本页汇总参数表，作为方案层实现与 KAT 的对照源。
+This page is the reference source for implementation and KATs.
 
-## ML-KEM（FIPS 203）
+## ML-KEM (FIPS 203)
 
-公共参数：`q = 3329`，`n = 256`。
+Shared: `q = 3329`, `n = 256`.
 
-| 参数集 | k | η₁ | η₂ | d_u | d_v | pk (B) | ct (B) | ss (B) | NIST |
+| Set | k | η₁ | η₂ | d_u | d_v | pk (B) | ct (B) | ss (B) | NIST |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ML-KEM-512 | 2 | 3 | 2 | 10 | 4 | 800 | 768 | 32 | I |
 | ML-KEM-768 | 3 | 2 | 2 | 10 | 5 | 1184 | 1088 | 32 | III |
 | ML-KEM-1024 | 4 | 2 | 2 | 11 | 7 | 1568 | 1568 | 32 | V |
 
-## ML-DSA（FIPS 204）
+## ML-DSA (FIPS 204) — implemented
 
-公共参数：`q = 8380417`（= 2²³ − 2¹³ + 1），`n = 256`，`d = 13`（t 编码丢弃位），`γ2` 为 `⌊(q−1)/88⌋`（44/87）或 `⌊(q−32)/88⌋`（65）。
+Shared: `q = 8380417` (= 2²³ − 2¹³ + 1), `n = 256`, `d = 13` (dropped bits of `t`), `β = τ·η`.
 
-| 参数集 | k | l | η | γ₁ | γ₂ | τ | β | ω | c̃ (B) | pk (B) | sig (B) | NIST |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ML-DSA-44 | 4 | 4 | 2 | 131072 (2¹⁷) | 95232 | 39 | 78 | 80 | 32 | 1312 | 2420 | I |
-| ML-DSA-65 | 6 | 5 | 4 | 524288 (2¹⁹) | 261888 | 49 | 196 | 55 | 48 | 1952 | 3309 | III |
-| ML-DSA-87 | 8 | 7 | 2 | 131072 (2¹⁷) | 261888 | 60 | 120 | 75 | 64 | 2592 | 4627 | V |
+| Set | k | l | η | γ₁ | γ₂ | τ | β | ω | c̃ (B) | pk (B) | sig (B) | sk (B) | NIST |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ML-DSA-44 | 4 | 4 | 2 | 2¹⁷ | 95232 = (q−1)/88 | 39 | 78 | 80 | 32 | 1312 | 2420 | 2560 | I |
+| ML-DSA-65 | 6 | 5 | 4 | 2¹⁹ | 261888 = (q−1)/32 | 49 | 196 | 55 | 48 | 1952 | 3309 | 4032 | III |
+| ML-DSA-87 | 8 | 7 | 2 | 2¹⁹ | 261888 = (q−1)/32 | 60 | 120 | 75 | 64 | 2592 | 4627 | 4896 | V |
 
-NTT 可用性检查：`q − 1 = 8380416 = 2²³ × 997`，2-adicity = 23 ≥ log₂(2n) = 9 ✅。
+Encoding widths used by the codecs: `t1` packs at `bitlen((q−1)/2^d) − 1` = 10 bits; `t0` at 13 bits; `z` at `bitlen(2γ1 − 1)` = 18/20 bits; `s1/s2` at `bitlen(2η)` = 3/4 bits; `c̃` stored raw.
 
-## Falcon / FN-DSA（FIPS 206 草案）
+NTT availability: `q − 1 = 8380416 = 2^13 · 3 · 11 · 31`, 2-adicity = 13 ≥ log₂(2n) = 9 ✅.
 
-公共参数：`q = 12289`（= 3·2¹² + 1，2-adicity = 12）。
+## Falcon / FN-DSA (FIPS 206 draft)
 
-| 参数集 | n | pk (B) | sig 均值/上限 (B) | NIST | 备注 |
+Shared: `q = 12289` (= 3·2¹² + 1, 2-adicity 12).
+
+| Set | n | pk (B) | sig mean/max (B) | NIST | Note |
 | --- | --- | --- | --- | --- | --- |
 | Falcon-512 | 512 | 897 | ~666 / 1280 | I | bound ⌈1.17·√q⌉ = 130 |
 | Falcon-1024 | 1024 | 1793 | ~1280 / 2465 | V | |
 
-采样：CDT base sampler + 快速傅里叶采样（浮点路径，见[采样层](/design/sampling)）。**草案参数冻结前，此表与实现以参考实现为准。**
+Sampling: CDT base sampler + fast Fourier sampling (floating-point path — see the [sampling page](/design/sampling)). Before the draft freezes, implementation and this table follow the reference implementation.
 
-## ZK / SNARK 参数（设计态）
+## ZK / SNARK parameters (design-stage)
 
-| 组件 | 环 | 约定 | 状态 |
+| Component | Ring | Convention | Status |
 | --- | --- | --- | --- |
-| LaBRADOR 型承诺/批打开 | `R = Z_{2^32}[X]/(X^64 + 1)` | q 为 2 的幂 → 归约为移位；NTT 退化为整数卷积仍可行 | Z2 目标 |
-| 挑战空间 | 小环/二进制系数（如 `R_2` 或稀疏 ±1） | 决定提取 slack，进而决定 MSIS 参数 | Z1 定型 |
-| 双环嵌入 | `R_q ↪ R_Q`（q 小环承载见证，Q 大 NTT 环承载 sumcheck） | 需要 `Embed` / `ModSwitch` trait（L2/L3 已预留） | Z3 定型 |
-| MSIS 安全界 | 由 slack + 声称安全级反推 `k, d, q` | 实现阶段用 lattice-estimator 脚本校准并固化 | 持续 |
+| LaBRADOR-style commitments/openings | `R = Z_{2^32}[X]/(X^64 + 1)` | power-of-two modulus → reduction is a shift | Z2 target |
+| Challenge space | small ring / binary coefficients (e.g. `R_2`, sparse ±1) | determines extraction slack, hence MSIS parameters | fixed at Z1 |
+| Double-ring embedding | `R_q ↪ R_Q` (small ring for witnesses, NTT-friendly `Q` for sumcheck) | needs `Embed` / `ModSwitch` traits (L2/L3 reserved) | fixed at Z3 |
+| MSIS security bounds | derived from slack + claimed level via `k, d, q` | calibrated with the lattice-estimator | rolling |
 
-> 与 PQC 不同，SNARK 参数尚未被标准冻结；本表随 Z1–Z4 阶段推进滚动更新，**每次变更必须附带 estimator 运行记录**（脚本与输出归档在 `scripts/params/`）。
+> Unlike PQC, SNARK parameters are not frozen by a standard. This table updates as Z1–Z4 progress; **every change ships with an estimator run** archived under `scripts/params/`.
 
-## 实例化成本提示
+## Instantiation cost note
 
-const 泛型实例化数量 = 涉及的 `(q, n, k, l, …)` 组合数。策略：
-
-- 基座层仅为参数集白名单实例化（宏批量生成 `impl`，如现有 `matrix_test_macro` 的模式）；
-- 测试额外实例化小参数（`Zq<17>`, `n=8`）走同一宏，保证泛型实现不会被白名单特化掩盖 bug。
+const-generic instantiation count = number of `(q, n, k, l, …)` combinations touched. Policy: instantiate whitelisted parameter sets via macros (the `mldsa` module shows the pattern); tests additionally instantiate small parameters (`Zq<17>`, `n = 8`) through the same generic code paths so whitelist specializations cannot hide bugs.

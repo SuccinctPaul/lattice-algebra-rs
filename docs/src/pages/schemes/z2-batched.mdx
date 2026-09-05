@@ -1,0 +1,64 @@
+# Z2 · Batched Openings over `Z_{2^32}`
+
+**Status: implemented** (`src/protocols::{z2_ring, z2}`) — a LaBRADOR-style transparent proof of knowledge for a toy R1CS over the power-of-two ring `R = Z_{2^32}[X]/(X^64+1)`: **≈ 10,000 ring constraints, proof ≈ 3 KB** (budget: 10 KB), with extractor and robustness tests.
+
+## The ring instance
+
+`q = 2^32` makes the modular reduction a mask (`Zq` picks the power-of-two fast path at compile time) and makes `is_ntt_friendly` false — ring multiplication takes the schoolbook negacyclic path, which is cheap at dimension 64. Key expansion uses **raw 32-bit coefficients**: every squeezed 32-bit value is a valid coefficient, no rejection.
+
+The witness elements are generated as units (`a ≡ 1 (mod 2)`: odd constant term, even elsewhere) so that gate outputs `U_k` are derivable through the **Newton-iteration ring inverse** (`x ← x(2 − a·x)`, 8 doubling steps).
+
+## Toy R1CS
+
+Squaring gates — any R1CS reduces to this form with `B = I`:
+
+```text
+∀k:  (A_k·z) ∘ (A_k·z) = U_k · z_{sel_k}
+```
+
+`A_k ∈ R` has 3 non-zero entries per row (sparse, like real R1CS); the generator produces both the instance (`A`, `sel`, `U`) and a satisfying 32-bit witness via the ring inverse.
+
+## Protocol
+
+```text
+prover                                        verifier
+c = A_com·z        (Ajtai commitment)
+d = A_com·y        (mask commitment)  ──c,d──▶ X ← H(·) (non-unit ring element)
+                                            γ ← H(·)  (gate-combination challenge)
+z' = z + X·y                          ──z',t*,q*──▶
+```
+
+Verifier checks:
+
+1. **Binding link** (overdetermined): `A_com·z' == c + X·d` — `8·64` scalar equations over `2·64` unknowns, so a cheating `c, d` has a consistent response only with probability ≈ 2^(−384).
+2. **Masked constraint consistency**: with `R_k := (A_k·z')² − U_k·z'_{sel}` computed publicly from the revealed `z'`:
+   `Σ_k γ^k·R_k == X·t* + X²·q*`.
+   The prover's `t* = Σγ^k·m_k`, `q* = Σγ^k·q_k` are the masked constraint terms
+   (`m_k = 2(A_k·z)(A_k·y) − U_k·y_sel`, `q_k = (A_k·y)²`), which cancel exactly
+   when the witness satisfies the gates.
+
+`X` is **forced non-unit** (even constant term) so the verifier equation cannot be solved for `t*` by ring division.
+
+## Size and soundness
+
+| Item | Bytes |
+| --- | --- |
+| `d` (mask commitment, 8 ring elements) | 2048 |
+| `z'` (response, 2 ring elements) | 512 |
+| `t* + q*` (2 ring elements) | 512 |
+| **Total** | **3072 ≤ 10 240 ✅** |
+
+Soundness sketch: after `c, d` are committed, the response is pinned by the overdetermined linear check; the combined constraint check then detects any deviation by Schwartz–Zippel on `γ` (2048 random bits). A full concrete-security analysis (incl. the trade-off between the challenge space and the MSIS parameters of the commitment) is part of the Z3 hardening.
+
+## What Z2 does *not* claim
+
+- **Zero knowledge**: like LaBRADOR itself, this is a transparent *proof of knowledge*; the revealed `z'` and constraint terms leak information.
+- **Full LaBRADOR recursion**: the approximate-shortness layer here is a single gadget split with a proven per-coefficient slack; the recursive shortness proof (where the opened digits are themselves proven short) is the Z3 deliverable.
+
+## Tests
+
+- `batched_opening_end_to_end_and_size`: 10^4-constraint instance, prove/verify, size gate;
+- `gadget_split_is_exact_and_bounded`: exact reconstruction + slack bounds for drop ∈ {4, 12, 16};
+- `approx_check_accepts_exact_and_bounded_slack`: accepts exact openings, rejects deviations beyond the slack;
+- `extractor_binding_link_recovered`: forking two transcripts (same commitment, different masks) and verifying the relaxed extractor relation `A·(z'₁ − z'₂) == X₁·d₁ − X₂·d₂`;
+- robustness: tampered response / tampered mask commitment / wrong instance all rejected; wire-format roundtrip.

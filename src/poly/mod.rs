@@ -1,3 +1,7 @@
+pub mod sparse;
+
+pub use sparse::SparsePolynomial;
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};

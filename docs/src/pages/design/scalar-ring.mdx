@@ -1,93 +1,41 @@
-# L0 · 标量环层
+# L0 · Scalar rings
 
-L0 回答一个问题：**`Z_q` 上的加减乘如何做到正确、快速、可泛型**。它是一切的上游——NTT、多项式环、模格、采样全部踩在 L0 的语义上。
+L0 answers one question: **how to make `Z_q` addition/multiplication correct, fast and generic** — everything upstream stands on these semantics.
 
-## 现状
+## Current state
 
-- `Zq<const MODULUS: u64>`：const 泛型模环，`value` 恒在 `[0, q)`；Barrett 归约乘法；扩展欧几里得求逆；`pow` / `square`；serde；字节序转换（LE/BE）。
-- `Ring` trait：算子 + `MODULUS/ZERO/ONE/MAX` 关联常量 + `rand` / `abs` / `to_u128`。
-
-## 目标 trait 体系
-
-把现有 `Ring` 拆成能力维度，上层算法按需声明：
-
-```rust
-/// 交换环：加、乘、负
-pub trait Ring:
-    Copy + Clone + PartialEq + Eq + Debug + Send + Sync
-    + Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Neg<Output = Self>
-{
-    const MODULUS: u64;
-    const ZERO: Self;
-    const ONE: Self;
-    /// 是否为素数模（编译期声明，供依赖素性的算法检查）
-    const IS_PRIME: bool = false;
-}
-
-/// 域：可逆
-pub trait Field: Ring {
-    fn inverse(&self) -> Option<Self>;
-}
-
-/// 2-adic（NTT 友好）环 —— 对标 plonky3 的 TwoAdicField
-pub trait TwoAdicRing: Ring {
-    /// 使 q ≡ 1 (mod 2^bits) 的最大 bits（q 的 2-adicity）
-    const TWO_ADICITY: u32;
-    /// 阶为 2^bits 的本原根
-    fn two_adic_generator(bits: usize) -> Self;
-}
-
-/// 域分隔的确定性采样入口（L4 采样层的挂载点）
-pub trait Sampleable<D: Distribution>: Ring {
-    fn sample(xof: &mut impl Xof, label: &str) -> Self;
-}
-```
-
-`TwoAdicRing` 是把 NTT 能力从"运行时检查 `is_ntt_friendly`"提升为"类型系统表达"的关键：`PolyRing<R, N>` 的 NTT 路径将以 `R: TwoAdicRing, N ≤ 2^{R::TWO_ADICITY}` 为界。
-
-## 归约策略
-
-| 策略 | 适用 | 状态 | 用途 |
-| --- | --- | --- | --- |
-| Barrett（u128 中间量） | 任意 `q < 2^32` | ✅ 已实现 | 通用默认路径 |
-| Barrett（u64 预乘，lazy） | 小 `q`（如 3329） | 计划中 | ML-KEM 热路径 |
-| Montgomery | 奇 `q` | 计划中 | 大 `q`（SNARK 友好参数）批量乘 |
-| Shoup（预乘 twiddle） | NTT twiddle | 计划中 | L1 引擎内部 |
-| rustfft 通用 FFT | 非 2-adic `q` 的多项式乘 | ✅ 已实现（L2 回退） | 研究性参数 |
-
-归约策略选择是**实现细节**，不进入 trait 语义；通过 `RingOps` 内部 macro 按模数大小/奇偶在编译期选择。`q = 2^32`（LaBRADOR）这类 2 的幂模数会有专用路径（移位归约）。
-
-## 中心代表元与范数（新增）
-
-PQC 与 ZK 都需要**中心化余数**和**无穷范数**，当前库缺失，补在 L0：
+- `Zq<const MODULUS: u64>` — const-generic ring, value always in `[0, q)`, Barrett-style reduction, extended-Euclidean inverse, `pow`/`square`, serde, byte conversions.
+- Capability traits (M0 refactor complete):
+  - `Ring` — slim commutative ring; consts `MODULUS`, `ZERO`, `ONE`, `IS_PRIME` (compile-time Miller–Rabin).
+  - `Field` — `inverse()`; division (`Div`) is a field operation, so polynomial division requires `R: Field`.
+  - `TwoAdicRing` — `TWO_ADICITY` (2-adicity of `q−1`) plus `two_adic_generator(bits)`; the analogue of plonky3's `TwoAdicField`. NTT-friendliness is now expressed in the type system.
+  - `CenteredRing` — `centered()` into `(−q/2, q/2]`, `abs_infinity()`, `leq_infinity(b)`; both ML-DSA norm gates and ZK soundness-slack accounting build on these.
+- `ring::number_theory` — const Miller–Rabin, primitive roots, prime factorization, modexp (shared by the NTT engine and samplers).
 
 ```rust
-pub trait CenteredRing: Ring {
-    /// 把 [0, q) 的值映射到中心区间 (-q/2, q/2]，返回 i64
-    fn centered(&self) -> i64;
-    /// |a|_∞ = min(a, q-a)
-    fn abs_infinity(&self) -> u64;
-    /// a 是否满足 |a|_∞ ≤ b（有符号比较，防旁路的实现）
-    fn leq_infinity(&self, b: u64) -> bool;
-}
+use lattice_algebra_rs::ring::zq::Zq;
+use lattice_algebra_rs::ring::traits::{CenteredRing, TwoAdicRing};
+
+type ZqD = Zq<8380417>;
+assert!(ZqD::IS_PRIME);
+assert_eq!(ZqD::TWO_ADICITY, 13);            // q − 1 = 2^13 · 1023
+assert_eq!(ZqD::new(16).centered(), -16);    // centered representative
+assert!(ZqD::new(16).leq_infinity(16));
 ```
 
-- ML-DSA 的范数检查（`‖z‖_∞ ≤ γ1-β`，`‖r0‖_∞ ≤ γ2-β`）直接建立在该 API 上；
-- LaBRADOR / Lyubashevsky 的 slack 计算（提取出的见证范数膨胀因子）也基于同一语义，避免两套实现不一致。
+## Reduction strategies
 
-## 整数与字节
+| Strategy | Applies to | Status |
+| --- | --- | --- |
+| Native 128-bit modulo (Barrett-style) | any `q < 2^32` | ✅ default |
+| Barrett with precomputed μ, lazy reduction | small `q` (e.g. 3329) | 📋 ML-KEM hot paths |
+| Montgomery | odd `q`, batch work (SNARK parameters) | 📋 |
+| Shoup precomputed twiddles | NTT internals | 📋 |
+| rustfft generic FFT | non-2-adic `q` (L2 fallback) | ✅ |
 
-- 保留 `to_le_bytes / from_le_bytes`，新增**紧凑位打包**放到 L4 序列化层（12/13/23-bit 打包属于线上格式，不属于环语义）。
-- `to_u128` 保留，用于中间量计算；新增 `to_i64`（配合 CenteredRing）。
+Strategy choice is an implementation detail and never enters trait semantics.
 
-## 常时时间策略（ADR-5）
+## Testing
 
-- L0 算术实现保持数据无关控制流（Barrett/Montgomery 本身满足）；
-- **分支性操作**（`leq_infinity`、逆的存在性）提供 CT 实现并在文档标注；
-- `inverse` 返回 `Option`：非 CT，仅限公钥侧使用；密钥侧需要 CT 逆时使用 `ct_inverse`（返回零值 + 有效标志位）。
-
-## 测试策略
-
-- 环公理 property test（结合律/交换律/分配律/逆）——已有 `test_ring_axioms` 模式，宏批量套用到所有实例化的 `q`；
-- 每个归约策略对同模数交叉验证（Barrett vs Montgomery vs naive）；
-- 边界：`q = 2`、`q = 2^32`、非素数 `q`（声明 `IS_PRIME = false` 后依赖素性的 API 返回 `None`/panic-free）。
+- Ring axioms over 15 moduli (`ring::axiom_tests`): associativity/commutativity/identity/inverse for add and mul, distributivity, field inverses (prime moduli), 2-adic generator order, centered-ring semantics.
+- Cross-checks: Barrett vs naive modulo; `decompose` differential test against the reference bit-trick formulas.

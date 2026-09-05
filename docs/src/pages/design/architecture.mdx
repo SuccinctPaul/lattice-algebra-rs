@@ -1,138 +1,125 @@
-# 分层架构总览
+# Architecture
 
-## 设计哲学
+## Design philosophy
 
-对标 arkworks（trait 驱动的代数抽象）与 plonky3（面向性能的 field/NTT 抽象），本库遵循四条原则：
+Mirroring arkworks (trait-driven algebra) and plonky3 (performance-oriented field/NTT abstractions), the library follows four principles:
 
-1. **能力 trait 组合，而非上帝 trait**：类型通过实现一组小而正交的能力 trait（可逆、NTT 友好、可采样……）参与上层泛型算法；上层算法只声明它需要的最小能力。
-2. **参数即类型**：`q`、`n`、模块维度 `k/l`、采样参数用 const 泛型与零大小标记类型（ZST）表达，零运行时开销；方案参数集（如 ML-DSA-65）是一个实现参数 trait 的 ZST。
-3. **确定性优先于随机性**：密码学组件的接口吃**种子 + 域分隔标签**（XOF 驱动），而不是裸 `Rng`。随机性只在最外层注入。这与 FIPS 203/204 的确定性派生结构一致，也让 KAT 与模糊测试可行。
-4. **表示自由**：同一环元素可在系数域与 NTT 域之间切换；上层协议可显式控制表示（性能关键），但默认路径自动分派。
+1. **Capability traits, not god traits.** Types participate in generic algorithms by implementing small orthogonal capabilities (invertible, NTT-friendly, sampleable…); algorithms declare the minimum they need.
+2. **Parameters are types.** `q`, `n`, module dimensions and sampling parameters are const generics and zero-sized marker types; a scheme parameter set (e.g. ML-DSA-65) is a ZST.
+3. **Determinism over randomness.** Scheme-facing APIs take seeds and domain labels (XOF-driven), not bare RNGs; randomness is injected once at the top. This matches FIPS 203/204 and makes KATs and fuzzing possible.
+4. **Representation freedom.** Ring elements can live in the coefficient or NTT domain; protocols control representations explicitly where it matters, while default paths dispatch automatically.
 
-## 七层架构
+## The seven layers
 
 ```mermaid
 flowchart TB
-    subgraph L6["L6 · 应用层（crates: schemes / zk）"]
-        SCHEME["ML-KEM · ML-DSA · Falcon"]
-        SNARK["LaBRADOR · GreyHound · LatticeFold+ → zkSNARK"]
+    subgraph L6["L6 · Schemes"]
+        SCHEME["ML-KEM · ML-DSA (implemented) · Falcon (planned)"]
+        SNARK["LaBRADOR · GreyHound · LatticeFold+ → zkSNARK (planned)"]
     end
-    subgraph L5["L5 · 协议组件层"]
-        COMP["承诺（Ajtai/SIS）· Σ-协议 · 内积论证 · sumcheck · FS 变换"]
+    subgraph L5["L5 · Protocol components"]
+        COMP["Commitments (Ajtai/SIS) · Σ-protocols · IPA · sumcheck · FS transform"]
     end
-    subgraph L4["L4 · 密码基础设施层"]
-        INFRA["XOF(SHAKE) · hash-to-Rq · 采样器 · transcript · canonical 序列化 · KAT"]
+    subgraph L4["L4 · Crypto infrastructure"]
+        INFRA["XOF(SHAKE) · hash-to-Rq · samplers · transcripts · bit packing · KATs"]
     end
-    subgraph L3["L3 · 模格层"]
-        MOD["ModuleVector / ModuleMatrix · NTT 域缓存 · gadget 分解 · hint · 模切换 · 范数"]
+    subgraph L3["L3 · Module lattices"]
+        MOD["ModuleVector / ModuleMatrix (+ NTT domain) · ExpandA · gadgets · hints · norms"]
     end
-    subgraph L2["L2 · 多项式层"]
-        POLY["UniPolynomial · PolyRing(x^n+1) · cyclic ring · 稀疏多项式"]
+    subgraph L2["L2 · Polynomials"]
+        POLY["UniPolynomial · PolyRing(x^n+1) · SparsePolynomial"]
     end
-    subgraph L1["L1 · NTT 引擎"]
-        NTT["NttOperator · twiddle 表 · CT/DIT + GS/DIF · pointwise · FFT 回退"]
+    subgraph L1["L1 · NTT engine"]
+        NTT["NttOperator · twiddles · CT/DIT + GS/DIF · NttDomain"]
     end
-    subgraph L0["L0 · 标量环层"]
-        RING["Ring / Field / TwoAdicRing · Zq&lt;q&gt; · Barrett / Montgomery / lazy"]
+    subgraph L0["L0 · Scalar rings"]
+        RING["Ring / Field / TwoAdicRing / CenteredRing · Zq<q> · number theory"]
     end
     L6 --> L5 --> L4 --> L3 --> L2 --> L1 --> L0
 ```
 
-**层间规则**：只允许向下依赖；同层不互相依赖（L4 各子模块独立）；L5/L6 之间允许反向回调（协议把约束投给算术层）。每一层的公开 trait 是稳定的"钩子"，实现细节可以整体替换。
+**Layer rule:** dependencies point downward only; sibling layers do not depend on each other. Each layer's public traits are the stable hooks; implementations can be replaced wholesale.
 
-## 能力 trait 体系
+## Capability trait system
 
 ```mermaid
 classDiagram
     class Ring {
         <<trait>>
         +add/sub/mul/neg
-        +ZERO ONE
+        +ZERO ONE IS_PRIME
     }
     class Field {
         <<trait>>
         +inverse()
-        +div()
     }
     class TwoAdicRing {
         <<trait>>
-        +TWO_ADICITY: u32
-        +two_adic_generator(bits) Self
+        +TWO_ADICITY
+        +two_adic_generator(bits)
     }
-    class RingSampler~D~ {
+    class CenteredRing {
         <<trait>>
-        +sample(xof) Self
-    }
-    class PolynomialQuotientRing {
-        <<trait>>
-        type Coeff
-        +degree() 
-        +coefficients()
+        +centered()
+        +abs_infinity()
+        +leq_infinity(bound)
     }
     class NegacyclicRing {
         <<trait>>
-        +DEGREE_BOUND
-        +to_ntt() NttDomain
-        +from_ntt()
-    }
-    class ModuleVector~R,K~ {
-        +inner_product()
+        +to_ntt() / from_ntt()
         +infinity_norm()
+        +decompose_gadget()
     }
-    class ModuleMatrix~R,K,L~ {
-        +mul_vec()
-        +expand_from_seed(xof)
+    class ModuleVector {
+        ModuleVector~R, K, N~
+    }
+    class ModuleMatrix {
+        ModuleMatrix~R, K, L, N~
     }
     Ring <|-- Field
     Ring <|-- TwoAdicRing
-    Ring <|-- RingSampler
-    PolynomialQuotientRing <|-- NegacyclicRing
-    NegacyclicRing o-- TwoAdicRing : NTT 可用时
-    ModuleVector --> NegacyclicRing : 元素
-    ModuleMatrix --> ModuleVector : 行/列
+    Ring <|-- CenteredRing
+    NegacyclicRing --> TwoAdicRing : coeff constraint
+    ModuleVector --> NegacyclicRing : elements
+    ModuleMatrix --> ModuleVector : products
 ```
 
-要点：
+`PolyRing<R, N>` gets the NTT path only when `R: TwoAdicRing` and the dimension fits `TWO_ADICITY`; otherwise it falls back automatically. `NttDomain<R, N>` is the typed NTT-domain representation (M1).
 
-- `PolyRing<R, N>` 只有当 `R: TwoAdicRing` 且 `N ≤ 2^TWO_ADICITY` 时才获得 NTT 乘法路径，否则自动回退——这一分派逻辑现在已存在，将被收进 `NegacyclicRing` 的 blanket impl。
-- `RingSampler<D>` 以分布 `D` 为类型参数（Uniform / CBD / Gauss / Challenge），使"同一类型、不同分布"可泛型化，方案层通过参数集选定分布。
-
-## 数据流：一次 ML-DSA 签名如何穿越各层
+## Data flow: one ML-DSA signature through the layers
 
 ```mermaid
 sequenceDiagram
-    participant App as 应用（L6）
-    participant FS as Transcript/XOF（L4）
-    participant S as 采样器（L4）
-    participant M as 模格层（L3）
-    participant P as PolyRing（L2）
-    participant N as NTT（L1）
+    participant App as Scheme (L6)
+    participant FS as Transcript/XOF (L4)
+    participant S as Samplers (L4)
+    participant M as Module layer (L3)
+    participant P as PolyRing (L2)
+    participant N as NTT (L1)
 
-    App->>FS: absorb(密钥种子, 消息, 公钥指纹)
-    FS->>S: 派生 μ 与 ρ'
-    S->>M: 生成 y = PolyRing 稀疏系数向量 (γ1-中心均匀)
-    M->>N: y 的 k 个多项式 forward NTT（一次变换，缓存）
-    M->>N: A 在 NTT 域缓存（密钥生成时已驻留）
+    App->>FS: absorb(key seed, message, pk binding)
+    FS->>S: derive μ and mask seed ρ″
+    S->>M: ExpandMask: y with coefficients in [−γ1+1, γ1]
+    M->>N: NTT(y) — one transform per polynomial, cached
+    M->>N: Â resident in the NTT domain since keygen
     N->>P: pointwise mul + inverse NTT
-    P->>M: w = A·y（系数域）
-    App->>M: 挑战 c = SampleInBall(transcript.challenge())
-    M->>N: 剩余运算在 NTT 域完成
-    App->>M: hint(h) + 范数检查（L3 分解/范数模块）
+    P->>M: w = A·y; w1 = HighBits(w)
+    App->>M: c = SampleInBall(c̃) → sparse × s1
+    M->>M: z = y + c·s1; norm gates; h = MakeHint(...)
+    App->>App: sigEncode(c̃, z, h)
 ```
 
-## Crate 拆分路线
-
-单 crate（现状）→ 在 L4 成型后拆为 cargo workspace：
+## Crate split (planned at workspace time)
 
 ```mermaid
 flowchart LR
     subgraph WS["cargo workspace"]
-        CORE["lattice-algebra-core<br/>L0–L2：环/NTT/多项式"]
-        MODC["lattice-module<br/>L3：模格"]
-        CRYPTO["lattice-crypto<br/>L4：XOF/采样/序列化"]
-        PROTO["lattice-protocols<br/>L5：承诺/FS/Σ-协议"]
-        PQC["ml-kem / ml-dsa / falcon<br/>L6-PQC"]
-        ZKC["lattice-zk<br/>L5+L6-ZK：LaBRADOR/GreyHound/..."]
+        CORE["lattice-algebra-core<br/>L0–L2"]
+        MODC["lattice-module<br/>L3"]
+        CRYPTO["lattice-crypto<br/>L4"]
+        PROTO["lattice-protocols<br/>L5"]
+        PQC["ml-kem / ml-dsa / falcon<br/>L6"]
+        ZKC["lattice-zk<br/>L5+L6"]
     end
     MODC --> CORE
     CRYPTO --> MODC
@@ -141,28 +128,16 @@ flowchart LR
     ZKC --> PROTO
 ```
 
-拆分时机与目录迁移见[路线图](/roadmap)。在单 crate 阶段，用模块前缀（`module::`、`crypto::`、`protocols::`）预留命名空间。
+Until the split, module prefixes (`module::`, `crypto::`, `mldsa::`) reserve the namespaces.
 
-## 关键设计决策（ADR 摘要）
+## Key decisions (ADR summary)
 
-| # | 决策 | 选择 | 理由 | 放弃的替代方案 |
+| # | Decision | Choice | Rationale | Rejected alternative |
 | --- | --- | --- | --- | --- |
-| ADR-1 | 环参数表达 | const 泛型 `Zq<q>`、`PolyRing<R, N>` | 零开销、编译期检查 NTT 可用性 | 运行时参数对象（现有遗留路径，将删除） |
-| ADR-2 | NTT 分派 | trait 能力 + blanket impl 自动回退 | 一个泛型 API 同时覆盖 NTT 友好与非友好 q | 强制所有 q NTT 友好（会把 Falcon 浮点路径排除在外） |
-| ADR-3 | 随机性 | XOF 驱动、种子进接口 | 对齐 FIPS 规范、可复现测试 | 到处传 `&mut Rng` |
-| ADR-4 | 序列化 | 自研 canonical trait + serde 并存 | 线上格式需位级压缩与跨语言一致 | 只用 serde（JSON 用于调试，不是线上格式） |
-| ADR-5 | 常时时间 | 按层声明策略：L0–L3 默认 CT 友好实现，采样/Gaussian 单独声明 | CT 不是全有全无；浮点 Gaussian 本质非 CT，靠掩码+文档声明 | 全库强制 CT（会把 Falcon 排除在外） |
-| ADR-6 | 方案参数集 | ZST + 参数 trait（`trait MlDsaParams`） | 编译期固化、可枚举多参数集、类型即文档 | 运行时参数结构体（性能与类型安全都差） |
-| ADR-7 | 错误处理 | 运算层 panic-free 返回 `Result`；密码失败路径（拒绝/重采样）返回枚举 | 签名循环的拒绝采样需要类型化的重试信号 | panic / assert |
-
-## 与手写实现的对照
-
-以 ML-DSA 为例说明统一基座的收益：
-
-| 手写实现（过去） | 基座驱动（目标） |
-| --- | --- |
-| 每个方案自带 NTT（常带 off-by-one bug） | `PolyRing` 一处实现，环公理 property test 全局复用 |
-| 矩阵 A 扩展逻辑内联在方案里 | `ModuleMatrix::expand_from_seed` 泛型实现，Kyber/Dilithium 只是不同拒绝采样参数 |
-| 范数检查散落各处 | L3 范数模块统一 `infinity_norm` / bound check，SNARK 与 PQC 共享 |
-| 换参数 = 改一堆 magic number | 换参数集 = 换一个 ZST 类型 |
-| KAT 无法交叉复用 | KAT 框架按层测试：先验环行为，再验方案向量 |
+| ADR-1 | Ring parameters | const generics `Zq<q>`, `PolyRing<R, N>` | zero overhead, compile-time NTT checks | runtime parameter objects (legacy path — deleted) |
+| ADR-2 | NTT dispatch | capability trait + blanket fallback | one generic API covers 2-adic and non-2-adic moduli | requiring all q to be NTT-friendly |
+| ADR-3 | Randomness | XOF-driven, seeds in APIs | aligns with FIPS structure, reproducible tests | `&mut Rng` everywhere |
+| ADR-4 | Serialization | custom canonical trait + serde side by side | wire formats need bit packing; serde JSON is debug-only | serde-only |
+| ADR-5 | Constant time | declared per layer; sampling/Gaussian documented separately | CT is not all-or-nothing; float Gaussian is inherently non-CT | strict whole-crate CT |
+| ADR-6 | Scheme parameter sets | ZST + parameter trait | compile-time fixed, self-documenting types | runtime parameter structs |
+| ADR-7 | Error handling | panic-free `Result` in codec paths; typed rejection signals in signing loops | rejection sampling needs typed retry signals | panics on secret-dependent paths |

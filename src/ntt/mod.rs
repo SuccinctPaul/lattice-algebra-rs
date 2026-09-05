@@ -32,10 +32,12 @@
 //! ```
 
 mod ntt_core;
+mod ntt_domain;
 mod params;
 mod twiddle;
 
 pub use ntt_core::{NttOperator, NttOperatorOptimized};
+pub use ntt_domain::NttDomain;
 pub use params::{find_primitive_root, is_ntt_friendly, prime_factors, primitive_root, NttParams};
 pub use twiddle::TwiddleFactors;
 
