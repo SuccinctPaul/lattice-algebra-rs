@@ -77,7 +77,7 @@ criterion benchmarks in `crates/<name>/benches/`.
 - [Contributing](CONTRIBUTING.md) — workflow, merge gate, conventions
 - [Security policy](SECURITY.md) — disclosure; claims register in the docs
 - [Changelog](CHANGELOG.md) — generated with git-cliff from conventional commits
-- License: Apache-2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- License: Apache-2.0 ([LICENSE](LICENSE))
 
 ## Contributing
 
@@ -85,7 +85,7 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for th
 
 ## License
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- Apache License, Version 2.0 ([LICENSE](LICENSE) or http://www.apache.org/licenses/LICENSE-2.0)
 
 ## Acknowledgements
 

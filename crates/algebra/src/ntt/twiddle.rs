@@ -13,7 +13,7 @@ use crate::ring::Ring;
 #[derive(Debug, Clone)]
 pub struct TwiddleFactors<R: Ring, const N: usize> {
     /// Powers of ψ for forward NTT (bit-reversed order)
-    /// psi_powers[i] = ψ^(bit_reverse(i))
+    /// `psi_powers[i] = ψ^(bit_reverse(i))`
     pub psi_powers: Vec<R>,
 
     /// Powers of ψ^(-1) for inverse NTT (bit-reversed order)

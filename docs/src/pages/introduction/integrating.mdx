@@ -22,7 +22,7 @@ SHAKE in your dependency graph.
 
 | Feature | Crate | Effect |
 | --- | --- | --- |
-| `parallel` | `lattice-algebra` | opt-in `rayon` for bulk matrix operations |
+| `parallel` | `lattice-algebra` | opt-in `rayon` for bulk matrix operations (the `lattice-algebra-rs` facade forwards it) |
 | default | all | empty — you get exactly the code you use |
 
 ```sh
@@ -89,8 +89,9 @@ Learn these five once, and every module behaves the way you expect:
   `None`. (Both behaviors are pinned by `scheme_contract.rs`.)
 - **Quickstart snippets are load-bearing.** The code on the
   [Quickstart](/introduction/getting-started) page is compiled and executed
-  in CI by `doc_snippet_check.rs` tests. If your PR breaks them, the docs
-  page is part of your change.
+  in CI by `doc_snippet_check.rs` guard tests — the algebra-side snippets in
+  the facade crate, the ML-DSA snippet in `crates/pqc`, the Z1 snippet in
+  `crates/zk`. If your PR breaks them, the docs page is part of your change.
 
 ## Reproduce everything
 

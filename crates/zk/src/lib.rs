@@ -12,6 +12,6 @@
 //!   opening (Z3).
 //! - [`protocols::fold`]: Nova-style folding / IVC layer (Z4).
 //!
-//! [`algebra`]: https://docs.rs/lattice-algebra
+//! [`algebra`]: algebra
 
 pub mod protocols;

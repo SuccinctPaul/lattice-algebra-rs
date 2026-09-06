@@ -11,6 +11,7 @@ crates/algebra   # L0-L4 foundation: ring / ntt / poly / module / crypto / matri
 crates/pqc       # NIST schemes: ML-DSA (FIPS 204)
 crates/zk        # ZK line: Ajtai commitments, Sigma, batched opening, sumcheck, IPA, folding
 src/             # facade crate re-exporting everything under historical paths
+examples/        # workspace tour through the facade (runnable)
 docs/            # the design site (vocs + mermaid) — part of the deliverable, not an afterthought
 ```
 

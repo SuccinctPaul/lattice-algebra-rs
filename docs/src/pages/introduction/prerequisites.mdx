@@ -1,0 +1,97 @@
+# Prerequisites & Notation
+
+Everything the rest of the site assumes, collected in one place so no page
+has to re-derive it. Start with the track that matches what you want to do.
+
+## How much background do I need?
+
+| You want to… | You need | Start at |
+| --- | --- | --- |
+| **Use a scheme** (sign with ML-DSA, sample, multiply polynomials) | Comfortable Rust (const generics, traits); no lattice background | [Quickstart](/introduction/getting-started) |
+| **Build a protocol on the base** (a new commitment, a signature variant) | + modular rings, the NTT *idea* (not the derivations), Fiat–Shamir at the level of "hash the transcript" | [Architecture](/design/architecture), then the L0–L4 design pages |
+| **Read/contribute to the ZK line** (Σ-protocols, sumcheck, folding) | + lattice hardness assumptions (MSIS/LWE), Σ-protocols and FS-with-aborts, and the LaBRADOR/GreyHound/LatticeFold papers | [Lattice ZK](/schemes/zk-snark), then Z1→Z4 |
+| **Judge security claims** | + enough lattice crypto to read the [security status](/introduction/security-status) register skeptically | Security status, [parameters](/reference/parameter-sets) |
+
+None of the *usage* docs require you to have implemented a lattice scheme
+before; the *design* pages of the ZK line do.
+
+## Background reading
+
+Primary specifications this project implements against:
+
+- **FIPS 203** (ML-KEM) and **FIPS 204** (ML-DSA) — the NIST standards;
+  the PQC pages map their algorithm steps onto base APIs one by one
+  ([FIPS 203](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.203.pdf),
+  [FIPS 204](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf)).
+- **FIPS 206 / FN-DSA (Falcon)** — still a draft; we track the reference
+  implementation, not the draft text.
+
+For the ZK line, the protocol papers behind each stage (implementations
+linked from the [ecosystem page](/reference/ecosystem)):
+
+- Lyubashevsky, *Fiat–Shamir with Aborts* (the Σ-protocol/blueprint behind
+  Z1 and ML-DSA-style signatures;
+  [eprint 2009/211](https://eprint.iacr.org/2009/211));
+- Beullens–Seiler, *LaBRADOR: Compact Proofs for R1CS from Module-SIS*
+  (the batched-opening design behind Z2);
+- *GreyHound* (sumcheck over rings — Z3) and *LatticeFold / LatticeFold+*
+  (folding — Z4).
+
+Two mathematical prerequisites are worth naming because the docs use them
+constantly without comment: polynomial arithmetic over `Z_q` (what a
+quotient ring `Z_q[X]/(X^n+1)` is, and why multiplication there is a
+convolution) and the NTT as the finite-field analogue of the FFT. The
+[L1 design page](/design/ntt) states what the code assumes; derivations
+live in the references above.
+
+## Notation
+
+Used uniformly across the design and scheme pages.
+
+**Objects**
+
+| Symbol | Meaning |
+| --- | --- |
+| `Z_q` | integers modulo `q` (the scalar ring) |
+| `R_q = Z_q[X]/(X^n + 1)` | the negacyclic polynomial ring; degree-`n` polynomials with `X^n ≡ −1` |
+| `R_q^K`, `R_q^{K×L}` | vectors / matrices over `R_q` (the *module* layer) |
+| `Zq<q>`, `PolyRing<R, N>`, `ModuleVector<R, K, N>`, `ModuleMatrix<R, K, L, N>` | the corresponding Rust types |
+
+**Norms and bounds** — norms always use the *centered* representative of a
+coefficient, i.e. taken in `(−q/2, q/2]`:
+
+| Symbol | Meaning |
+| --- | --- |
+| `‖v‖∞` | infinity norm: max absolute coefficient |
+| `‖v‖₁` | L1 norm: sum of absolute coefficients |
+| `τ` | Hamming weight of the challenge: number of non-zero ±1 coefficients (39/49/60 in ML-DSA) |
+| `η` | secret/noise coefficient bound (RejBounded / CBD range) |
+| `γ₁` | mask range, `2^17` or `2^19` in ML-DSA |
+| `γ₂` | decomposition modulus, `(q−1)/88` or `(q−1)/32` in ML-DSA |
+| `β = τ·η` | worst-case challenge-noise product bound |
+| `ω` | ML-DSA hint budget (max hint count per signature) — *not* the NTT root of unity, which appears only on the [NTT page](/design/ntt) |
+| `B_S`, `B_Y`, `B_Z` | ZK witness / mask / response coefficient bounds (Z1 slack analysis) |
+
+**Assumptions and protocol vocabulary**
+
+| Term | Meaning |
+| --- | --- |
+| MSIS (Module-SIS) | given `Â ∈ R_q^{K×L}`, finding a non-zero short `z` with `Â·z = 0` is hard — the binding workhorse |
+| SelfTargetMSIS | the FS-signature variant of MSIS (same source as ML-DSA's EUF-CMA) |
+| LWE | noisy linear equations are pseudorandom |
+| Σ-protocol | three-move commit → challenge → response proof of knowledge |
+| HVZK | honest-verifier zero knowledge (ZK only against the honest verifier) |
+| NIZK / FS | non-interactive ZK via the Fiat–Shamir transform (challenge = hash of the transcript) |
+| R1CS | rank-1 constraint system, the arithmetic circuit language of Z2–Z4 |
+| IVC | incremental verifiable computation (a chain of folded proofs) |
+
+**Engineering shorthand**
+
+| Term | Meaning |
+| --- | --- |
+| XOF | extendable-output function (SHAKE128/256 here); all randomness flows from these |
+| CBD | centered binomial distribution (the ML-KEM noise shape) |
+| NTT / INTT | number-theoretic transform and its inverse |
+| KAT | known-answer test (official test vectors) |
+| CT | constant-time (execution independent of secrets) — *not* claimed today |
+| ZST | zero-sized type (Rust type with no runtime footprint; how parameter sets are encoded) |
