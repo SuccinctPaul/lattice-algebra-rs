@@ -22,9 +22,8 @@ pub(crate) fn simple_bit_pack(w: &[u64; N], w_max: u64) -> Vec<u8> {
     for &c in w {
         debug_assert!(c <= w_max, "coefficient {c} exceeds w_max {w_max}");
         for b in 0..bits {
-            if (c >> b) & 1 == 1 {
-                out[pos / 8] |= 1 << (pos % 8);
-            }
+            // Branch-free bit write (|= 0 is a no-op).
+            out[pos / 8] |= (((c >> b) & 1) as u8) << (pos % 8);
             pos += 1;
         }
     }
@@ -61,9 +60,8 @@ pub(crate) fn bit_pack(w: &[i64], a: i64, b: i64) -> Vec<u8> {
         debug_assert!(c >= -a && c <= b, "coefficient {c} outside [{}, {b}]", -a);
         debug_assert!(v <= (a + b) as u64);
         for k in 0..bits {
-            if (v >> k) & 1 == 1 {
-                out[pos / 8] |= 1 << (pos % 8);
-            }
+            // Branch-free bit write.
+            out[pos / 8] |= (((v >> k) & 1) as u8) << (pos % 8);
             pos += 1;
         }
     }

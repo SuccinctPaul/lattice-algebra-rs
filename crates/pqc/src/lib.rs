@@ -1,5 +1,6 @@
 #![allow(clippy::module_inception)]
-//! Post-quantum cryptography schemes built on the [`algebra`] foundation.
+//! Post-quantum cryptography schemes built on the `algebra` foundation
+//! (crate `lattice-algebra`).
 //!
 //! - [`mldsa`]: ML-DSA (FIPS 204) digital signatures — keygen, deterministic
 //!   and randomized signing, verification, for all three parameter sets.

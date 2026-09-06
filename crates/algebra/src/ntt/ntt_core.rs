@@ -3,7 +3,7 @@
 //! This module implements the Number Theoretic Transform (NTT) algorithms:
 //! - Cooley-Tukey radix-2 DIT (Decimation-In-Time) for forward NTT
 //! - Gentleman-Sande radix-2 DIF (Decimation-In-Frequency) for inverse NTT
-//! - Negacyclic NTT for polynomial rings Z_q[x]/(x^n + 1)
+//! - Negacyclic NTT for polynomial rings `Z_q[x]/(x^n + 1)`
 
 use crate::ntt::params::{bit_reverse_permutation, NttParams};
 use crate::ntt::twiddle::NegacyclicTwiddles;
@@ -193,10 +193,10 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
     // Negacyclic NTT (for x^N + 1)
     // ========================================================================
 
-    /// Performs forward negacyclic NTT for polynomial ring Z_q[x]/(x^N + 1).
+    /// Performs forward negacyclic NTT for polynomial ring `Z_q[x]/(x^N + 1)`.
     ///
     /// The negacyclic NTT computes:
-    /// â[i] = Σ_{j=0}^{N-1} a[j] · ψ^j · ω^{ij}
+    /// `â[i] = Σ_{j=0}^{N-1} a[j] · ψ^j · ω^{ij}`
     ///
     /// where ψ is a primitive 2N-th root of unity and ω = ψ² is a primitive
     /// N-th root of unity.
@@ -215,7 +215,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
         self.forward(a);
     }
 
-    /// Performs inverse negacyclic NTT for polynomial ring Z_q[x]/(x^N + 1).
+    /// Performs inverse negacyclic NTT for polynomial ring `Z_q[x]/(x^N + 1)`.
     ///
     /// # Arguments
     /// * `a` - Mutable slice of N ring elements (modified in-place)
@@ -247,7 +247,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
     /// Product polynomial coefficients [c_0, c_1, ..., c_{N-1}]
     ///
     /// # Note
-    /// For standard (cyclic) convolution. For polynomial rings Z_q[x]/(x^N + 1),
+    /// For standard (cyclic) convolution. For polynomial rings `Z_q[x]/(x^N + 1)`,
     /// use `multiply_negacyclic` instead.
     pub fn multiply(&self, a: &[R], b: &[R]) -> Vec<R> {
         assert_eq!(a.len(), N, "First polynomial length must be N");
@@ -273,7 +273,7 @@ impl<R: Ring, const N: usize> NttOperator<R, N> {
         c_ntt
     }
 
-    /// Multiplies two polynomials in Z_q[x]/(x^N + 1) using negacyclic NTT.
+    /// Multiplies two polynomials in `Z_q[x]/(x^N + 1)` using negacyclic NTT.
     ///
     /// This computes the negacyclic convolution:
     /// c(x) = a(x) · b(x) mod (x^N + 1)

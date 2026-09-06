@@ -48,7 +48,7 @@ Verifier checks:
 | `t* + q*` (2 ring elements) | 512 |
 | **Total** | **3072 ≤ 10 240 ✅** |
 
-Soundness sketch: after `c, d` are committed, the response is pinned by the overdetermined linear check; the combined constraint check then detects any deviation by Schwartz–Zippel on `γ` (2048 random bits). A full concrete-security analysis (incl. the trade-off between the challenge space and the MSIS parameters of the commitment) is part of the Z3 hardening.
+Soundness sketch (audited & corrected): after `c, d` are committed, the response is pinned by the overdetermined linear check (`N ≥ 2M`, kernel-free). The challenge must be a **true non-unit** `C = X − a` with `a` odd — the monomial `X` alone is always a unit in `Z_{2^32}[X]/(X^64+1)` (`X·(−X^63) = 1`), which made an earlier revision of the constraint check vacuous (any forged statement could solve for `t*`; there is now a regression test). With the non-unit challenge the verifier equation is solvable only when the combined residual lands in the index-2 ideal `C·R` — **one bit of soundness per mask attempt** against a fixed commitment. The documented 2^-32 requires the LaBRADOR recursion (committing the masked terms `m_k, q_k` under a second Ajtai key before the challenges open them), which is the tracked Z2/Z3 milestone; the [Z3 sumcheck](/schemes/z3-sumcheck) replaces the single combination with round-by-round challenges, and its verifier now closes the loop by evaluating the public residual table at the derived challenge point.
 
 ## What Z2 does *not* claim
 

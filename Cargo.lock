@@ -353,6 +353,8 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "lattice-algebra",
+ "serde_json",
+ "zeroize",
 ]
 
 [[package]]
@@ -361,6 +363,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "lattice-algebra",
+ "rayon",
 ]
 
 [[package]]
@@ -843,3 +846,9 @@ dependencies = [
  "quote",
  "syn 2.0.103",
 ]
+
+[[package]]
+name = "zeroize"
+version = "1.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"

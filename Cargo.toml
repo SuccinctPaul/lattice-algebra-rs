@@ -15,6 +15,7 @@ rand = { version = "0.9.1", features = ["default"] }
 rustfft = "6.4.0"
 serde = { version = "1.0.216", features = ["derive"] }
 sha3 = "0.10"
+zeroize = "1.8"
 serde_json = "1.0.133"
 lattice-algebra = { path = "crates/algebra" }
 
@@ -30,7 +31,7 @@ categories = ["cryptography", "algorithms", "math", "science"]
 
 [features]
 default = []
-parallel = ["lattice-algebra/parallel"]
+parallel = ["lattice-algebra/parallel", "lattice-zk/parallel"]
 
 [dependencies]
 lattice-algebra = { workspace = true }

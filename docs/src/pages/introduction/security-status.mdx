@@ -10,20 +10,42 @@ an explicit claims page more useful than silence.
 | --- | --- |
 | Spec-shaped implementations: ML-DSA follows FIPS 204 step-by-step; every spec step maps to a documented base API | [PQC mapping](/schemes/pqc), encodings with exact byte sizes asserted |
 | Reference-exact derivation primitives | RejBounded nibble formulas, SampleInBall ordering, `ExpandMask` chunking and `power2round`/`decompose`/hint are differential-tested against the reference bit tricks |
-| Arithmetic correctness | 474 tests, including ring-axiom property tests over 15 moduli (2 … 2³², prime and composite), NTT-vs-schoolbook cross-checks, NTT-homomorphism tests |
+| **Official KAT/ACVP alignment (ML-DSA, pure mode)** | 126 official NIST ACVP vectors pass byte-exactly: keyGen 75/75 (seed → pk, sk), sigGen 27/27 (deterministic and randomized with fixed `rnd`), sigVer 24/24 (accept **and** reject). Fixtures with provenance and a regeneration script live in `crates/pqc/tests/data/`; the harness runs in `cargo test`. The ACVP run caught and fixed a real one-sided `r0` restart gate (valid-but-non-canonical signatures) — the harness bites. |
+| **FIPS 204 NTT convention** | `mldsa::ntt` implements the standard's transform exactly (ζ = 1753, bit-reversed evaluation order `ζ^(2·brv8(i)+1)`), so `ExpandA` reproduces the official `RejNTTPoly` streams; validated by roundtrip/negacyclic property tests and the keyGen vectors. |
+| Arithmetic correctness | 500+ tests, including ring-axiom property tests over 15 moduli (2 … 2³², prime and composite), NTT-vs-schoolbook cross-checks, NTT-homomorphism tests |
 | Determinism and reproducibility | All samplers and derivations are XOF-driven (seed + domain label, no bare RNG); same inputs ⇒ same outputs, KAT-friendly by construction |
-| Semantic rejection behavior | Tampered message / wrong context / wrong key / corrupted or truncated signatures, tampered proofs and folded instances are rejected — tested |
+| Semantic rejection behavior | Tampered message / wrong context / wrong key / corrupted or truncated signatures, tampered proofs and folded instances are rejected — tested (and exercised by the ACVP sigVer reject vectors) |
+| **Constant-time secret-value paths** | `crypto::ct` branch-free primitives (masked select/comparisons, absolute values, infinity norms, conditional accumulation — exhaustively differential-tested against the scalar forms); ML-DSA's norm gates, rounding/`Decompose`/hint logic, sampler value mappings and bit encodings are branch-free with no early exits over secret data; `RejBounded` and the CDT Gaussian have constant-time variants; `SigningKey` zeroizes on drop and redacts `Debug`. Residual leaks are documented below, not hidden. |
+| **Estimator-calibrated security levels** | `algebra::security` implements the Core-SVP methodology ([Alk+16], as restated in the Dilithium r3.1 appendix and the NIST QROM evaluation): LWE primal/dual and Lyu12-SIS block sizes. It reproduces the published analysis — the ML-DSA-44 primal lands at 2^123.8 vs ≈ 2^124 published — and its cheapest-attack estimates (2^116.5 / 2^172.6 / 2^249.4 classical for ML-DSA-44/65/87) bound the published 2^124 / 2^186 / 2^265 from below, i.e. on the conservative side. Z1 instances are calibrated too (table below). |
 | No unsafe code | The workspace compiles with zero `unsafe` blocks |
 
-## Not claimed (yet)
+## Calibrated security levels
+
+Core-SVP hardness (classical / quantum, sieve costs 2^(0.292µ) / 2^(0.265µ)):
+
+| Instance | Published analysis¹ | This crate (closed-form, conservative) |
+| --- | --- | --- |
+| ML-DSA-44 (MLWE + forgery MSIS) | ≈ 2^124 (NIST category II) | 2^116.5 / 2^105.7 |
+| ML-DSA-65 | ≈ 2^186 (category III) | 2^172.6 / 2^156.6 |
+| ML-DSA-87 | ≈ 2^265 (category V) | 2^249.4 / 2^226.3 |
+| Z1 Ajtai binding (SIS, ‖s‖∞ ≤ 4, K=8, L=6, q=2^23−2^13+1) | — | ≈ 2^4294 (block size ≈ 14706; effectively unbounded) |
+| Z1 Σ-protocol soundness (SelfTargetMSIS, ‖·‖∞ ≤ 2·B_Z) | — | 2^225.7 / 2^204.8 |
+
+¹ The published figures come from the spec's zone-based refinement of the
+same methodology (sample/column truncation and ℓ∞ vector-shape heuristics)
+that the closed-form conditions do not model, so the closed-form numbers sit
+on the conservative side. The per-attack block sizes are frozen as regression
+tests in `algebra::security`.
+
+## Known residuals (documented, tracked)
 
 | Item | Status | Why it matters |
 | --- | --- | --- |
-| **Constant time** | ❌ not implemented — arithmetic is variable-time; signing has data-dependent loops | Side-channel resistance is a *hard* requirement for production secret-key operations. Do not deploy the signing/KEM paths with secret keys near adversaries. CT hardening is a declared milestone (secret-independent control flow, no secret-indexed table lookups, CT option in samplers). |
+| **Constant time — residuals** | 🟡 partial by design | The secret-*value* paths are branch-free (see claimed table). Two leaks remain, both inherent to the spec's derivations and shaped like the reference implementation: (1) rejection-sampling **loop counts** depend on the XOF stream — never on a secret-indexed table lookup or a secret-valued branch inside the loop body; (2) `HintBitPack` compaction writes through a secret-dependent index whose final value is public (it is part of the signature). Signing reveals its rejection/restart behavior exactly as the FIPS 204 reference does; NIST's own analysis argues this is safe because per-coefficient rejection probabilities are independent of secret data. A dudect-style statistical harness and an assembly audit are the follow-up hardening steps. |
 | **Third-party audit** | ❌ none | No external review has been performed. Treat all claims on this page as engineering evidence, not assurance. |
-| **Official KAT/ACVP alignment** | 📋 in progress for ML-DSA | Self-consistency and property tests are in place; byte-exact agreement against the reference NTT ordering and rejection streams is the remaining hardening step. ML-KEM/FN-DSA inherit this requirement before their milestone closes. |
-| **Concrete security levels** | 📋 estimator calibration pending | Z1/Z2 slack bounds are proven *relations* (e.g. `‖s_ext‖∞ ≤ 2·B_Z`), but no NIST security level is claimed until the [lattice estimator](https://github.com/malb/lattice-estimator) calibrates the Module-SIS/LWE instances. |
-| **Production hardening** | ❌ out of scope today | No zeroization, no fuzzing harness for the decoders yet, no `no_std` story, MSRV pinned to 1.70. |
+| **ACVP modes beyond pure** | 📋 scoped until the APIs exist | The fixtures cover the pure, external-interface ML-DSA this crate implements. HashML-DSA (`preHash`, OID-separated hashing), the internal `mu` interface, and FN-DSA/ML-KEM vectors inherit the requirement when those schemes/APIs land (M4/M5). |
+| **Estimator refinement** | 📋 | The closed-form conditions are frozen with the published zone-based figures quoted alongside; reproducing the zone-based simulation (sample/column truncation, ℓ∞ shape heuristics) with archived runs under `scripts/params/` remains the refinement item. |
+| **Production hardening** | ❌ out of scope today | No fuzzing harness for the decoders yet, no `no_std` story. Zeroization of `SigningKey` is done; `to_bytes()` output buffers are caller-managed. |
 
 ## Where this toolchain belongs today
 
@@ -32,7 +54,10 @@ an explicit claims page more useful than silence.
 - ✅ Teaching and studying how FIPS 203/204 map onto algebra primitives
 - ✅ As the shared substrate for a *family* of experiments (PQC ↔ ZK) that
   must reuse the same norms, decompositions and challenge derivations
-- ⚠️ Pre-production integrations, with the table above as the risk register
+- ✅ As a KAT-verified reference: ML-DSA (pure mode) matches the official
+  ACVP vectors byte-for-byte
+- ⚠️ Pre-production integrations, with the residual table above as the
+  risk register
 - ❌ Production deployments holding real secret keys (use
   [RustCrypto](https://github.com/RustCrypto) or
   [liboqs](https://github.com/open-quantum-safe/liboqs) today)
@@ -40,6 +65,6 @@ an explicit claims page more useful than silence.
 ## Reporting
 
 Security-relevant bugs in the claimed rows above (correctness, determinism,
-rejection behavior) are in scope for responsible disclosure — open a GitHub
-issue or contact the maintainers directly. Claims in the "not claimed"
-section are roadmap items, not vulnerabilities.
+rejection behavior, KAT alignment) are in scope for responsible disclosure —
+open a GitHub issue or contact the maintainers directly. Claims in the
+residuals section are roadmap items, not vulnerabilities.

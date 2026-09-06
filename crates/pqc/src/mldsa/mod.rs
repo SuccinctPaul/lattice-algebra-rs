@@ -2,9 +2,10 @@
 //! the L0–L4 base layers.
 //!
 //! Scope notes:
-//! - N = 256, q = 8380417 (FIPS 204); the NTT-domain representation is this
-//!   crate's own (any consistent evaluation order is mathematically valid
-//!   because `ExpandA` samples `Â` directly in the NTT domain).
+//! - N = 256, q = 8380417 (FIPS 204). The NTT is the standard's exact
+//!   transform (`ζ = 1753`, bit-reversed evaluation order — see [`ntt`]),
+//!   so `ExpandA` reproduces the official `RejNTTPoly` streams and the
+//!   scheme is byte-exact with the ACVP/KAT vectors.
 //! - `Sign` is deterministic when given a fixed `rnd`; FIPS 204's randomized
 //!   outer signature passes fresh randomness as `rnd`.
 //! - Context strings must be shorter than 256 bytes (spec limit).
@@ -16,14 +17,14 @@ pub(crate) fn div_ceil8(x: usize) -> usize {
 }
 
 pub mod encoding;
+pub mod ntt;
 pub mod params;
 
 pub use params::{MlDsa44, MlDsa65, MlDsa87, MlDsaParams, D, N, Q};
 
-use algebra::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded, BitStream};
+use algebra::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded_ct, BitStream};
 use algebra::crypto::xof::{Shake128Xof, Shake256Xof, Xof};
-use algebra::module::{rounding, ModuleMatrixNtt, ModuleVector};
-use algebra::ntt::NttOperatorOptimized;
+use algebra::module::{rounding, ModuleVector};
 use algebra::poly::sparse::SparsePolynomial;
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::traits::CenteredRing;
@@ -35,11 +36,6 @@ use std::marker::PhantomData;
 const Q_U64: u64 = Q as u64;
 type ZqD = Zq<8380417>;
 type Rq = PolyRing<ZqD, N>;
-type NttOp = NttOperatorOptimized<ZqD, N>;
-
-fn ntt_operator() -> NttOp {
-    NttOp::new()
-}
 
 // ===========================================================================
 // Small helpers between raw coefficients and ring elements
@@ -62,6 +58,28 @@ fn rq_coeffs_u64(p: &Rq) -> [u64; N] {
     out
 }
 
+/// Applies the FIPS 204 NTT to a polynomial's coefficients (representatives
+/// are reduced into `[0, q)` first).
+fn poly_to_ntt(p: &Rq) -> [u64; N] {
+    let coeffs: [i64; N] = rq_coeffs_u64(p).map(|v| v as i64);
+    ntt::ntt_coeffs(&coeffs)
+}
+
+/// `w = Â·v` entirely in the FIPS 204 NTT domain, returning the
+/// coefficient-domain rows of the product (each in `[0, q)`).
+fn mat_vec_ntt<const K: usize, const L: usize>(
+    a: &[[[u64; N]; L]; K],
+    v_ntt: &[[u64; N]; L],
+) -> [[i64; N]; K] {
+    std::array::from_fn(|r| {
+        let mut acc = [0u64; N];
+        for (entry, v) in a[r].iter().zip(v_ntt.iter()) {
+            ntt::pointwise_mul_add(&mut acc, entry, v);
+        }
+        ntt::intt_coeffs(&acc)
+    })
+}
+
 fn h_n(data: &[&[u8]], n: usize) -> Vec<u8> {
     let mut x = Shake256Xof::new(&[]);
     for part in data {
@@ -76,17 +94,25 @@ fn h_n(data: &[&[u8]], n: usize) -> Vec<u8> {
 
 /// FIPS 204 `ExpandS(ρ)`: `ℓ + k` polynomials with coefficients in
 /// `[−η, η]`, drawn from `H(ρ || 2-byte index)`.
+fn expand_s_poly<P: MlDsaParams>(seed: &[u8; 64], idx: u16) -> [i64; N] {
+    let mut xof = Shake256Xof::new(&[]);
+    xof.absorb(seed);
+    xof.absorb(&idx.to_le_bytes());
+    let mut stream = BitStream::new(&mut xof);
+    std::array::from_fn(|_| sample_rej_bounded_ct::<ZqD>(&mut stream, P::ETA))
+}
+
+/// FIPS 204 `ExpandS(ρ)`: `ℓ + k` polynomials with coefficients in
+/// `[−η, η]`, drawn from `H(ρ || 2-byte index)`. The streams are cheap
+/// SHAKE squeezes — per-stream task dispatch costs more than it saves
+/// (measured), so this stays sequential.
 fn expand_s<P: MlDsaParams, const L: usize, const K: usize>(
     seed: &[u8; 64],
 ) -> (Vec<[i64; N]>, Vec<[i64; N]>) {
     let mut s1 = Vec::with_capacity(P::L);
     let mut s2 = Vec::with_capacity(P::K);
     for idx in 0..(P::L + P::K) as u16 {
-        let mut xof = Shake256Xof::new(&[]);
-        xof.absorb(seed);
-        xof.absorb(&idx.to_le_bytes());
-        let mut stream = BitStream::new(&mut xof);
-        let poly = std::array::from_fn(|_| sample_rej_bounded::<ZqD>(&mut stream, P::ETA));
+        let poly = expand_s_poly::<P>(seed, idx);
         if idx < P::L as u16 {
             s1.push(poly);
         } else {
@@ -193,7 +219,12 @@ impl<P: MlDsaParams> VerifyingKey<P> {
 }
 
 /// ML-DSA signing (private) key.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// The secret fields are zeroized when the key is dropped, and `Debug`
+/// output is redacted so keys never leak through logs or panics. Note that
+/// `to_bytes()` hands the caller a fresh secret buffer — zeroize that copy
+/// yourself if your threat model requires it.
+#[derive(Clone, PartialEq, Eq)]
 pub struct SigningKey<P: MlDsaParams> {
     rho: [u8; 32],
     k: [u8; 32],
@@ -202,6 +233,24 @@ pub struct SigningKey<P: MlDsaParams> {
     s2: Vec<[i64; N]>,
     t0: Vec<[i64; N]>,
     _p: PhantomData<P>,
+}
+
+impl<P: MlDsaParams> std::fmt::Debug for SigningKey<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SigningKey").finish_non_exhaustive()
+    }
+}
+
+impl<P: MlDsaParams> Drop for SigningKey<P> {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.rho.zeroize();
+        self.k.zeroize();
+        self.tr.zeroize();
+        self.s1.zeroize();
+        self.s2.zeroize();
+        self.t0.zeroize();
+    }
 }
 
 impl<P: MlDsaParams> SigningKey<P> {
@@ -291,24 +340,31 @@ pub fn keygen_core<P: MlDsaParams, const K: usize, const L: usize>(
     k_key.copy_from_slice(&out[96..128]);
 
     // Â, s1, s2, t = Â·s1 + s2
-    let a_hat: ModuleMatrixNtt<ZqD, K, L, N> =
-        ModuleMatrixNtt::expand_from_seed::<Shake128Xof>(&rho);
+    let a_hat: [[[u64; N]; L]; K] = ntt::expand_a::<Shake128Xof, K, L>(&rho);
     let (s1, s2) = expand_s::<P, L, K>(&rho_prime);
 
-    let op = ntt_operator();
-    let s1_vec: ModuleVector<ZqD, L, N> = ModuleVector::from_fn(|i| rq_from_i64(&s1[i]));
-    let s2_vec: ModuleVector<ZqD, K, N> = ModuleVector::from_fn(|i| rq_from_i64(&s2[i]));
-
-    let t = a_hat.mul_vec_ntt(&s1_vec.to_ntt(&op)).from_ntt(&op) + s2_vec;
+    let s1_ntt: [[u64; N]; L] = std::array::from_fn(|i| ntt::ntt_coeffs(&s1[i]));
+    let t_rows = mat_vec_ntt::<K, L>(&a_hat, &s1_ntt);
+    let t: Vec<[i64; N]> = t_rows
+        .into_iter()
+        .zip(s2.iter())
+        .map(|(row, s2_row)| {
+            let mut out = row;
+            for (c, &s) in out.iter_mut().zip(s2_row.iter()) {
+                *c = (*c + s).rem_euclid(Q);
+            }
+            out
+        })
+        .collect();
 
     // Power2Round per coefficient.
     let mut t1 = Vec::with_capacity(P::K);
     let mut t0 = Vec::with_capacity(P::K);
-    for p in t.polys() {
+    for row in &t {
         let mut hi = [0u64; N];
         let mut lo = [0i64; N];
-        for (j, &c) in p.coefficients().iter().enumerate() {
-            let (r1, r0) = rounding::power2round(c.to_u128() as i64, D);
+        for (j, &c) in row.iter().enumerate() {
+            let (r1, r0) = rounding::power2round(c, D);
             hi[j] = r1 as u64;
             lo[j] = r0;
         }
@@ -358,15 +414,14 @@ fn message_representative(tr: &[u8; 64], ctx: &[u8], msg: &[u8]) -> [u8; 64] {
     out
 }
 
-fn high_bits_of<P: MlDsaParams, const K: usize>(w: &ModuleVector<ZqD, K, N>) -> Vec<[u64; N]> {
-    w.polys()
-        .iter()
-        .map(|p| {
-            let mut row = [0u64; N];
-            for (j, &c) in p.coefficients().iter().enumerate() {
-                row[j] = rounding::high_bits(c.to_u128() as i64, P::GAMMA2, Q) as u64;
+fn high_bits_of<P: MlDsaParams, const K: usize>(w: &[[i64; N]; K]) -> Vec<[u64; N]> {
+    w.iter()
+        .map(|row| {
+            let mut out = [0u64; N];
+            for (j, &c) in row.iter().enumerate() {
+                out[j] = rounding::high_bits(c, P::GAMMA2, Q) as u64;
             }
-            row
+            out
         })
         .collect()
 }
@@ -383,9 +438,7 @@ pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
 ) -> Vec<u8> {
     let mu = message_representative(&sk.tr, ctx, msg);
 
-    let a_hat: ModuleMatrixNtt<ZqD, K, L, N> =
-        ModuleMatrixNtt::expand_from_seed::<Shake128Xof>(&sk.rho);
-    let op = ntt_operator();
+    let a_hat: [[[u64; N]; L]; K] = ntt::expand_a::<Shake128Xof, K, L>(&sk.rho);
 
     let mut y_seed = [0u8; 64];
     y_seed.copy_from_slice(&h_n(&[&sk.k, rnd, &mu], 64));
@@ -402,8 +455,9 @@ pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
         // y ← ExpandMask(ρ'', κ)
         let y: ModuleVector<ZqD, L, N> = expand_mask::<P, L>(&y_seed, kappa);
         // w ← NTT⁻¹(Â∘NTT(y))
-        let w = a_hat.mul_vec_ntt(&y.to_ntt(&op)).from_ntt(&op);
-        let w1 = high_bits_of::<P, K>(&w);
+        let y_ntt: [[u64; N]; L] = std::array::from_fn(|i| poly_to_ntt(y.get(i)));
+        let w_rows: [[i64; N]; K] = mat_vec_ntt::<K, L>(&a_hat, &y_ntt);
+        let w1 = high_bits_of::<P, K>(&w_rows);
         let c_tilde = h_n(&[&mu, &w1_encode(&w1, w_max as u64)], P::C_TILDE_BYTES);
         let c = sample_challenge::<P>(&c_tilde);
 
@@ -412,22 +466,27 @@ pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
         let z = y.clone() + cs1;
         // r0 ← LowBits(w − c·s2)
         let cs2 = s2_vec.mul_scalar(&c);
-        let w_minus_cs2 = w.clone() - cs2.clone();
+        let w: ModuleVector<ZqD, K, N> = ModuleVector::from_fn(|i| rq_from_i64(&w_rows[i]));
+        let w_minus_cs2 = w - cs2.clone();
 
-        // Norm gates.
-        if z.infinity_norm()
-            >= u64::try_from(P::GAMMA1 - i64::from(P::TAU) * i64::from(P::ETA)).unwrap()
-        {
-            kappa += P::L;
-            continue;
+        // Norm gates. The coefficient scans accumulate without early
+        // exits (no secret-dependent control flow inside the scan); the
+        // restart branch itself is the documented residual leak (attempt
+        // count varies with the XOF stream, as in the reference).
+        let z_ok = z.infinity_norm()
+            < u64::try_from(P::GAMMA1 - i64::from(P::TAU) * i64::from(P::ETA)).unwrap();
+        // r0 ← LowBits(w − c·s2); restart when ‖r0‖∞ ≥ γ2 − β. The norm is
+        // taken on centered representatives, so the *negative* tail counts
+        // too — a one-sided `r0 < γ2 − β` check would emit valid-but
+        // non-canonical signatures the official vectors reject.
+        let mut r0_ok = true;
+        for p in w_minus_cs2.polys() {
+            for c in p.coefficients() {
+                let r0 = rounding::low_bits(c.to_u128() as i64, P::GAMMA2, Q);
+                r0_ok &= r0.abs() < P::GAMMA2 - i64::from(P::TAU) * i64::from(P::ETA);
+            }
         }
-        let r0_ok = w_minus_cs2.polys().iter().all(|p| {
-            p.coefficients().iter().all(|&c| {
-                rounding::low_bits(c.to_u128() as i64, P::GAMMA2, Q)
-                    < P::GAMMA2 - i64::from(P::TAU) * i64::from(P::ETA)
-            })
-        });
-        if !r0_ok {
+        if !(z_ok && r0_ok) {
             kappa += P::L;
             continue;
         }
@@ -452,9 +511,7 @@ pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
             };
             for (j, &rc) in r_coeffs.iter().enumerate() {
                 let bit = rounding::make_hint(z_centered[j], rc as i64, P::GAMMA2, Q) as u8;
-                if bit == 1 {
-                    hint_count += 1;
-                }
+                hint_count += bit as usize;
                 row[j] = bit;
             }
             h.push(row);
@@ -548,34 +605,34 @@ pub fn verify_core<P: MlDsaParams, const K: usize, const L: usize>(
     let mu = message_representative(&h_n(&[&vk.to_bytes()], 64).try_into().unwrap(), ctx, msg);
 
     // w' ← NTT⁻¹(Â∘NTT(z) − NTT(c)∘NTT(t1·2^d))
-    let a_hat: ModuleMatrixNtt<ZqD, K, L, N> =
-        ModuleMatrixNtt::expand_from_seed::<Shake128Xof>(&vk.rho);
-    let op = ntt_operator();
+    let a_hat: [[[u64; N]; L]; K] = ntt::expand_a::<Shake128Xof, K, L>(&vk.rho);
     let c = sample_challenge::<P>(c_tilde);
 
-    let t1_vec: ModuleVector<ZqD, K, N> = ModuleVector::from_fn(|i| {
+    let z_ntt: [[u64; N]; L] = std::array::from_fn(|i| poly_to_ntt(z_vec.get(i)));
+    let c_hat = poly_to_ntt(&c);
+    let t1_ntt: [[u64; N]; K] = std::array::from_fn(|i| {
         let coeffs: [i64; N] = std::array::from_fn(|j| {
             // t1·2^d (mod q)
             ((vk.t1[i][j] as u128 * (1u128 << D)) % Q as u128) as i64
         });
-        rq_from_i64(&coeffs)
+        ntt::ntt_coeffs(&coeffs)
     });
-    let ct1 = t1_vec.mul_scalar(&c);
-
-    let w_prime = a_hat
-        .mul_vec_ntt(&z_vec.to_ntt(&op))
-        .sub(&ct1.to_ntt(&op))
-        .from_ntt(&op);
 
     // w1' ← UseHint(h, w'); c̃' ← H(μ ‖ w1Encode(w1'))
-    let w1_prime: Vec<[u64; N]> = w_prime
-        .polys()
-        .iter()
-        .zip(h.iter())
-        .map(|(p, row)| {
+    let w1_prime: Vec<[u64; N]> = (0..K)
+        .map(|r| {
+            let mut acc = [0u64; N];
+            for (entry, z_hat) in a_hat[r].iter().zip(z_ntt.iter()) {
+                ntt::pointwise_mul_add(&mut acc, entry, z_hat);
+            }
+            for j in 0..N {
+                let sub = ntt::mul_mod(c_hat[j], t1_ntt[r][j]);
+                acc[j] = (acc[j] + Q_U64 - sub) % Q_U64;
+            }
+            let w_row = ntt::intt_coeffs(&acc);
             let mut out = [0u64; N];
-            for (j, &cc) in p.coefficients().iter().enumerate() {
-                out[j] = rounding::use_hint(cc.to_u128() as i64, row[j] == 1, P::GAMMA2, Q) as u64;
+            for (j, &cc) in w_row.iter().enumerate() {
+                out[j] = rounding::use_hint(cc, h[r][j] == 1, P::GAMMA2, Q) as u64;
             }
             out
         })

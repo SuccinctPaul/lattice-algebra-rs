@@ -11,9 +11,11 @@ name = "pqc"
 
 [dependencies]
 lattice-algebra.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+serde_json.workspace = true
 
 [[bench]]
 name = "mldsa"

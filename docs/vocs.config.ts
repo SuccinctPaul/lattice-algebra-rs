@@ -16,6 +16,7 @@ export default defineConfig({
     {
       text: 'Getting Started',
       items: [
+        { text: 'Prerequisites & Notation', link: '/introduction/prerequisites' },
         { text: 'Quickstart', link: '/introduction/getting-started' },
         { text: 'Integration Guide', link: '/introduction/integrating' },
         { text: 'Security Status', link: '/introduction/security-status' },

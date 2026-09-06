@@ -1,4 +1,4 @@
-//! Polynomial Quotient Ring R[x]/(x^n + 1)
+//! Polynomial Quotient Ring `R[x]/(x^n + 1)`
 //!
 //! This module provides an efficient implementation of polynomial rings
 //! used in lattice-based cryptography.
@@ -25,7 +25,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-/// A polynomial ring R[x]/(x^n+1) where R is a base ring and n is the degree bound.
+/// A polynomial ring `R[x]/(x^n+1)` where R is a base ring and n is the degree bound.
 ///
 /// # Type Parameters
 /// - `R`: The coefficient ring (must implement `Ring`)
@@ -419,7 +419,7 @@ impl<R: Ring, const DEGREE_BOUND: usize> SubAssign for PolyRing<R, DEGREE_BOUND>
 impl<R: Ring, const DEGREE_BOUND: usize> Mul for PolyRing<R, DEGREE_BOUND> {
     type Output = Self;
 
-    /// Polynomial multiplication in Z_q[x]/(x^n + 1).
+    /// Polynomial multiplication in `Z_q[x]/(x^n + 1)`.
     ///
     /// # Complexity
     /// - O(n log n) if NTT is available

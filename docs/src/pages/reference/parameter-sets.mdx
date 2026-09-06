@@ -56,9 +56,9 @@ Sampling: CDT base sampler + fast Fourier sampling (floating-point path — see 
 | LaBRADOR-style commitments/openings | `R = Z_{2^32}[X]/(X^64 + 1)` | power-of-two modulus → reduction is a shift | Z2 target |
 | Challenge space | small ring / binary coefficients (e.g. `R_2`, sparse ±1) | determines extraction slack, hence MSIS parameters | fixed at Z1 |
 | Double-ring embedding | `R_q ↪ R_Q` (small ring for witnesses, NTT-friendly `Q` for sumcheck) | needs `Embed` / `ModSwitch` traits (L2/L3 reserved) | fixed at Z3 |
-| MSIS security bounds | derived from slack + claimed level via `k, d, q` | calibrated with the lattice-estimator | rolling |
+| MSIS security bounds | derived from slack + claimed level via `k, d, q` | ✅ Core-SVP calibrated (`algebra::security`): binding ≈ 2^4294, Σ soundness 2^225.7 classical | rolling |
 
-> Unlike PQC, SNARK parameters are not frozen by a standard. This table updates as Z1–Z4 progress; **every change ships with an estimator run** archived under `scripts/params/`.
+> Unlike PQC, SNARK parameters are not frozen by a standard. This table updates as Z1–Z4 progress; **every change ships with an estimator cross-check** via `algebra::security` (archived zone-based runs under `scripts/params/` remain a refinement item).
 
 ## Instantiation cost note
 

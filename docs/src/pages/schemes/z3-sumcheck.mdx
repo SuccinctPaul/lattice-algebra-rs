@@ -17,7 +17,8 @@ let (challenges, final_eval) =
 
 - Round consistency: `h_i(0) + h_i(1)` must equal the incoming claim;
 - claim folding: `S_{i+1} = h_i(0) + r_i·(h_i(1) − h_i(0))`;
-- soundness: G rounds of Schwartz–Zippel (2048 random bits per round on the Z2 ring).
+- soundness: G rounds of Schwartz–Zippel (2048 random bits per round on the Z2 ring); the verifier now **closes the loop** by evaluating the public residual table at the derived challenge point and matching `final_eval`.
+- the companion gadget-IPA uses the same non-unit challenge fix as Z2 (`C = X − a`, `a` odd — the monomial `X` is always a unit in this ring, which made the inner-product check vacuous; a forged-claim regression test is in place).
 
 Compared to Z2's single γ-combination of gate residuals, the sumcheck gives **round-by-round folding**: a cheating prover is committed to each intermediate folded claim, so soundness holds per round rather than amortized over one big challenge.
 
@@ -29,7 +30,7 @@ Inner-product argument on Ajtai-committed vectors: given `c = A_com·α` and pub
 - response `α' = α + X·mask` with mask commitment `d = A_com·mask`;
 - checks: the overdetermined binding link `A_com·α' == c + X·d` and the inner-product claim `⟨α', u⟩ == v + X·t*` with `t* = ⟨mask, u⟩`;
 - `X` non-unit blocks the adaptive-`t*` division attack.
-- `ipa_gadget_open` + `approx_slack_bound(D, drop)`: the response can be opened **approximately** through a gadget split (`α' = 2^drop·hi + lo`, `|lo| ≤ 2^{drop−1}`) with the provable per-coefficient slack `D·2^{drop−1}` — the mechanism the full LaBRADOR recursion uses to keep opened values short.
+- `ipa_gadget_open` + `approx_slack_bound(drop)`: the response can be opened **approximately** through a gadget split (`α' = 2^drop·hi + lo`, `|lo| ≤ 2^{drop−1}`) with the provable per-coefficient slack `D·2^{drop−1}` — the mechanism the full LaBRADOR recursion uses to keep opened values short.
 
 ## Z2 × Z3 cross-check
 
@@ -37,8 +38,8 @@ Same toy R1CS instance (1024 squaring gates, same witness) through both proof pa
 
 | Path | Statement form | Proof size | Prove | Verify |
 | --- | --- | --- | --- | --- |
-| Z2 (batched opening) | binding link + γ-combined masked constraint | 3072 B | ~1.1 s (debug) | ~540 ms (debug) |
-| Z3 (ring-sumcheck) | residual table sumcheck over 2^10 gates | 5376 B | ~97 ms (debug) | ~1.2 ms (debug) |
+| Z2 (batched opening) | binding link + γ-combined masked constraint | 3072 B | ~1.7 s (debug) | ~0.62 s (debug) |
+| Z3 (ring-sumcheck) | residual table sumcheck over 2^10 gates | 5376 B | ~104 ms (debug) | ~1.3 ms (debug) |
 
 (Z3 numbers from `cargo test z2_z3_crosscheck -- --nocapture`, debug build; the sumcheck's verifier work is O(G) folds over the publicly recomputable residual table, versus Z2's O(gates) row evaluation — the trade GreyHound makes.)
 

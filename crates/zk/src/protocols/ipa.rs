@@ -19,17 +19,24 @@
 //!    (kernel-free w.h.p. for a random tall `A_com`);
 //! 2. `⟨α', u⟩ == v + X·t*` — the inner-product claim.
 //!
-//! Soundness: `X` is forced non-unit (even constant term), so the verifier
-//! equation cannot be solved for `t*` by division: an adaptive `t*` would
-//! require `(⟨α',u⟩ − v) ∈ X·R` — excluding only a measure-0 (ideal)
-//! failure set, with the rest absorbed by the pinning of `α'`.
+//! Soundness: the challenge is `C = X − a` with the scalar `a` forced
+//! **odd** — a genuine non-unit of `Z_{2^32}[X]/(X^64+1)`. (The monomial
+//! `X` itself is *always* a unit there — `X·(−X^63) = 1` — so a unit
+//! challenge would make the inner-product check vacuous: any `v` could be
+//! rationalized as `v + C·t*` with `t* = C⁻¹(⟨α',u⟩ − v)`.) With the
+//! non-unit challenge, solving the verifier equation for `t*` requires
+//! `⟨α',u⟩ − v ∈ C·R`, an index-2 ideal of the ring (`C·R = {f : Σ coeffs
+//! even}`) — a cheating prover grinding over masks passes with probability
+//! ½ per attempt. Full relation soundness (the documented 2^-32) needs the
+//! LaBRADOR recursion that commits the masked inner product before the
+//! challenge opens it — tracked as the Z3 milestone.
 //!
 //! # Approximate opening (gadget layer)
 //!
-//! [`ipa_prove_approx`] reveals the response through a gadget split
+//! [`ipa_gadget_open`] reveals the response through a gadget split
 //! (`α' = 2^drop·hi + lo`, `|lo| ≤ 2^{drop−1}`): the verifier checks the
 //! binding link on the *reconstructed* response up to the provable slack
-//! `slack_bound(D, drop)` per coefficient — the mechanism full LaBRADOR
+//! [`approx_slack_bound`] per coefficient — the mechanism full LaBRADOR
 //! recursion uses to keep opened values short.
 
 use crate::protocols::z2_ring::{matrix_from_seed, ring_from_u32, ring_to_u32, Z2Ring, D};
@@ -106,13 +113,13 @@ fn challenges(key_seed: &[u8; 32], c: &[Z2Ring], u: &[Z2Ring], d: &[Z2Ring]) -> 
     let mut xof = Shake128Xof::new(&[]);
     xof.absorb(b"X");
     xof.absorb(&seed);
-    let mut coeffs = [0u32; D];
+    // C = X − a with a odd: a true non-unit (see the module soundness notes).
     let mut buf = [0u8; 4];
-    for c in &mut coeffs {
-        xof.squeeze(&mut buf);
-        *c = u32::from_le_bytes(buf);
-    }
-    coeffs[0] &= 0xFFFF_FFFE; // force non-unit
+    xof.squeeze(&mut buf);
+    let a = u32::from_le_bytes(buf) | 1;
+    let mut coeffs = [0u32; D];
+    coeffs[0] = a.wrapping_neg();
+    coeffs[1] = 1;
     let x = ring_from_u32(&coeffs);
 
     let mut xof2 = Shake128Xof::new(&[]);
@@ -237,4 +244,100 @@ fn mask_ring<const M: usize>(seed: &[u8; 32]) -> Vec<Z2Ring> {
             ring_from_u32(&coeffs)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocols::z2_ring::D;
+
+    /// Soundness regression mirroring Z2's: a false inner-product claim
+    /// (v ≠ ⟨α, u⟩) with a honestly-shaped binding link must be rejected —
+    /// under the old unit challenge the prover could always solve
+    /// `t* = X⁻¹(⟨α',u⟩ − v)` and every forged claim verified.
+    #[test]
+    fn forged_inner_product_claim_rejected() {
+        const N: usize = 8;
+        const M: usize = 2;
+        let key_seed = b"ipa-key-000000000000000000000000";
+        let key = IpaKey::<N, M>::setup(key_seed);
+        let mut xof = Shake128Xof::new(&[]);
+        let mut rnd_ring = || {
+            let mut coeffs = [0u32; D];
+            let mut buf = [0u8; 4];
+            for c in &mut coeffs {
+                xof.squeeze(&mut buf);
+                *c = u32::from_le_bytes(buf);
+            }
+            ring_from_u32(&coeffs)
+        };
+        let alpha: Vec<Z2Ring> = (0..M).map(|_| rnd_ring()).collect();
+        let u: Vec<Z2Ring> = (0..M).map(|_| rnd_ring()).collect();
+        let v = ring_inner_product(&alpha, &u);
+
+        // Honest proof verifies.
+        let proof = ipa_prove::<N, M>(
+            &key,
+            key_seed,
+            &alpha,
+            &u,
+            v.clone(),
+            b"mask-000000000000000000000000000",
+        );
+        assert!(ipa_verify::<N, M>(
+            &key,
+            key_seed,
+            &key.commit(&alpha),
+            &u,
+            v.clone(),
+            &proof
+        ));
+
+        // Forged claim: flip the last bit of v.
+        let mut coeffs = ring_to_u32(&v);
+        coeffs[0] ^= 1;
+        let v_fake = ring_from_u32(&coeffs);
+        assert_ne!(v, v_fake);
+        assert!(!ipa_verify::<N, M>(
+            &key,
+            key_seed,
+            &key.commit(&alpha),
+            &u,
+            v_fake,
+            &proof
+        ));
+    }
+
+    /// Completeness across several random statements.
+    #[test]
+    fn honest_ipa_prove_verify_roundtrip() {
+        const N: usize = 8;
+        const M: usize = 4;
+        let key_seed = b"ipa-key2-00000000000000000000000";
+        let key = IpaKey::<N, M>::setup(key_seed);
+        let mut xof = Shake128Xof::new(&[]);
+        let mut rnd_ring = || {
+            let mut coeffs = [0u32; D];
+            let mut buf = [0u8; 4];
+            for c in &mut coeffs {
+                xof.squeeze(&mut buf);
+                *c = u32::from_le_bytes(buf);
+            }
+            ring_from_u32(&coeffs)
+        };
+        for trial in 0u8..3 {
+            let alpha: Vec<Z2Ring> = (0..M).map(|_| rnd_ring()).collect();
+            let u: Vec<Z2Ring> = (0..M).map(|_| rnd_ring()).collect();
+            let v = ring_inner_product(&alpha, &u);
+            let proof = ipa_prove::<N, M>(&key, key_seed, &alpha, &u, v.clone(), &[trial; 32]);
+            assert!(ipa_verify::<N, M>(
+                &key,
+                key_seed,
+                &key.commit(&alpha),
+                &u,
+                v,
+                &proof
+            ));
+        }
+    }
 }

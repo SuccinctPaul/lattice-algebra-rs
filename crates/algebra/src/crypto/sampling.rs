@@ -169,6 +169,57 @@ pub fn sample_rej_bounded_coeffs<R: Ring>(
         .collect()
 }
 
+/// Constant-time variant of [`sample_rej_bounded`]: identical output stream
+/// consumption and values, but the per-nibble acceptance test and value
+/// mapping are branch-free (`ct::select`/`ct::lt`), so no secret-valued
+/// branch occurs inside the rejection loop. The loop count itself remains
+/// stream-derived — that is inherent to the spec's rejection derivations
+/// (see the module-level scope notes in [`crate::crypto::ct`]).
+pub fn sample_rej_bounded_ct<R: Ring>(stream: &mut BitStream<'_, impl Xof>, eta: u32) -> i64 {
+    use super::ct;
+    match eta {
+        2 => {
+            let mut out = 0i64;
+            let mut done = false;
+            while !done {
+                let t = stream.read_bits(4);
+                let accept = ct::lt_u64(u64::from(t), 15);
+                // t mod 5 via the reference's multiply-shift trick.
+                let m = t - ((t * 205) >> 10) * 5;
+                let v = 2 - i64::from(m);
+                out = ct::select(accept, v, out);
+                done = accept;
+            }
+            out
+        }
+        4 => {
+            let mut out = 0i64;
+            let mut done = false;
+            while !done {
+                let t = stream.read_bits(4);
+                let accept = ct::lt_u64(u64::from(t), 9);
+                let v = 4 - i64::from(t);
+                out = ct::select(accept, v, out);
+                done = accept;
+            }
+            out
+        }
+        eta => {
+            let k = bit_len(u64::from(2 * eta));
+            let mut out = 0i64;
+            let mut done = false;
+            while !done {
+                let r = stream.read_bits(k);
+                let accept = r <= 2 * eta;
+                let v = i64::from(r) - i64::from(eta);
+                out = ct::select(accept, v, out);
+                done = accept;
+            }
+            out
+        }
+    }
+}
+
 /// One centered binomial coefficient on `[-eta, eta]` (FIPS 203 `CBDη`):
 /// the sum of `eta` random bits minus the sum of `eta` more.
 pub fn sample_cbd<R: Ring>(stream: &mut BitStream<'_, impl Xof>, eta: u32) -> i64 {
@@ -281,6 +332,28 @@ impl DiscreteGaussian {
         k as i64 - self.tail
     }
 
+    /// Constant-time variant of [`DiscreteGaussian::sample`]: identical
+    /// output, but the CDT inversion is a full branch-free scan with
+    /// masked accumulation instead of a binary search over the (secret
+    /// uniform) draw. Intended for Gaussian-signature noise where the
+    /// randomizer is secret; costs `O(|cdt|)` per sample.
+    pub fn sample_ct(&self, stream: &mut BitStream<'_, impl Xof>) -> i64 {
+        use super::ct;
+        let mut buf = [0u8; 16];
+        stream.read_bytes(&mut buf);
+        let mut y = 0u128;
+        for (i, &b) in buf.iter().enumerate() {
+            y |= (b as u128) << (8 * i);
+        }
+        y >>= 1;
+        let mut k = 0usize;
+        for &p in &self.cdt {
+            // p <= y  =>  k += 1, branch-free via mask.
+            k += ct::mask64(p <= y) as usize & 1;
+        }
+        k as i64 - self.tail
+    }
+
     /// Draws `n` samples.
     pub fn sample_many(&self, stream: &mut BitStream<'_, impl Xof>, n: usize) -> Vec<i64> {
         (0..n).map(|_| self.sample(stream)).collect()
@@ -342,6 +415,36 @@ mod tests {
             negatives > 100 && positives > 100,
             "distribution too skewed: pos={positives} neg={negatives}"
         );
+    }
+
+    #[test]
+    fn rej_bounded_ct_matches_scalar_sampler() {
+        // The constant-time variant must be output-identical, stream-for-stream.
+        for eta in [2u32, 4, 3, 8] {
+            let mut xa = Shake128Xof::new(b"ct-equiv");
+            let mut sa = BitStream::new(&mut xa);
+            let mut xb = Shake128Xof::new(b"ct-equiv");
+            let mut sb = BitStream::new(&mut xb);
+            for _ in 0..3000 {
+                let a = sample_rej_bounded::<Zq<17>>(&mut sa, eta);
+                let b = sample_rej_bounded_ct::<Zq<17>>(&mut sb, eta);
+                assert_eq!(a, b, "CT sampler diverged for eta={eta}");
+            }
+        }
+    }
+
+    #[test]
+    fn gaussian_ct_matches_binary_search_sampler() {
+        let g = DiscreteGaussian::new(3.2);
+        let mut xa = Shake128Xof::new(b"gauss-ct-equiv");
+        let mut sa = BitStream::new(&mut xa);
+        let mut xb = Shake128Xof::new(b"gauss-ct-equiv");
+        let mut sb = BitStream::new(&mut xb);
+        for _ in 0..2000 {
+            let a = g.sample(&mut sa);
+            let b = g.sample_ct(&mut sb);
+            assert_eq!(a, b, "CT CDT inversion diverged");
+        }
     }
 
     #[test]

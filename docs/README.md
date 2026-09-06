@@ -32,9 +32,10 @@ docs/
 ## Writing conventions
 
 - Diagrams use ` ```mermaid ` fenced blocks (rendered natively by vocs).
-- Code examples are labeled "current API" or "design target"; "current API" snippets must match real signatures in `src/` and are exercised by doc tests where possible.
+- Code examples are labeled "current API" or "design target"; "current API" snippets must match real signatures in the crates and are executed in CI by the `doc_snippet_check.rs` guard tests (facade crate for the algebra snippets, `crates/pqc` and `crates/zk` for theirs). If you rename what a snippet uses, the guard test fails and the docs page is part of your change.
 - Public traits/modules ship their doc-page updates in the same PR (`reference/trait-map` and `design/module-map` are PR-template checkboxes).
 - Parameter changes must update `reference/parameter-sets`; SNARK parameter changes additionally require an archived lattice-estimator run.
+- Claims with numbers (test counts, benchmark timings) must be reproducible: test counts via `cargo test --workspace`, timings via `cargo bench --workspace` with the machine and toolchain named in `reference/performance`.
 
 ## Version note
 

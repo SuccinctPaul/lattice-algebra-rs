@@ -1,22 +1,22 @@
 //! Per-coefficient rounding semantics shared by ML-DSA and lattice ZK
 //! shortness proofs (L3), defined exactly per FIPS 204 Algorithms 35–38.
 //!
-//! All inputs/outputs use centered representatives in `(−q/2, q/2]`.
+//! All inputs/outputs use centered representatives in `(−q/2, q/2]`, and all
+//! functions are branch-free (mask/select idioms from [`crate::crypto::ct`])
+//! so they are safe on secret-dependent data.
+
+use crate::crypto::ct;
 
 /// `mod± alpha`: the unique `r` with `r ≡ v (mod alpha)` and
-/// `r ∈ (−⌈alpha/2⌉, ⌊alpha/2⌋]`.
+/// `r ∈ (−⌈alpha/2⌉, ⌊alpha/2⌋]`. Branch-free.
 #[must_use]
 pub fn mod_pm(v: i64, alpha: i64) -> i64 {
     let r = v.rem_euclid(alpha);
-    if r > alpha / 2 {
-        r - alpha
-    } else {
-        r
-    }
+    r - (ct::maski64(r > alpha / 2) & alpha)
 }
 
 /// Splits `a ∈ [0, q)` into `(a1, a0)` with `a = a1·2^d + a0 (mod q)` and
-/// `a0 ∈ (−2^{d−1}, 2^{d−1}]` (FIPS 204 `Power2Round`).
+/// `a0 ∈ (−2^{d−1}, 2^{d−1}]` (FIPS 204 `Power2Round`). Branch-free.
 ///
 /// Used to split the commitment `t` into `t1` (high, packed at
 /// `bitlen(q−1) − d` bits) and `t0` (low).
@@ -29,18 +29,18 @@ pub fn power2round(a: i64, d: u32) -> (i64, i64) {
 
 /// Splits `a ∈ [0, q)` into `(a1, a0)` where `a0 = a mod± 2γ2` and
 /// `a1 = (a − a0) / (2γ2)`, with the `q−1` boundary special case
-/// (FIPS 204 `Decompose`).
+/// (FIPS 204 `Decompose`). Branch-free.
 ///
 /// `HighBits(a)` is `a1`; `LowBits(a)` is `a0`.
 #[must_use]
 pub fn decompose(a: i64, gamma2: i64, q: i64) -> (i64, i64) {
     let a = a.rem_euclid(q);
-    let mut a0 = mod_pm(a, 2 * gamma2);
+    let a0 = mod_pm(a, 2 * gamma2);
     let mut a1 = (a - a0) / (2 * gamma2);
-    if a - a0 == q - 1 {
-        a1 = 0;
-        a0 -= 1;
-    }
+    // Boundary case a − a0 == q−1: a1 ← 0, a0 ← a0 − 1, selected by mask.
+    let edge = ct::maski64(a - a0 == q - 1);
+    a1 = ct::select(a - a0 == q - 1, 0, a1);
+    let a0 = a0 - (edge & 1);
     (a1, a0)
 }
 
@@ -66,19 +66,13 @@ pub fn make_hint(z: i64, r: i64, gamma2: i64, q: i64) -> bool {
 }
 
 /// FIPS 204 `UseHint(h, a)`: reconstruct the coarse part of `r + z` given
-/// only `a = r + z` and the hint bit.
+/// only `a = r + z` and the hint bit. Branch-free.
 #[must_use]
 pub fn use_hint(a: i64, hint: bool, gamma2: i64, q: i64) -> i64 {
     let m = (q - 1) / (2 * gamma2);
     let (r1, r0) = decompose(a, gamma2, q);
-    if !hint {
-        return r1;
-    }
-    if r0 > 0 {
-        (r1 + 1) % m
-    } else {
-        (r1 - 1).rem_euclid(m)
-    }
+    let delta = ct::select(r0 > 0, 1, m - 1);
+    ct::select(hint, (r1 + delta) % m, r1)
 }
 
 #[cfg(test)]

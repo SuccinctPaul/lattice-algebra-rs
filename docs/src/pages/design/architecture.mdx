@@ -109,26 +109,21 @@ sequenceDiagram
     App->>App: sigEncode(c̃, z, h)
 ```
 
-## Crate split (planned at workspace time)
+## Crate split (as shipped in W1)
 
 ```mermaid
 flowchart LR
     subgraph WS["cargo workspace"]
-        CORE["lattice-algebra-core<br/>L0–L2"]
-        MODC["lattice-module<br/>L3"]
-        CRYPTO["lattice-crypto<br/>L4"]
-        PROTO["lattice-protocols<br/>L5"]
-        PQC["ml-kem / ml-dsa / falcon<br/>L6"]
-        ZKC["lattice-zk<br/>L5+L6"]
+        ALG["lattice-algebra<br/>L0–L4 (ring · ntt · poly · module · crypto)"]
+        PQC["lattice-pqc<br/>L6 PQC (ML-DSA)"]
+        ZKC["lattice-zk<br/>L5+L6 ZK line"]
+        FAC["lattice-algebra-rs<br/>facade: historical paths"]
     end
-    MODC --> CORE
-    CRYPTO --> MODC
-    PROTO --> CRYPTO
-    PQC --> CRYPTO
-    ZKC --> PROTO
+    PQC --> ALG
+    ZKC --> ALG
+    FAC --> PQC
+    FAC --> ZKC
 ```
-
-Until the split, module prefixes (`module::`, `crypto::`, `mldsa::`) reserve the namespaces.
 
 ## Key decisions (ADR summary)
 

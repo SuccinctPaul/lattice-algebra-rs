@@ -17,7 +17,7 @@ use rayon::prelude::*;
 /// A vector over a ring R
 pub type RingVector<R> = GenericVector<R>;
 
-/// A vector over a polynomial ring R[x]/(x^d+1)
+/// A vector over a polynomial ring `R[x]/(x^d+1)`
 pub type PolyRingVector<R, const DEGREE_BOUND: usize> = GenericVector<PolyRing<R, DEGREE_BOUND>>;
 
 /// Threshold for parallel vector operations

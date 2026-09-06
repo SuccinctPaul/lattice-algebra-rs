@@ -1,8 +1,10 @@
 # Quickstart
 
 Runnable examples against the **current** API. Every snippet matches real
-signatures in the workspace — the ML-DSA and ZK blocks are exactly what
-`crates/pqc/examples` and `crates/zk/examples` run.
+signatures in the workspace — all of them are compiled and executed in CI by
+the `doc_snippet_check.rs` guard tests. If you are new to lattice crypto,
+start with [Prerequisites & Notation](/introduction/prerequisites) for the
+background and the symbol table; the snippets below only assume Rust.
 
 ## Requirements
 
@@ -49,11 +51,12 @@ Zq17::IS_PRIME;                                 // true, decided at compile time
 
 ## Generic polynomials and the quotient ring
 
-`UniPolynomial<R>` is the generic (variable-length) polynomial; `PolyRing<R, N>` is the negacyclic ring `Z_q[X]/(X^N+1)` whose multiplication dispatches to the NTT when available:
+`UniPolynomial<R>` is the generic (variable-length) polynomial; `PolyRing<R, N>` is the negacyclic ring `Z_q[X]/(X^N+1)` whose multiplication dispatches to the NTT when available. Note the `PolynomialQuotientRing` import — `from_coefficients`/`coefficients` are capability-trait methods, so the trait must be in scope (convention 3 in the [integration guide](/introduction/integrating)):
 
 ```rust
 use lattice_algebra_rs::ring::poly_ring::PolyRing;
 use lattice_algebra_rs::ring::zq::Zq;
+use lattice_algebra_rs::ring::PolynomialQuotientRing;
 use lattice_algebra_rs::ntt::NttOperatorOptimized;
 
 type Zq17 = Zq<17>;
@@ -81,6 +84,7 @@ assert_eq!(via_ntt, prod);
 use lattice_algebra_rs::poly::sparse::SparsePolynomial;
 use lattice_algebra_rs::ring::poly_ring::PolyRing;
 use lattice_algebra_rs::ring::zq::Zq;
+use lattice_algebra_rs::ring::PolynomialQuotientRing;
 
 type R = PolyRing<Zq<17>, 8>;
 let c = SparsePolynomial::<Zq<17>>::from_sign_vector(&[1, 0, 0, -1, 0, 0, 0, 0], 8);
