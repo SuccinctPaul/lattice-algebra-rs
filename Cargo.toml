@@ -31,7 +31,7 @@ categories = ["cryptography", "algorithms", "math", "science"]
 
 [features]
 default = []
-parallel = ["lattice-algebra/parallel"]
+parallel = ["lattice-algebra/parallel", "lattice-zk/parallel"]
 
 [dependencies]
 lattice-algebra = { workspace = true }

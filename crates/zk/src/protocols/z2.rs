@@ -15,12 +15,12 @@
 //! ```
 //!
 //! *Batched opening*: the single response `z'` opens **all** witness
-//! polynomials simultaneously against the ring challenge `X` — the same
+//! polynomials simultaneously against the ring challenge `C` — the same
 //! role LaBRADOR's `σ_i = w(X_i)` plays, here with one ring-challenge and
 //! ring multiplication as the evaluation map.
 //!
 //! *Soundness sketch*: after committing `c, d`, the response is uniquely
-//! pinned by the overdetermined linear check `A_com·z' = c + X·d`
+//! pinned by the overdetermined linear check `A_com·z' = c + C·d`
 //! (`N·64` scalar equations over `M·64` unknowns, `N ≥ 2M`), so the
 //! constraint check on that unique `z'` cannot be adapted to a false
 //! instance; deviating requires solving the R1CS or the linear problem,
@@ -29,6 +29,23 @@
 //! *Knowledge*: the extractor of the binding link recovers `z'` itself —
 //! the proven object *is* the satisfying vector (transparent proof of
 //! knowledge, not ZK — same status as LaBRADOR).
+//!
+//! # The challenge must be a true non-unit
+//!
+//! The challenge element is `C = X − a` with the scalar `a` forced **odd**.
+//! This matters: in `R = Z_{2^32}[X]/(X^64+1)` the monomial `X` is always a
+//! unit (`X·(−X^63) = −X^64 = 1`), so a *unit* challenge would make the
+//! verifier equation `C·t* + C²·q* = Σγ^k R_k` solvable for `t*` for **any**
+//! response — the check would be vacuous. `X − a` with `a` odd is a genuine
+//! non-unit: reducing mod 2 gives `X + 1`, which is nilpotent in
+//! `F_2[X]/(X+1)^64`, and units lift. With a non-unit challenge the
+//! equation is solvable only when `Σγ^k R_k ∈ C·R`, an index-2 ideal
+//! (`C·R = {f : Σ coeffs even}`); a false response therefore passes only
+//! with probability ½ per mask attempt. The full 2^-32 relation soundness
+//! of the documented design requires the LaBRADOR recursion (committing the
+//! masked terms `m_k, q_k` under a second Ajtai key before the challenges
+//! open them) — tracked as the Z2 milestone; the Z3 sumcheck path replaces
+//! this single combination with round-by-round challenges.
 //!
 //! # Approximate shortness (gadget layer)
 //!
@@ -39,7 +56,8 @@
 //! shortness proof.
 
 use crate::protocols::z2_ring::{
-    matrix_from_seed, ring_from_seed, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring, D,
+    map_over_gates, matrix_from_seed, ring_from_seed, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring,
+    D,
 };
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::{Shake128Xof, Xof};
@@ -147,10 +165,13 @@ fn u32s_to_bytes(v: &[u32]) -> Vec<u8> {
     v.iter().flat_map(|x| x.to_le_bytes()).collect()
 }
 
-/// FS challenges for an instance+commitment pair: the ring challenge `X`
-/// (forced non-unit via an even constant term, so the verifier equation
-/// `X·t* + X²·q*` cannot be solved for `t*` by ring division) and the
-/// gate-combination challenge `γ`.
+/// FS challenges for an instance+commitment pair: the ring challenge `C`
+/// and the gate-combination challenge `γ`.
+///
+/// `C = X − a` with the scalar `a` forced **odd** — a genuine non-unit of
+/// `Z_{2^32}[X]/(X^64+1)` (see the module-level soundness notes: the
+/// monomial `X` alone is always a unit, which would make the verifier
+/// equation vacuous).
 fn challenges(
     key_seed: &[u8; 32],
     r1cs_seed: &[u8; 32],
@@ -170,13 +191,12 @@ fn challenges(
     let mut xof = Shake128Xof::new(&[]);
     xof.absorb(b"X");
     xof.absorb(&seed);
-    let mut coeffs = [0u32; D];
     let mut buf = [0u8; 4];
-    for c in &mut coeffs {
-        xof.squeeze(&mut buf);
-        *c = u32::from_le_bytes(buf);
-    }
-    coeffs[0] &= 0xFFFF_FFFE; // even constant term ⇒ X is a non-unit
+    xof.squeeze(&mut buf);
+    let a = u32::from_le_bytes(buf) | 1; // odd scalar ⇒ X − a is a non-unit
+    let mut coeffs = [0u32; D];
+    coeffs[0] = a.wrapping_neg(); // C = X − a
+    coeffs[1] = 1;
     let x = ring_from_u32(&coeffs);
 
     let mut xof2 = Shake128Xof::new(&[]);
@@ -193,22 +213,19 @@ fn masked_constraint_terms(
     z: &[Z2Ring],
     y: &[Z2Ring],
 ) -> (Vec<Z2Ring>, Vec<Z2Ring>) {
-    let mut m = Vec::with_capacity(r1cs.a.len());
-    let mut q = Vec::with_capacity(r1cs.a.len());
-    for (k, row) in r1cs.a.iter().enumerate() {
+    map_over_gates(r1cs, |k, row| {
         let mut az = Z2Ring::zero();
         let mut ay = Z2Ring::zero();
         for (j, coeff) in &row.terms {
             az += coeff.clone() * z[*j].clone();
             ay += coeff.clone() * y[*j].clone();
         }
-        let ay_sq = ay.clone() * ay.clone();
         let term_m = (az.clone() * ay.clone()) + (ay.clone() * az.clone())
             - r1cs.u[k].clone() * y[r1cs.sel[k]].clone();
-        m.push(term_m);
-        q.push(ay_sq);
-    }
-    (m, q)
+        (term_m, ay.clone() * ay)
+    })
+    .into_iter()
+    .unzip()
 }
 
 /// Verifier-side per-gate residuals on the revealed response:
@@ -216,16 +233,13 @@ fn masked_constraint_terms(
 /// Per-gate quadratic products `q_k = (A_k·z)∘(A_k·z)` — the committed
 /// quantity of the folding layer (Nova's `q`).
 pub fn quadratic_products(r1cs: &ToyR1cs, zp: &[Z2Ring]) -> Vec<Z2Ring> {
-    r1cs.a
-        .iter()
-        .map(|row| {
-            let mut az = Z2Ring::zero();
-            for (j, coeff) in &row.terms {
-                az += coeff.clone() * zp[*j].clone();
-            }
-            az.clone() * az.clone()
-        })
-        .collect()
+    map_over_gates(r1cs, |_k, row| {
+        let mut az = Z2Ring::zero();
+        for (j, coeff) in &row.terms {
+            az += coeff.clone() * zp[*j].clone();
+        }
+        az.clone() * az
+    })
 }
 
 /// The per-gate selected variable index (`sel_k`).
@@ -234,17 +248,13 @@ pub fn gate_sel(k: usize, r1cs: &ToyR1cs) -> usize {
 }
 
 pub fn constraint_residuals(r1cs: &ToyR1cs, zp: &[Z2Ring]) -> Vec<Z2Ring> {
-    r1cs.a
-        .iter()
-        .enumerate()
-        .map(|(k, row)| {
-            let mut az = Z2Ring::zero();
-            for (j, coeff) in &row.terms {
-                az += coeff.clone() * zp[*j].clone();
-            }
-            az.clone() * az.clone() - r1cs.u[k].clone() * zp[r1cs.sel[k]].clone()
-        })
-        .collect()
+    map_over_gates(r1cs, |k, row| {
+        let mut az = Z2Ring::zero();
+        for (j, coeff) in &row.terms {
+            az += coeff.clone() * zp[*j].clone();
+        }
+        az.clone() * az.clone() - r1cs.u[k].clone() * zp[r1cs.sel[k]].clone()
+    })
 }
 
 /// Random linear combination `Σ γ^k · v_k` (Horner).
@@ -681,6 +691,59 @@ mod tests {
             .collect()
     }
 
+    /// Soundness regression: a prover committing to a FALSE witness can
+    /// satisfy the binding link (z' = z_fake + C·y with c = A_com·z_fake)
+    /// and — before the non-unit challenge fix — could always absorb the
+    /// residual junk into `t*` because the challenge `X` was a unit. With
+    /// the non-unit challenge `C = X − a` (a odd) the crafted terms must
+    /// make `Σγ^k R_k(z') ∈ C·R`, which a forged statement does not.
+    #[test]
+    fn forged_statement_rejected_despite_binding_link() {
+        let (r1cs, _z_true) = instance_and_witness();
+        // A witness that does NOT satisfy the gates.
+        let mut z_fake = _z_true.clone();
+        z_fake[0] = z_fake[0].clone() + Z2Ring::one();
+        assert!(!r1cs.is_satisfied(&z_fake));
+
+        let mut key_seed = [0u8; 32];
+        key_seed[..13].copy_from_slice(b"z2-commit-key");
+        let key = Z2CommitKey::setup(&key_seed);
+        let c = key.commit(&z_fake);
+        let r1cs_seed = b"z2-r1cs0000000000000000000000000";
+
+        // Grind several masks: each gives a fresh challenge; the old
+        // unit-challenge proof passed for *every* mask.
+        let mut accepted = 0;
+        for trial in 0u8..16 {
+            let mut xof = Shake128Xof::new(&[]);
+            xof.absorb(b"forge");
+            xof.absorb(&[trial; 32]);
+            let y = mask_from(&mut xof);
+            let d = key.commit(&y);
+            let (chall, gamma) = challenges(&key_seed, r1cs_seed, &c, &d);
+            let z_prime: Vec<Z2Ring> = z_fake
+                .iter()
+                .zip(&y)
+                .map(|(zf, yi)| zf.clone() + chall.clone() * yi.clone())
+                .collect();
+            // Craft t*, q* with the honest-formula shape for the fake mask.
+            let (m, q) = masked_constraint_terms(&r1cs, &z_fake, &y);
+            let proof = Z2Proof {
+                d: d.clone(),
+                z_prime: z_prime.clone(),
+                t_star: ring_combine(&m, &gamma),
+                q_star: ring_combine(&q, &gamma),
+            };
+            if verify(&key, &key_seed, r1cs_seed, &r1cs, &c, &proof) {
+                accepted += 1;
+            }
+        }
+        assert_eq!(
+            accepted, 0,
+            "a forged statement must not verify (unit-challenge regression)"
+        );
+    }
+
     #[test]
     fn z2_z3_crosscheck_and_benchmarks() {
         use crate::protocols::sumcheck::{prove as sc_prove, verify as sc_verify};
@@ -754,7 +817,27 @@ mod tests {
         let t3 = std::time::Instant::now();
         let out = sc_verify::<Z2Ring, 10>(&sc, claimed.clone(), &mut ch_verify);
         let z3_verify_time = t3.elapsed();
-        assert!(out.is_some());
+        // Close the soundness loop: the sumcheck reduces the sum claim to
+        // `T(r) = final_eval` — the verifier evaluates the public table at
+        // the derived challenge point itself.
+        let (challenges, final_eval) = out.expect("honest sumcheck must verify");
+        let mut folded = table.clone();
+        for r in &challenges {
+            let half = folded.len() / 2;
+            for j in 0..half {
+                let lo = folded[j].clone();
+                let hi = folded[j + half].clone();
+                folded[j] = lo.clone() + r.clone() * (hi - lo);
+            }
+            folded.truncate(half);
+        }
+        assert_eq!(
+            folded[0], final_eval,
+            "sumcheck must evaluate the table at r"
+        );
+        // The claimed sum itself must match the independently summed table.
+        let true_sum: Z2Ring = table.iter().fold(Z2Ring::zero(), |a, b| a + b.clone());
+        assert_eq!(claimed, true_sum, "claimed sum must equal the table sum");
 
         println!("Z2 (batched opening): size={z2_size}B prove={z2_prove_time:?} verify={z2_verify_time:?}");
         println!("Z3 (sumcheck):        size={z3_size}B prove={z3_prove_time:?} verify={z3_verify_time:?}");

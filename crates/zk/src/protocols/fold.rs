@@ -14,17 +14,27 @@
 //! ## Fold (two relaxed instances → one)
 //!
 //! ```text
-//! z' = z₁ + r·z₂
-//! q' = q₁ + r·T + r²·q₂,      T_k = 2(A_k·z₁)∘(A_k·z₂)   (cross terms)
+//! z'  = z₁ + r·z₂
+//! e'  = e₁ + r·T + r²·(e₂ + U∘z₂_sel)
+//! T_k = 2(A_k·z₁)∘(A_k·z₂) − U_k·z₂_sel[k]
 //! ```
 //!
-//! Commitments fold homomorphically (`A·(z₁ + r·z₂) = c₁ + r·c₂`), and the
-//! folded pair satisfies the relaxed gates with
-//! `e' = e₁ + r·(linear cross) + r²·e₂` — the standard Nova decomposition.
-//! The IVC prover chains folds; every folded instance is checkable by
+//! Derived by expanding the squaring-gate residual
+//! `R_k(z) = (A_k·z)² − U_k·z_sel[k]` in powers of `r`: the quadratic term
+//! contributes `2(A_k·z₁)∘(A_k·z₂)` to degree 1 and `(A_k·z₂)²` to degree 2,
+//! while the linear term `−U_k·z_sel` contributes only to degrees 0 and 1
+//! (`−U_k·z₂_sel` at degree 1) — so the degree-2 coefficient is the raw
+//! quadratic product `(A_k·z₂)² = e₂ + U_k·z₂_sel`, *not* `e₂` (a squaring
+//! gate is not linear in `z`, which is exactly why the relaxed layer exists).
+//! Commitments fold homomorphically with the same weights, and the folded
+//! error is *derived* from the decomposition — [`verify_folded`]'s
+//! exact-residual check therefore validates the folding algebra itself. The
+//! IVC prover chains folds; every folded instance is checkable by
 //! [`verify_folded`].
 
-use crate::protocols::z2_ring::{matrix_from_seed, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring, D};
+use crate::protocols::z2_ring::{
+    map_over_gates, matrix_from_seed, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring, D,
+};
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::{Shake128Xof, Xof};
 use algebra::ring::MatrixElement;
@@ -111,26 +121,21 @@ impl<const M: usize, const GATES: usize> RelaxedInstance<M, GATES> {
     }
 }
 
-/// The linear cross terms of two witnesses:
-/// `T_k = (A_k·z₁)∘(A_k·z₂) + (A_k·z₂)∘(A_k·z₁) = 2(A_k·z₁)∘(A_k·z₂)`.
+/// The linear cross terms of two witnesses for the squaring gate:
+/// `T_k = 2(A_k·z₁)∘(A_k·z₂) − U_k·z₂_sel[k]` (the `r`-coefficient of
+/// `R_k(z₁ + r·z₂)`).
 pub fn cross_terms(r1cs: &ToyR1cs, z1: &[Z2Ring], z2: &[Z2Ring]) -> Vec<Z2Ring> {
-    r1cs.a
-        .iter()
-        .zip(&r1cs.sel)
-        .zip(&r1cs.u)
-        .map(|((row, sel), u)| {
-            let mut a1 = Z2Ring::zero();
-            let mut a2 = Z2Ring::zero();
-            for (j, coeff) in &row.terms {
-                a1 += coeff.clone() * z1[*j].clone();
-                a2 += coeff.clone() * z2[*j].clone();
-            }
-            // linear cross term for the squaring gate (B = C = e_sel):
-            // (A_k z1)·z2_sel + (A_k z2)·z1_sel − U_k·z2_sel
-            a1.clone() * z2[*sel].clone() + a2.clone() * z1[*sel].clone()
-                - u.clone() * z2[*sel].clone()
-        })
-        .collect()
+    map_over_gates(r1cs, |k, row| {
+        let mut a1 = Z2Ring::zero();
+        let mut a2 = Z2Ring::zero();
+        for (j, coeff) in &row.terms {
+            a1 += coeff.clone() * z1[*j].clone();
+            a2 += coeff.clone() * z2[*j].clone();
+        }
+        // r-coefficient of (A_k·z₁ + r·A_k·z₂)² − U_k·(z₁_sel + r·z₂_sel)
+        let cross = a1.clone() * a2.clone() + a2.clone() * a1.clone();
+        cross - r1cs.u[k].clone() * z2[r1cs.sel[k]].clone()
+    })
 }
 
 /// The fold challenge `r ∈ R`, FS-bound to both instances' commitments.
@@ -195,7 +200,29 @@ pub fn fold<const N: usize, const M: usize, const GATES: usize>(
         .zip(&inst2.z)
         .map(|(a, b)| a.clone() + r.clone() * b.clone())
         .collect();
-    let error = crate::protocols::z2::constraint_residuals(r1cs, &z);
+
+    // Homomorphic error update (the Nova decomposition):
+    // e' = e₁ + r·T + r²·(e₂ + U∘z₂_sel) — the degree-2 coefficient is the
+    // raw quadratic product of z₂ (the linear gate term contributes only to
+    // degrees 0 and 1). Never recomputed from the folded witness, so
+    // verify_folded's exact-residual check exercises the folding algebra.
+    let t = cross_terms(r1cs, &inst1.z, &inst2.z);
+    let r2 = r.clone() * r.clone();
+    let u_z2sel: Vec<Z2Ring> = r1cs
+        .u
+        .iter()
+        .zip(&r1cs.sel)
+        .map(|(u, sel)| u.clone() * inst2.z[*sel].clone())
+        .collect();
+    let error: Vec<Z2Ring> = t
+        .iter()
+        .enumerate()
+        .map(|(k, t_k)| {
+            inst1.error[k].clone()
+                + r.clone() * t_k.clone()
+                + r2.clone() * (inst2.error[k].clone() + u_z2sel[k].clone())
+        })
+        .collect();
 
     let c_z: Vec<Z2Ring> = inst1
         .c_z
@@ -203,8 +230,21 @@ pub fn fold<const N: usize, const M: usize, const GATES: usize>(
         .zip(&inst2.c_z)
         .map(|(a, b)| a.clone() + r.clone() * b.clone())
         .collect();
-    // c_e' = A_e·(residual) — computed directly from the folded witness
-    let c_e = key.commit_error(&error);
+    let c_e: Vec<Z2Ring> = inst1
+        .c_e
+        .iter()
+        .zip(&inst2.c_e)
+        .map(|(a, b)| a.clone() + r2.clone() * b.clone())
+        .collect();
+    // A_e·e' = c_e1 + r·A_e·T + r²·(c_e2 + A_e·(U∘z₂_sel)) — same weights as
+    // the error update (commitments are linear).
+    let c_e_t = key.commit_error(&t);
+    let c_e_uz = key.commit_error(&u_z2sel);
+    let c_e: Vec<Z2Ring> = c_e
+        .iter()
+        .zip(c_e_t.iter().zip(&c_e_uz))
+        .map(|(a, (b, c))| a.clone() + r.clone() * b.clone() + r2.clone() * c.clone())
+        .collect();
 
     RelaxedInstance { z, error, c_z, c_e }
 }

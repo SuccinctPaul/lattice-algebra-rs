@@ -94,17 +94,25 @@ fn h_n(data: &[&[u8]], n: usize) -> Vec<u8> {
 
 /// FIPS 204 `ExpandS(ρ)`: `ℓ + k` polynomials with coefficients in
 /// `[−η, η]`, drawn from `H(ρ || 2-byte index)`.
+fn expand_s_poly<P: MlDsaParams>(seed: &[u8; 64], idx: u16) -> [i64; N] {
+    let mut xof = Shake256Xof::new(&[]);
+    xof.absorb(seed);
+    xof.absorb(&idx.to_le_bytes());
+    let mut stream = BitStream::new(&mut xof);
+    std::array::from_fn(|_| sample_rej_bounded_ct::<ZqD>(&mut stream, P::ETA))
+}
+
+/// FIPS 204 `ExpandS(ρ)`: `ℓ + k` polynomials with coefficients in
+/// `[−η, η]`, drawn from `H(ρ || 2-byte index)`. The streams are cheap
+/// SHAKE squeezes — per-stream task dispatch costs more than it saves
+/// (measured), so this stays sequential.
 fn expand_s<P: MlDsaParams, const L: usize, const K: usize>(
     seed: &[u8; 64],
 ) -> (Vec<[i64; N]>, Vec<[i64; N]>) {
     let mut s1 = Vec::with_capacity(P::L);
     let mut s2 = Vec::with_capacity(P::K);
     for idx in 0..(P::L + P::K) as u16 {
-        let mut xof = Shake256Xof::new(&[]);
-        xof.absorb(seed);
-        xof.absorb(&idx.to_le_bytes());
-        let mut stream = BitStream::new(&mut xof);
-        let poly = std::array::from_fn(|_| sample_rej_bounded_ct::<ZqD>(&mut stream, P::ETA));
+        let poly = expand_s_poly::<P>(seed, idx);
         if idx < P::L as u16 {
             s1.push(poly);
         } else {

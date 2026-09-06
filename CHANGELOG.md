@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- **W3 protocol audit**: fixed a soundness break in Z2 and the gadget-IPA (the ring challenge `X` is always a unit in `Z_{2^32}[X]/(X^64+1)`, which made the masked-term checks vacuous; replaced with the non-unit challenge `C = X − a`, `a` odd, plus forged-statement regression tests), corrected the Nova cross-term algebra in Z4 and made the fold derive its error homomorphically, closed the Z3 sumcheck soundness loop against the public table, and added gate-level parallelism (`parallel` feature; Z2 prove/verify ≈ −78% at 512 gates)
 - **W2 hardening**: official ACVP KAT/ACVP alignment for ML-DSA (pure mode) — 126 byte-exact vectors (keyGen 75, sigGen 27, sigVer 24) with committed fixtures, provenance and a regeneration script; fixed a one-sided `r0` restart gate the vectors caught
 - FIPS 204 NTT (`mldsa::ntt`): ζ = 1753 with the standard's bit-reversed evaluation order, so `ExpandA` reproduces the official `RejNTTPoly` streams
 - Constant-time layer `crypto::ct` (masked select/comparisons/norms, differential-tested) plus hardened ML-DSA secret paths, constant-time `RejBounded`/CDT variants, `SigningKey` zeroization and redacted `Debug`

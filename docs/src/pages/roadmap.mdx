@@ -100,7 +100,7 @@ flowchart LR
 
 ### ZK line remaining work (details in the [ZK page](/schemes/zk-snark))
 
-- **Remaining**: ZK blinding. Estimator calibration and the ML-DSA KAT/ACVP alignment landed in W2.
+- **Remaining**: ZK blinding; the LaBRADOR recursion for Z2/Z3 (committing the masked terms before the challenges open them — the one-shot masked-term check contributes one bit of soundness, audited and documented). W3 protocol audit landed: non-unit challenge fix for Z2/IPA (a vacuous-check break), corrected Nova cross-term algebra in Z4 with a homomorphic error fold, sumcheck verifier closure, and gate-level parallelism (`parallel` feature: Z2 prove/verify −78% at 512 gates). Estimator calibration and the ML-DSA KAT/ACVP alignment landed in W2.
 
 ## Engineering rules (always on)
 

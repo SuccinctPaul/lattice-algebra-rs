@@ -24,7 +24,7 @@ pub type RingMatrix<R> = GenericMatrix<R>;
 /// A matrix over a ring R
 pub type PolynomialMatrix<R> = GenericMatrix<R>;
 
-/// A matrix over a polynomial ring R[x]/(x^d+1)
+/// A matrix over a polynomial ring `R[x]/(x^d+1)`
 pub type PolyRingMatrix<R, const DEGREE_BOUND: usize> = GenericMatrix<PolyRing<R, DEGREE_BOUND>>;
 
 /// Threshold for parallel operations (row count)
@@ -322,8 +322,8 @@ impl<T: MatrixElement + Send + Sync> GenericMatrix<T> {
 
                     for k in 0..self_cols {
                         let a_ik = self.data[i * self_cols + k].clone();
-                        for j in 0..result_cols {
-                            row_result[j] = row_result[j].clone()
+                        for (j, slot) in row_result.iter_mut().enumerate().take(result_cols) {
+                            *slot = slot.clone()
                                 + a_ik.clone() * other.data[k * result_cols + j].clone();
                         }
                     }

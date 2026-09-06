@@ -14,6 +14,7 @@ under the historical single-crate paths:
 | Crate (lib name) | Path | Modules |
 | --- | --- | --- |
 | `lattice-algebra` (`algebra`) | `crates/algebra` | `ring`, `ntt`, `poly`, `module`, `crypto`, `matrix`, `security`, `utils` (L0–L4 + security) |
+| `lattice-zk` / `lattice-pqc` | per-crate `parallel` feature (rayon): Z2/Z3/Z4 gate loops fan out above a 256-gate threshold; ML-DSA XOF streams are deliberately sequential (dispatch overhead > stream work, measured) | ✅ |
 | `lattice-pqc` (`pqc`) | `crates/pqc` | `mldsa` (L6 PQC, incl. the FIPS-exact NTT `mldsa::ntt`) |
 | `lattice-zk` (`zk`) | `crates/zk` | `protocols` (L5–L6 ZK line) |
 | `lattice-algebra-rs` | `src/lib.rs` | facade: `pub use` of all of the above |

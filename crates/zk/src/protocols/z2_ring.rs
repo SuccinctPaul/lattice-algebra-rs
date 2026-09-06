@@ -59,6 +59,50 @@ pub fn matrix_from_seed(seed: &[u8; 32], rows: usize, cols: usize) -> Vec<Vec<Z2
         .collect()
 }
 
+/// Gate-count threshold above which the `parallel` feature engages. Below
+/// it, per-task dispatch overhead outweighs the per-gate ring work.
+#[cfg(feature = "parallel")]
+const PARALLEL_GATE_THRESHOLD: usize = 256;
+
+/// Maps `f` over the gates of `r1cs` (sequential, or parallel across
+/// threads when the `parallel` feature is on and the instance is large
+/// enough to amortize the dispatch).
+pub(crate) fn map_over_gates<T, F>(r1cs: &ToyR1cs, f: F) -> Vec<T>
+where
+    T: Send,
+    F: Fn(usize, &SparseRow) -> T + Sync,
+{
+    #[cfg(feature = "parallel")]
+    {
+        if r1cs.a.len() >= PARALLEL_GATE_THRESHOLD {
+            use rayon::prelude::*;
+            return (0..r1cs.a.len())
+                .into_par_iter()
+                .map(|k| f(k, &r1cs.a[k]))
+                .collect();
+        }
+    }
+    (0..r1cs.a.len()).map(|k| f(k, &r1cs.a[k])).collect()
+}
+
+/// All-gates predicate with the same thresholding as [`map_over_gates`]
+/// (short-circuits on the first failing gate).
+pub(crate) fn all_over_gates<P>(r1cs: &ToyR1cs, pred: P) -> bool
+where
+    P: Fn(usize, &SparseRow) -> bool + Sync,
+{
+    #[cfg(feature = "parallel")]
+    {
+        if r1cs.a.len() >= PARALLEL_GATE_THRESHOLD {
+            use rayon::prelude::*;
+            return (0..r1cs.a.len())
+                .into_par_iter()
+                .all(|k| pred(k, &r1cs.a[k]));
+        }
+    }
+    (0..r1cs.a.len()).all(|k| pred(k, &r1cs.a[k]))
+}
+
 /// Sparse ring row: `(variable index, coefficient)` pairs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SparseRow {
@@ -86,22 +130,22 @@ pub struct ToyR1cs {
 
 impl ToyR1cs {
     /// Checks the full relation `∀k: (A_k·z)² = U_k · z_{sel_k}`.
+    ///
+    /// With the `parallel` feature the gates are checked across threads for
+    /// large instances (short-circuiting on the first failure).
     pub fn is_satisfied(&self, z: &[Z2Ring]) -> bool {
         if z.len() != self.num_vars {
             return false;
         }
-        for (k, row) in self.a.iter().enumerate() {
+        all_over_gates(self, |k, row| {
             let mut acc = Z2Ring::zero();
             for (j, coeff) in &row.terms {
                 acc += coeff.clone() * z[*j].clone();
             }
             let sq = acc.clone() * acc.clone();
             let rhs = self.u[k].clone() * z[self.sel[k]].clone();
-            if sq.coefficients() != rhs.coefficients() {
-                return false;
-            }
-        }
-        true
+            sq.coefficients() == rhs.coefficients()
+        })
     }
 }
 

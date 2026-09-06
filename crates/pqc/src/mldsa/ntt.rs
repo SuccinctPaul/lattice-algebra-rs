@@ -46,23 +46,36 @@ pub fn pointwise_mul_add(acc: &mut [u64; N], a: &[u64; N], b: &[u64; N]) {
     }
 }
 
+/// Samples one NTT-domain entry of `Â`: `RejNTTPoly(XOF(ρ ‖ s ‖ r))`.
+fn expand_a_entry<X: Xof>(rho: &[u8; 32], r: usize, s: usize) -> [u64; N] {
+    let mut xof = X::new(&[]);
+    xof.absorb(rho);
+    xof.absorb(&[s as u8, r as u8]);
+    let mut stream = BitStream::new(&mut xof);
+    let mut entry = [0u64; N];
+    for c in entry.iter_mut() {
+        *c = sample_uniform_coeff::<ZqD>(&mut stream).to_u128() as u64;
+    }
+    entry
+}
+
 /// FIPS 204 `ExpandA(ρ)`: builds the `K×L` matrix `Â` directly in the NTT
 /// domain. Entry `(r, s)` is `RejNTTPoly(XOF(ρ ‖ s ‖ r))` with single-byte
 /// indices (column `s` absorbed before row `r`); coefficients are drawn
 /// with masked rejection (`CoeffFromThreeBytes`, 23-bit mask, reject ≥ q).
+///
+/// Note: the `K·L` streams are deliberately *not* parallelized — each is a
+/// few microseconds of SHAKE, so per-stream task dispatch costs more than
+/// it saves (measured 1.7× slower on keygen with rayon). The ML-DSA
+/// performance lever is the arithmetic (Montgomery/Barrett + vectorized
+/// NTT), tracked as a follow-up.
 pub(crate) fn expand_a<X: Xof, const K: usize, const L: usize>(
     rho: &[u8; 32],
 ) -> [[[u64; N]; L]; K] {
     let mut out = [[[0u64; N]; L]; K];
     for (r, row) in out.iter_mut().enumerate() {
         for (s, entry) in row.iter_mut().enumerate() {
-            let mut xof = X::new(&[]);
-            xof.absorb(rho);
-            xof.absorb(&[s as u8, r as u8]);
-            let mut stream = BitStream::new(&mut xof);
-            for c in entry.iter_mut() {
-                *c = sample_uniform_coeff::<ZqD>(&mut stream).to_u128() as u64;
-            }
+            *entry = expand_a_entry::<X>(rho, r, s);
         }
     }
     out
