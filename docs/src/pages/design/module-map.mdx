@@ -13,8 +13,8 @@ under the historical single-crate paths:
 
 | Crate (lib name) | Path | Modules |
 | --- | --- | --- |
-| `lattice-algebra` (`algebra`) | `crates/algebra` | `ring`, `ntt`, `poly`, `module`, `crypto`, `matrix`, `utils` (L0–L4) |
-| `lattice-pqc` (`pqc`) | `crates/pqc` | `mldsa` (L6 PQC) |
+| `lattice-algebra` (`algebra`) | `crates/algebra` | `ring`, `ntt`, `poly`, `module`, `crypto`, `matrix`, `security`, `utils` (L0–L4 + security) |
+| `lattice-pqc` (`pqc`) | `crates/pqc` | `mldsa` (L6 PQC, incl. the FIPS-exact NTT `mldsa::ntt`) |
 | `lattice-zk` (`zk`) | `crates/zk` | `protocols` (L5–L6 ZK line) |
 | `lattice-algebra-rs` | `src/lib.rs` | facade: `pub use` of all of the above |
 
@@ -37,7 +37,7 @@ flowchart TB
         SAMP["crypto::sampling"]
         TR["crypto::transcript"]
         BITS["crypto::bits"]
-        SER["crypto::serialize"]
+        SER["crypto::serialize (planned)"]
     end
     subgraph L3["L3 · Module lattices"]
         MOD["module"]
@@ -82,8 +82,8 @@ flowchart TB
 | --- | --- | --- |
 | `ring` | `Zq<q>` const-generic ring; slim `Ring`; capability traits `Field`, `TwoAdicRing`, `CenteredRing`; compile-time `IS_PRIME` | ✅ |
 | `ring::number_theory` | const Miller–Rabin, primitive roots, prime factorization, modexp | ✅ |
-| `ring::reduction` | modular arithmetic strategies (native 128-bit modulo today; Montgomery/lazy planned) | ✅ |
-| `ring::sample` | rand-0.9 `UniformZq` sampler (debug/generic paths; scheme sampling lives in `crypto::sampling`) | ✅ |
+| `ring::reduction` *(internal, `pub(crate)`)* | modular arithmetic strategies (native 128-bit modulo today; Montgomery/lazy planned) | ✅ |
+| `ring::sample` *(internal, private)* | rand-0.9 `UniformZq` sampler behind `Zq`'s `rand` support (debug/generic paths; scheme sampling lives in `crypto::sampling`) | ✅ |
 
 ## L1 — NTT engine
 
@@ -114,7 +114,9 @@ const-generic engine is the only path.
 | Module | Owns | Status |
 | --- | --- | --- |
 | `crypto::xof` | `Xof` trait + SHAKE128/256; domain-separated, length-encoded absorb; incremental squeeze | ✅ |
-| `crypto::sampling` | scheme samplers, XOF-driven and deterministic: uniform over `R_q` (masked rejection, coefficient and NTT domain), `RejBounded(η)` centered uniform (reference-exact for η ∈ {2,4}), `CBD(η)`, `SampleInBall(τ)`; discrete Gaussian deferred to the Falcon milestone | ✅ (Gaussian 📋) |
+| `crypto::sampling` | scheme samplers, XOF-driven and deterministic: uniform over `R_q` (masked rejection, coefficient and NTT domain), `RejBounded(η)` centered uniform (reference-exact for η ∈ {2,4}; constant-time variant `sample_rej_bounded_ct`), `CBD(η)`, `SampleInBall(τ)`, `DiscreteGaussian(σ)` (precomputed CDT; constant-time `sample_ct` inversion) | ✅ (FFT/peikert large-σ Gaussian 📋) |
+| `crypto::ct` | branch-free primitives on secret-dependent data: masked select/comparisons, absolute values, infinity norms, conditional accumulation — exhaustively differential-tested against the scalar forms; scope notes for the residual leaks live in the module docs | ✅ |
+| `security` | Core-SVP concrete-security estimation ([Alk+16] methodology as restated in the Dilithium r3.1 appendix and the NIST QROM evaluation): LWE primal/dual and Lyu12-SIS block sizes, `mldsa_security` scheme report, calibrated against the published 2^124/186/265 figures | ✅ |
 | `crypto::transcript` | Fiat–Shamir transcript (`absorb`/`challenge_bytes`), domain-label discipline | ✅ |
 | `crypto::bits` | bit-level packing/unpacking of coefficient vectors (12/13/18/20-bit), LE bit order per FIPS conventions | ✅ |
 | `crypto::serialize` | canonical binary serialization + roundtrip/fuzz tests (serde stays test-only) | 📋 |
@@ -145,7 +147,7 @@ const-generic engine is the only path.
 | --- | --- | --- |
 | Ring-axiom property tests (≥ 8 moduli) | `ring::axiom_tests` | ✅ (15 moduli) |
 | KAT framework (FIPS vectors, ACVP) | `tests/kats/` + per-scheme tests | 🚧 (M3) |
-| Benchmarks (criterion) | `benches/` | 📋 |
+| Benchmarks (criterion) | `benches/` in every crate (`cargo bench --workspace`) | ✅ (CI thresholds 📋) |
 | Documentation site (this site) | `docs/` | ✅ |
 
 ## Rules of thumb

@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- **W2 hardening**: official ACVP KAT/ACVP alignment for ML-DSA (pure mode) — 126 byte-exact vectors (keyGen 75, sigGen 27, sigVer 24) with committed fixtures, provenance and a regeneration script; fixed a one-sided `r0` restart gate the vectors caught
+- FIPS 204 NTT (`mldsa::ntt`): ζ = 1753 with the standard's bit-reversed evaluation order, so `ExpandA` reproduces the official `RejNTTPoly` streams
+- Constant-time layer `crypto::ct` (masked select/comparisons/norms, differential-tested) plus hardened ML-DSA secret paths, constant-time `RejBounded`/CDT variants, `SigningKey` zeroization and redacted `Debug`
+- `algebra::security`: Core-SVP estimation (LWE primal/dual, Lyu12-SIS) calibrated against the published ML-DSA figures; ML-DSA and Z1 security levels documented
+
 - Porting algebra from https://github.com/SuccinctPaul/baby-kyber-rs
 - Make zq generic
 - Add concat for matrix

@@ -29,7 +29,7 @@ z = y + c·s                  ──z──▶   A·z = w + c·t   and   ‖z‖
 ```
 
 - Non-interactive via Fiat–Shamir: `c = H(domain ‖ key ‖ t ‖ w)` (transcript with length-encoded labels).
-- Completeness via **rejection sampling**: the prover re-samples `y` until `‖z‖∞ ≤ B_Z` (≈ 63% per attempt on the Z1 instance).
+- Completeness via **rejection sampling**: the prover re-samples `y` until `‖z‖∞ ≤ B_Z`. Per-attempt acceptance decays exponentially in the response length — ≈ 63% for the 6-response-polynomial reference instance (K=8, L=6), ≈ 80% for the L=3 quickstart instance.
 - **HVZK**: the rejection loop makes `z`'s distribution independent of `s` (honest-verifier ZK; full ZK via blinding is Z3).
 
 ```rust
@@ -45,7 +45,8 @@ Forking two accepting transcripts that share `w` but differ in the challenge yie
 s_ext = z1 − z2 ,   v = c1 − c2      satisfying      A·s_ext = v·t   exactly
 ```
 
-The extractor test ([`extractor_recovers_relaxed_relation`](https://github.com/)) checks, on real protocol data: the exact relaxed relation, the honest-case refinement `s_ext = v·s`, and all slack bounds below.
+The extractor test (`extractor_recovers_relaxed_relation` in
+`crates/zk/src/protocols/sigma.rs`) checks, on real protocol data: the exact relaxed relation, the honest-case refinement `s_ext = v·s`, and all slack bounds below.
 
 ## Slack analysis (norm accounting)
 
@@ -63,10 +64,10 @@ Consequences:
 
 1. **Binding** reduces to MSIS `(q = 8380417, K = 8, L = 6, ‖·‖∞ ≤ 2·B_S = 8)`;
 2. **Soundness** reduces to MSIS with the extracted bounds `(‖s_ext‖∞ ≤ 2·B_Z, ‖v‖₁ ≤ 2·TAU)` plus the challenge-space entropy (`log₂ C(256,39) + 39 ≈ 205 bits`);
-3. The MSIS parameter sets must be **calibrated with the lattice-estimator** before quoting a NIST security level — the calibration script and archived runs belong to `scripts/params/` (open item).
+3. The MSIS instances are **Core-SVP calibrated** via `algebra::security`: binding (‖s‖∞ ≤ 4) sits at block size ≈ 14706 (≈ 2^4294 — effectively unbounded) and Σ-protocol soundness (‖·‖∞ ≤ 2·B_Z) at 2^225.7 classical / 2^204.8 quantum. Reproducing the zone-based refinement with archived runs under `scripts/params/` remains a refinement item.
 
 ## What Z1 deliberately does *not* provide
 
 - Full (malicious-verifier) zero knowledge — HVZK only; blinding lands with Z3.
 - General statements — the protocol covers knowledge of a short pre-image of a *module vector statement* `t`; R1CS/CCS arithmetization arrives with Z2/Z3.
-- Short non-interactive security proofs under QROM — the FS composition follows the standard Kromgar-style argument; a formal QROM analysis is out of scope for Z1.
+- Short non-interactive security proofs under QROM — the FS composition rests on the standard forking/rewinding argument for rejection-sampled Σ-protocols; a formal QROM analysis is out of scope for Z1.

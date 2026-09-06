@@ -16,6 +16,7 @@ flowchart LR
         M8["M8 · Z3 sumcheck + IPA"]
         M9["M9 · Z4 folding + SNARK"]
         W1["W1 · Multi-crate workspace<br/>algebra / pqc / zk + facade"]
+        W2["W2 · Hardening: ACVP KATs,<br/>constant-time, calibrated levels"]
     end
     subgraph NEXT["Next"]
         M4["M4 · ML-KEM + KATs"]
@@ -23,8 +24,9 @@ flowchart LR
     end
     M0 --> M1 --> M2 --> M3
     M3 --> M6 --> M7 --> M8 --> M9 --> W1
-    W1 --> M4
-    W1 --> M5
+    W1 --> W2
+    W2 --> M4
+    W2 --> M5
 ```
 
 ## Milestones and acceptance criteria
@@ -49,7 +51,7 @@ flowchart LR
 ### ✅ M3 · ML-DSA (the architecture litmus test)
 
 - `MlDsa44/65/87` ZSTs; `keygen`/`sign_deterministic`/`sign_with_randomness`/`verify`; FIPS 204 encodings;
-- **gate (met)**: roundtrip + determinism + tamper/context/wrong-key rejection for all parameter sets; exact size assertions (2420/3309/4627 B signatures); key serialization roundtrips. KAT/ACVP alignment remains as a follow-up hardening task.
+- **gate (met)**: roundtrip + determinism + tamper/context/wrong-key rejection for all parameter sets; exact size assertions (2420/3309/4627 B signatures); key serialization roundtrips. **KAT/ACVP alignment landed** in W2 (126 official vectors green).
 
 ### M4 · ML-KEM
 
@@ -88,9 +90,17 @@ flowchart LR
 - primitives audit: `crypto::sampling` gains the `DiscreteGaussian` precomputed-CDT sampler (the Falcon noise primitive); the dead `ring::sample::GaussianSampler` stub removed;
 - **gate (met)**: `cargo test --workspace` (454 tests), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` all clean.
 
+### ✅ W2 · Hardening: KAT/ACVP, constant time, calibrated levels
+
+- `mldsa::ntt`: the FIPS 204 NTT (ζ = 1753, bit-reversed evaluation order) — `ExpandA` reproduces the official `RejNTTPoly` streams; the base `algebra::ntt` engine stays generic;
+- official ACVP fixtures (keyGen 75 / sigGen 27 / sigVer 24, pure mode) with provenance + regeneration script; **found and fixed** a one-sided `r0` restart gate via the vectors;
+- `crypto::ct` branch-free primitives; ML-DSA norm gates, rounding/hints, sampler value mappings and encodings hardened; CT variants for `RejBounded` and the CDT Gaussian; `SigningKey` zeroization + redacted `Debug`;
+- `algebra::security`: Core-SVP estimation (LWE primal/dual, Lyu12-SIS) calibrated against the published ML-DSA figures; Z1 instances calibrated (Σ soundness 2^225.7 classical);
+- **gate (met)**: `cargo test --workspace` green incl. the ACVP harness; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean; block sizes frozen as regression tests.
+
 ### ZK line remaining work (details in the [ZK page](/schemes/zk-snark))
 
-- **Remaining**: ZK blinding; estimator calibration; official KAT/ACVP vector alignment.
+- **Remaining**: ZK blinding. Estimator calibration and the ML-DSA KAT/ACVP alignment landed in W2.
 
 ## Engineering rules (always on)
 

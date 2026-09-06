@@ -123,28 +123,21 @@ impl<const MODULUS: u64> TwoAdicRing for Zq<MODULUS> {
 }
 
 impl<const MODULUS: u64> CenteredRing for Zq<MODULUS> {
-    /// Centered representative in `(-q/2, q/2]`.
+    /// Centered representative in `(-q/2, q/2]`, branch-free.
     ///
     /// For even `q` the half-open interval keeps `+q/2`; for odd `q` this is
     /// exactly the symmetric range `[-(q-1)/2, (q-1)/2]` used by FIPS 204.
     fn centered(&self) -> i64 {
         let v = self.value as i64;
         let q = MODULUS as i64;
-        if 2 * v > q {
-            v - q
-        } else {
-            v
-        }
+        // v - (q when 2v > q else 0), via mask.
+        v - (crate::crypto::ct::maski64(2 * v > q) & q)
     }
 
-    /// `|self|_inf = min(a, q - a)`.
+    /// `|self|_inf = min(a, q - a)`, branch-free.
     fn abs_infinity(&self) -> u64 {
         let (a, b) = (self.value, MODULUS - self.value);
-        if a < b {
-            a
-        } else {
-            b
-        }
+        crate::crypto::ct::select_u64(a < b, a, b)
     }
 }
 
@@ -206,11 +199,9 @@ impl<const MODULUS: u64> Neg for Zq<MODULUS> {
     type Output = Self;
     #[inline]
     fn neg(self) -> Self::Output {
-        if self.value == 0 {
-            self
-        } else {
-            Self::new(MODULUS - self.value)
-        }
+        // Branch-free: `(MODULUS - v) % MODULUS` is 0 for v = 0 and
+        // MODULUS - v otherwise.
+        Self::new(MODULUS - self.value)
     }
 }
 

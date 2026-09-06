@@ -56,7 +56,7 @@ Acceptance (all green in CI):
 - exact encoded sizes: signatures 2420 / 3309 / 4627 B, public keys 1312 / 1952 / 2592 B, secret keys 2560 / 4032 / 4896 B;
 - key roundtrip through the canonical byte encodings.
 
-Scheduled: official KAT/ACVP vector alignment (byte-exact NTT ordering and rejection-stream accounting against the reference implementation). Measured keygen/sign/verify costs: [Performance](/reference/performance). Deployment readiness: [Security status](/introduction/security-status).
+**Done**: official KAT/ACVP alignment — 126 pure-mode vectors (keyGen/sigGen/sigVer) pass byte-exactly, powered by the FIPS 204 NTT (`mldsa::ntt`); see [security status](/introduction/security-status). Measured keygen/sign/verify costs: [Performance](/reference/performance). Deployment readiness: [Security status](/introduction/security-status).
 
 ## ML-KEM (FIPS 203) — planned
 
@@ -84,4 +84,4 @@ The draft is still moving; the implementation anchors to reference behavior and 
 
 - **Key material hygiene**: secret-key types will implement `Drop → zeroize` (feature-gated).
 - **Implicit rejection**: KEM decapsulation failures and signing restarts are indistinguishable by design.
-- **KAT framework**: `tests/kats/` for official vectors, layered so intermediate-value tests (L1/L2) run before scheme-level vectors.
+- **KAT framework**: `tests/acvp_kat.rs` + `tests/data/` for the official ACVP vectors (provenance and regeneration script included), so scheme-level vectors gate every change.

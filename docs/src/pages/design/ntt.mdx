@@ -40,11 +40,11 @@ A ring admits a dimension-`n` NTT iff `n` is a power of two and `q ≡ 1 (mod 2n
 
 ## Correctness notes for ML-DSA
 
-`ExpandA` samples `Â` **directly in the NTT domain**, so scheme correctness only requires NTT/INTT to be mutual inverses and domain ops to be consistent — any evaluation order works. Byte-exact KAT matching against the reference ζ-ordering is a scheduled KAT milestone.
+`ExpandA` samples `Â` **directly in the NTT domain**, so scheme correctness only requires NTT/INTT to be mutual inverses and domain ops to be consistent — any evaluation order works *mathematically*. For byte-exact KATs, however, the convention matters: ML-DSA uses the dedicated `mldsa::ntt` transform with the standard's exact ζ = 1753 and bit-reversed evaluation order `ζ^(2·brv8(i)+1)`, while this generic engine keeps its own root/ordering for the non-KAT layers.
 
 ## Testing
 
 - roundtrip `forward ∘ inverse = id`, `NTT(a)⊙NTT(b) = NTT(a·b)` across all whitelisted dimensions;
 - NTT multiplication vs schoolbook cyclic/negacyclic convolution (differential tests);
 - `NttDomain` roundtrip and domain-product equivalence;
-- criterion benchmarks (scheduled for the CI milestone).
+- criterion benchmarks ([Performance](/reference/performance)).

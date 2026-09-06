@@ -12,7 +12,7 @@ flowchart TD
     S --> RB["sample_rej_bounded(η)<br/>centered uniform on [−η, η]<br/>(FIPS 204 RejBounded; reference nibble mapping)"]
     S --> C["sample_cbd(η)<br/>centered binomial on [−η, η]<br/>(FIPS 203 noise)"]
     S --> IB["sample_in_ball_signs(τ, n)<br/>τ-sparse ±1 challenge<br/>(FIPS 204 SampleInBall)"]
-    S --> G["DiscreteGaussian(σ)<br/>CDT + fast Fourier sampling<br/>(planned — Falcon milestone)"]
+    S --> G["DiscreteGaussian(σ)<br/>truncated Gaussian via precomputed-CDT inversion<br/>(Falcon-grade noise; FFT/peikert large-σ variant 📋)"]
 ```
 
 ## Design
@@ -37,7 +37,7 @@ pub fn sample_in_ball_signs(stream: &mut BitStream<'_, impl Xof>, tau: u32, n: u
 - `sample_uniform_coeff` generalizes FIPS 204 `CoeffFromThreeBytes`: `bitlen(q−1)` bits assembled little-endian, masked, reject `≥ q`. Acceptance ≈ 0.9998 for `q = 8380417`.
 - `sample_rej_bounded` follows the reference implementation bit-for-bit for `η ∈ {2, 4}` (nibble sampling: η=2 accepts `t < 15` and maps `2 − (t mod 5)` via the multiply-shift trick; η=4 accepts `t < 9` and maps `4 − t`). Other η use a generic uniform-on-`[−η, η]` fallback.
 - `sample_in_ball_signs` consumes 8 sign bytes (64 sign bits, used in order) plus one rejection byte per filled position — exactly FIPS 204 `SampleInBall`.
-- The Gaussian sampler (CDT base + fast Fourier sampling) is a Falcon-milestone item and will be feature-gated with its non-CT status documented.
+- `DiscreteGaussian(σ)` is implemented as a precomputed-CDT table in `2^127` fixed point — one draw is 16 stream bytes plus a binary search, no rejection loop, fully deterministic given the stream. A constant-time `sample_ct` (full masked scan instead of the binary search) is provided for secret-randomizer contexts. This is the noise primitive Falcon/FN-DSA needs; the *fast Fourier* large-σ variant from the Falcon reference remains a Falcon-milestone item and will be feature-gated with its non-CT status documented.
 
 ## Testing
 
@@ -49,3 +49,4 @@ pub fn sample_in_ball_signs(stream: &mut BitStream<'_, impl Xof>, tau: u32, n: u
 | mean test for CBD (`|mean| < 0.2` at n = 4000) | centered binomial shape |
 | exact `τ` non-zeros for SampleInBall | challenge structure |
 | termination under rejection (Dilithium modulus, NTT-domain sampler) | no livelock |
+| Gaussian: determinism, tail containment, centered peak (`gaussian_*` tests) | CDT semantics |

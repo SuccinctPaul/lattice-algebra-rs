@@ -102,14 +102,17 @@ impl<R: Ring, const K: usize, const N: usize> ModuleVector<R, K, N> {
 }
 
 impl<R: CenteredRing, const K: usize, const N: usize> ModuleVector<R, K, N> {
-    /// `‖self‖_∞ = max over all coefficients of |c|_∞`.
+    /// `‖self‖_∞ = max over all coefficients of |c|_∞`, computed without
+    /// early exits or data-dependent branches (safe on secret data).
     pub fn infinity_norm(&self) -> u64 {
-        self.polys
-            .iter()
-            .flat_map(|p| p.coefficients())
-            .map(|c| c.abs_infinity())
-            .max()
-            .unwrap_or(0)
+        let mut m = 0u64;
+        for p in &self.polys {
+            for c in p.coefficients() {
+                let a = c.abs_infinity();
+                m = crate::crypto::ct::select_u64(a > m, a, m);
+            }
+        }
+        m
     }
 }
 

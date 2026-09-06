@@ -24,10 +24,12 @@ Point-in-time audit of the codebase against the [target architecture](/design/ar
 | L2 | Cyclic ring (`mod X^n − 1`) for Falcon / SNARK parameters | 📋 |
 | L4 | Canonical binary serialization (serde stays test-only) | 📋 |
 | L4 | Discrete Gaussian: **CDT sampler done** (`crypto::sampling::DiscreteGaussian`); FFT/peikert-style sampling for large σ | 📋 Falcon milestone |
-| L5 | ZK completeness: blinding (full ZK beyond Z1's HVZK), estimator-calibrated parameters | 📋 |
+| L5 | ZK completeness: blinding (full ZK beyond Z1's HVZK) | 📋 |
+| L5 | Estimator-calibrated parameters | ✅ `algebra::security` (Core-SVP: LWE primal/dual + Lyu12-SIS), calibrated against the published ML-DSA figures; Z1 instances calibrated ([security status](/introduction/security-status)) |
 | L6 | ML-KEM (incl. the spec's layered NTT instance), Falcon | 📋 M4/M5 |
-| Eng | Official KAT/ACVP vector files for ML-DSA; cross-checks against reference implementations | 📋 (self-consistency + property tests in place) |
-| Eng | Constant-time arithmetic, zeroization, decoder fuzzing | 📋 see [security status](/introduction/security-status) |
+| Eng | Official KAT/ACVP vector files for ML-DSA (pure mode); differential cross-checks against the reference implementation | ✅ 126 official ACVP vectors green (keyGen 75, sigGen 27, sigVer 24); the FIPS 204 NTT ordering and a real `r0`-gate bug were found and fixed by the harness |
+| Eng | Constant-time secret-value arithmetic, zeroization | ✅ `crypto::ct` + hardened ML-DSA paths; residual leaks documented ([security status](/introduction/security-status)) |
+| Eng | Decoder fuzzing, dudect-style CT statistics | 📋 |
 | Eng | Criterion benchmarks **landed** (`cargo bench --workspace`); CI thresholds | ✅ benches / 📋 thresholds |
 
 ## Regression rules
