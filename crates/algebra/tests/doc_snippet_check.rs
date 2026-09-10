@@ -1,7 +1,7 @@
 //! Guard: every "current API" snippet on the quickstart page
 //! (`docs/src/pages/introduction/getting-started.mdx`) must compile and run.
-//! The algebra-side snippets live here because only the facade can see all
-//! three crates; the ML-DSA and Z1 snippets are guarded in
+//! The algebra-side snippets live here in the crate they exercise; the
+//! ML-DSA and Z1 snippets are guarded in
 //! `crates/pqc/tests/doc_snippet_check.rs` and
 //! `crates/zk/tests/doc_snippet_check.rs`. Keep this file in sync with the
 //! page — if you rename what a snippet uses, update the page in the same PR.
@@ -11,15 +11,15 @@
 //! kit even where the inherent `Zq::inverse` would suffice.
 #![allow(unused_variables, path_statements, unused_imports)]
 
-use lattice_algebra_rs::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded, BitStream};
-use lattice_algebra_rs::crypto::xof::{Shake128Xof, Shake256Xof, Xof};
-use lattice_algebra_rs::module::{ModuleMatrixNtt, ModuleVector};
-use lattice_algebra_rs::ntt::NttOperatorOptimized;
-use lattice_algebra_rs::poly::sparse::SparsePolynomial;
-use lattice_algebra_rs::ring::poly_ring::PolyRing;
-use lattice_algebra_rs::ring::traits::{CenteredRing, Field, Ring, TwoAdicRing};
-use lattice_algebra_rs::ring::zq::Zq;
-use lattice_algebra_rs::ring::PolynomialQuotientRing;
+use algebra::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded, BitStream};
+use algebra::crypto::xof::{Shake128Xof, Shake256Xof, Xof};
+use algebra::module::{ModuleMatrixNtt, ModuleVector};
+use algebra::ntt::NttOperatorOptimized;
+use algebra::poly::sparse::SparsePolynomial;
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::traits::{CenteredRing, Field, Ring, TwoAdicRing};
+use algebra::ring::zq::Zq;
+use algebra::ring::PolynomialQuotientRing;
 
 type Zq17 = Zq<17>;
 type R = PolyRing<Zq17, 8>;

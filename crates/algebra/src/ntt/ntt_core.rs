@@ -20,8 +20,8 @@ use crate::ring::Ring;
 ///
 /// # Example
 /// ```ignore
-/// use lattice_algebra_rs::ntt::NttOperator;
-/// use lattice_algebra_rs::ring::zq::Zq;
+/// use algebra::ntt::NttOperator;
+/// use algebra::ring::zq::Zq;
 ///
 /// type Zq17 = Zq<17>;
 /// let ntt = NttOperator::<Zq17, 8>::new();

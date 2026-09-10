@@ -7,7 +7,7 @@
 `C = A·s` where `A ∈ R_q^{K×L}` derives from a seed (`ExpandA`, NTT-domain resident) and `s` is a short witness (`‖s‖∞ ≤ B_S`). Binding follows from Module-SIS: two colliding openings give the short kernel vector `s − s'`.
 
 ```rust
-use lattice_algebra_rs::protocols::commitment::*;
+use zk::protocols::commitment::*;
 
 type Key = CommitmentKey<Z1Instance, 8, 6, 256>;
 let key = Key::setup(&[1u8; 32]);

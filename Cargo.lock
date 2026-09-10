@@ -339,15 +339,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lattice-algebra-rs"
-version = "0.1.0"
-dependencies = [
- "lattice-algebra",
- "lattice-pqc",
- "lattice-zk",
-]
-
-[[package]]
 name = "lattice-pqc"
 version = "0.1.0"
 dependencies = [

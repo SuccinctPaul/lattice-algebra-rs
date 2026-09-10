@@ -37,8 +37,8 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 ///
 /// # Example
 /// ```ignore
-/// use lattice_algebra_rs::ring::poly_ring::PolyRing;
-/// use lattice_algebra_rs::ring::zq::Zq;
+/// use algebra::ring::poly_ring::PolyRing;
+/// use algebra::ring::zq::Zq;
 ///
 /// type Zq17 = Zq<17>;
 /// type R = PolyRing<Zq17, 8>;  // Z_17[x]/(x^8 + 1)
