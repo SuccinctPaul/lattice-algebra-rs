@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Lattice-based zkSNARK building blocks: Ajtai commitments, Sigma-protocols, sumcheck, gadget IPA, Nova-style folding"
 readme = "README.md"
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lib]
 name = "zk"

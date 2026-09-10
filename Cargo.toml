@@ -9,6 +9,10 @@ edition = "2021"
 # dependency tree (via rand/criterion) contains edition-2024 crates,
 # which pin the floor at 1.85 regardless of our own edition-2021 code.
 rust-version = "1.85.0"
+license = "Apache-2.0"
+repository = "https://github.com/SuccinctPaul/lattice-algebra-rs"
+keywords = ["cryptography", "lattice", "algebra"]
+categories = ["cryptography", "algorithms", "math", "science"]
 
 [workspace.dependencies]
 rand = { version = "0.9.1", features = ["default"] }
