@@ -53,10 +53,10 @@ flowchart LR
 - `MlDsa44/65/87` ZSTs; `keygen`/`sign_deterministic`/`sign_with_randomness`/`verify`; FIPS 204 encodings;
 - **gate (met)**: roundtrip + determinism + tamper/context/wrong-key rejection for all parameter sets; exact size assertions (2420/3309/4627 B signatures); key serialization roundtrips. **KAT/ACVP alignment landed** in W2 (126 official vectors green).
 
-### M4 · ML-KEM
+### ✅ M4 · ML-KEM
 
-- Same pattern; includes the spec's layered NTT instance ([L1 note](/design/ntt)).
-- **Gate**: official KATs; implicit-rejection semantics tests.
+- `pqc::mlkem`: FIPS 203 keygen / encapsulation / decapsulation (implicit rejection) for all three parameter sets, including the spec's seven-layer NTT instance with `BaseCaseMultiply` pair products ([L1 note](/design/ntt)) and the optional `EncapsulationKeyCheck` / `DecapsulationKeyCheck` (length, modulus, hash-consistency);
+- **gate (met)**: 183 official ACVP vectors byte-exact (keyGen 75, encaps 24, decaps 24 incl. implicit rejection, keyCheck 60) plus roundtrip / determinism / tamper / wrong-length rejection tests, exact size assertions (800/1632/768 B, 1184/2400/1088 B, 1568/3168/1568 B), key serialization roundtrips.
 
 ### M5 · Falcon
 

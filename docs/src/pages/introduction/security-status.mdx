@@ -43,7 +43,7 @@ tests in `algebra::security`.
 | --- | --- | --- |
 | **Constant time — residuals** | 🟡 partial by design | The secret-*value* paths are branch-free (see claimed table). Two leaks remain, both inherent to the spec's derivations and shaped like the reference implementation: (1) rejection-sampling **loop counts** depend on the XOF stream — never on a secret-indexed table lookup or a secret-valued branch inside the loop body; (2) `HintBitPack` compaction writes through a secret-dependent index whose final value is public (it is part of the signature). Signing reveals its rejection/restart behavior exactly as the FIPS 204 reference does; NIST's own analysis argues this is safe because per-coefficient rejection probabilities are independent of secret data. A dudect-style statistical harness and an assembly audit are the follow-up hardening steps. |
 | **Third-party audit** | ❌ none | No external review has been performed. Treat all claims on this page as engineering evidence, not assurance. |
-| **ACVP modes beyond pure** | 📋 scoped until the APIs exist | The fixtures cover the pure, external-interface ML-DSA this crate implements. HashML-DSA (`preHash`, OID-separated hashing), the internal `mu` interface, and FN-DSA/ML-KEM vectors inherit the requirement when those schemes/APIs land (M4/M5). |
+| **ACVP modes beyond the covered set** | 📋 scoped until the APIs exist | ML-KEM (FIPS 203) ships with its own official fixtures (183 cases: keyGen, encaps, decaps incl. implicit rejection, key checks). Still scoped: HashML-DSA (`preHash`, OID-separated hashing) and the internal `mu` interface for ML-DSA, plus FN-DSA vectors (M5). |
 | **Estimator refinement** | 📋 | The closed-form conditions are frozen with the published zone-based figures quoted alongside; reproducing the zone-based simulation (sample/column truncation, ℓ∞ shape heuristics) with archived runs under `scripts/params/` remains the refinement item. |
 | **Production hardening** | ❌ out of scope today | No fuzzing harness for the decoders yet, no `no_std` story. Zeroization of `SigningKey` is done; `to_bytes()` output buffers are caller-managed. |
 
@@ -54,8 +54,8 @@ tests in `algebra::security`.
 - ✅ Teaching and studying how FIPS 203/204 map onto algebra primitives
 - ✅ As the shared substrate for a *family* of experiments (PQC ↔ ZK) that
   must reuse the same norms, decompositions and challenge derivations
-- ✅ As a KAT-verified reference: ML-DSA (pure mode) matches the official
-  ACVP vectors byte-for-byte
+- ✅ As a KAT-verified reference: ML-DSA (pure mode, 126 vectors) and
+  ML-KEM (183 vectors) match the official ACVP vectors byte-for-byte
 - ⚠️ Pre-production integrations, with the residual table above as the
   risk register
 - ❌ Production deployments holding real secret keys (use
