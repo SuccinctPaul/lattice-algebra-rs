@@ -13,8 +13,8 @@ L0 answers one question: **how to make `Z_q` addition/multiplication correct, fa
 - `ring::number_theory` — const Miller–Rabin, primitive roots, prime factorization, modexp (shared by the NTT engine and samplers).
 
 ```rust
-use lattice_algebra_rs::ring::zq::Zq;
-use lattice_algebra_rs::ring::traits::{CenteredRing, TwoAdicRing};
+use algebra::ring::zq::Zq;
+use algebra::ring::traits::{CenteredRing, TwoAdicRing};
 
 type ZqD = Zq<8380417>;
 assert!(ZqD::IS_PRIME);

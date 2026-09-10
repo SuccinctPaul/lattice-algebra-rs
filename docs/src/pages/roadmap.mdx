@@ -85,7 +85,7 @@ flowchart LR
 
 ### ✅ W1 · Multi-crate workspace
 
-- Split the single crate into a cargo workspace: [`lattice-algebra`](/design/module-map) (L0–L4: ring / ntt / poly / module / crypto / matrix), `lattice-pqc` (ML-DSA), `lattice-zk` (protocols), plus the `lattice-algebra-rs` facade that re-exports every module under its historical path;
+- Split the single crate into a cargo workspace: [`lattice-algebra`](/design/module-map) (L0–L4: ring / ntt / poly / module / crypto / matrix), `lattice-pqc` (ML-DSA), `lattice-zk` (protocols) — plus, at the time, a thin `lattice-algebra-rs` facade re-exporting the historical single-crate paths, removed once all in-repo usage had moved to the three crates;
 - public-API audit: all 353 public items carried over verbatim (before/after surface diff empty);
 - primitives audit: `crypto::sampling` gains the `DiscreteGaussian` precomputed-CDT sampler (the Falcon noise primitive); the dead `ring::sample::GaussianSampler` stub removed;
 - **gate (met)**: `cargo test --workspace` (454 tests), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` all clean.

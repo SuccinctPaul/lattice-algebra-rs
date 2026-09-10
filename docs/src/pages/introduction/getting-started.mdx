@@ -19,7 +19,6 @@ background and the symbol table; the snippets below only assume Rust.
 | Ring / NTT / module / sampler primitives | `lattice-algebra` (lib name `algebra`) |
 | ML-DSA signatures | `lattice-pqc` (lib name `pqc`) |
 | Ajtai commitments, Σ-protocols, sumcheck, folding | `lattice-zk` (lib name `zk`) |
-| All of it, historical single-crate paths | `lattice-algebra-rs` (facade) |
 
 ```toml
 # pick your combination
@@ -27,7 +26,6 @@ background and the symbol table; the snippets below only assume Rust.
 lattice-algebra = "0.1"      # use algebra::ring::...
 lattice-pqc     = "0.1"      # use pqc::mldsa::...
 lattice-zk      = "0.1"      # use zk::protocols::...
-# or: lattice-algebra-rs = "0.1"  # everything under one crate name
 ```
 
 ## Scalar ring `Zq<MODULUS>`
@@ -35,8 +33,8 @@ lattice-zk      = "0.1"      # use zk::protocols::...
 Const-generic modular ring with Barrett-style reduction:
 
 ```rust
-use lattice_algebra_rs::ring::zq::Zq;
-use lattice_algebra_rs::ring::traits::{CenteredRing, Field, Ring, TwoAdicRing};
+use algebra::ring::zq::Zq;
+use algebra::ring::traits::{CenteredRing, Field, Ring, TwoAdicRing};
 
 type Zq17 = Zq<17>;   // toy; real schemes use Zq<8380417> etc.
 
@@ -54,10 +52,10 @@ Zq17::IS_PRIME;                                 // true, decided at compile time
 `UniPolynomial<R>` is the generic (variable-length) polynomial; `PolyRing<R, N>` is the negacyclic ring `Z_q[X]/(X^N+1)` whose multiplication dispatches to the NTT when available. Note the `PolynomialQuotientRing` import — `from_coefficients`/`coefficients` are capability-trait methods, so the trait must be in scope (convention 3 in the [integration guide](/introduction/integrating)):
 
 ```rust
-use lattice_algebra_rs::ring::poly_ring::PolyRing;
-use lattice_algebra_rs::ring::zq::Zq;
-use lattice_algebra_rs::ring::PolynomialQuotientRing;
-use lattice_algebra_rs::ntt::NttOperatorOptimized;
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::zq::Zq;
+use algebra::ring::PolynomialQuotientRing;
+use algebra::ntt::NttOperatorOptimized;
 
 type Zq17 = Zq<17>;
 type R = PolyRing<Zq17, 8>;   // q = 17 ≡ 1 (mod 16) → NTT path
@@ -81,10 +79,10 @@ assert_eq!(via_ntt, prod);
 ## Sparse challenges
 
 ```rust
-use lattice_algebra_rs::poly::sparse::SparsePolynomial;
-use lattice_algebra_rs::ring::poly_ring::PolyRing;
-use lattice_algebra_rs::ring::zq::Zq;
-use lattice_algebra_rs::ring::PolynomialQuotientRing;
+use algebra::poly::sparse::SparsePolynomial;
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::zq::Zq;
+use algebra::ring::PolynomialQuotientRing;
 
 type R = PolyRing<Zq<17>, 8>;
 let c = SparsePolynomial::<Zq<17>>::from_sign_vector(&[1, 0, 0, -1, 0, 0, 0, 0], 8);
@@ -97,8 +95,8 @@ let _ = c.mul_dense(&dense);   // O(τ·N), no NTT needed
 All scheme samplers consume a domain-separated XOF stream — determinism is built in:
 
 ```rust
-use lattice_algebra_rs::crypto::xof::{Shake256Xof, Xof};
-use lattice_algebra_rs::crypto::sampling::{BitStream, sample_rej_bounded, sample_in_ball_signs};
+use algebra::crypto::xof::{Shake256Xof, Xof};
+use algebra::crypto::sampling::{BitStream, sample_rej_bounded, sample_in_ball_signs};
 
 let mut xof = Shake256Xof::new(b"my-scheme/sampler");
 let mut stream = BitStream::new(&mut xof);
@@ -109,11 +107,11 @@ let signs = sample_in_ball_signs(&mut stream, 39, 256);       // τ-sparse ±1 c
 ## Module lattices (L3)
 
 ```rust
-use lattice_algebra_rs::module::{ModuleMatrixNtt, ModuleVector};
-use lattice_algebra_rs::crypto::xof::Shake128Xof;
-use lattice_algebra_rs::ntt::NttOperatorOptimized;
-use lattice_algebra_rs::ring::poly_ring::PolyRing;
-use lattice_algebra_rs::ring::zq::Zq;
+use algebra::module::{ModuleMatrixNtt, ModuleVector};
+use algebra::crypto::xof::Shake128Xof;
+use algebra::ntt::NttOperatorOptimized;
+use algebra::ring::poly_ring::PolyRing;
+use algebra::ring::zq::Zq;
 
 type Rq = PolyRing<Zq<17>, 8>;
 let op = NttOperatorOptimized::<Zq<17>, 8>::new();
@@ -128,7 +126,7 @@ assert_eq!(w.infinity_norm(), 0);
 ## ML-DSA (FIPS 204)
 
 ```rust
-use lattice_algebra_rs::mldsa::mldsa_65 as mldsa;
+use pqc::mldsa::mldsa_65 as mldsa;
 
 let seed = [42u8; 32];
 let (sk, vk) = mldsa::keygen(&seed);

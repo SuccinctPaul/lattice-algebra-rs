@@ -12,7 +12,6 @@ afternoon. Everything here is verified by the workspace's own tests.
 | `lattice-algebra` | rings, NTT, polynomials, module lattices, XOF/sampling | `rand`, `rustfft`, `serde`, `sha3`, optional `rayon` |
 | `lattice-pqc` | ML-DSA (FIPS 204) | `lattice-algebra` only |
 | `lattice-zk` | Ajtai commitments, Σ-protocols, batched opening, sumcheck, IPA, folding | `lattice-algebra` only |
-| `lattice-algebra-rs` | facade: all of the above | the three crates |
 
 Scheme crates add **no** crypto dependencies of their own — all hashing and
 arithmetic flows through the foundation, so there is exactly one NTT and one
@@ -22,7 +21,8 @@ SHAKE in your dependency graph.
 
 | Feature | Crate | Effect |
 | --- | --- | --- |
-| `parallel` | `lattice-algebra` | opt-in `rayon` for bulk matrix operations (the `lattice-algebra-rs` facade forwards it) |
+| `parallel` | `lattice-algebra` | opt-in `rayon` for bulk matrix/vector operations |
+| `parallel` | `lattice-zk` | opt-in `rayon` gate-level parallelism for the Z2/Z3/Z4 proving loops |
 | default | all | empty — you get exactly the code you use |
 
 ```sh
@@ -38,10 +38,9 @@ cargo check -p lattice-algebra --no-default-features # opt out
   code.
 - **Versioning**: pre-1.0 — minor bumps may carry breaking changes, but the
   changelog (git-cliff, conventional commits) records every one.
-- **Compat promise**: the `lattice-algebra-rs` facade keeps every
-  historical module path (`lattice_algebra_rs::ring::…`,
-  `::mldsa::…`, `::protocols::…`) — code written against the original
-  single crate keeps compiling across the workspace split.
+- **Crate boundaries**: depend on the three crates directly (`algebra::…`,
+  `pqc::…`, `zk::…`) — the historical single-crate facade
+  (`lattice-algebra-rs`) has been removed.
 - **`unsafe`**: the workspace contains zero `unsafe` blocks.
 - **`no_std`**: not yet (`sha3` and allocator use); tracked on the roadmap.
 
@@ -90,7 +89,7 @@ Learn these five once, and every module behaves the way you expect:
 - **Quickstart snippets are load-bearing.** The code on the
   [Quickstart](/introduction/getting-started) page is compiled and executed
   in CI by `doc_snippet_check.rs` guard tests — the algebra-side snippets in
-  the facade crate, the ML-DSA snippet in `crates/pqc`, the Z1 snippet in
+  `crates/algebra`, the ML-DSA snippet in `crates/pqc`, the Z1 snippet in
   `crates/zk`. If your PR breaks them, the docs page is part of your change.
 
 ## Reproduce everything

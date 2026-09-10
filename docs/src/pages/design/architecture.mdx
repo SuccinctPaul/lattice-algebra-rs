@@ -117,12 +117,9 @@ flowchart LR
         ALG["lattice-algebra<br/>L0–L4 (ring · ntt · poly · module · crypto)"]
         PQC["lattice-pqc<br/>L6 PQC (ML-DSA)"]
         ZKC["lattice-zk<br/>L5+L6 ZK line"]
-        FAC["lattice-algebra-rs<br/>facade: historical paths"]
     end
     PQC --> ALG
     ZKC --> ALG
-    FAC --> PQC
-    FAC --> ZKC
 ```
 
 ## Key decisions (ADR summary)
