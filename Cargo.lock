@@ -345,6 +345,7 @@ dependencies = [
  "criterion",
  "lattice-algebra",
  "serde_json",
+ "sha3",
  "zeroize",
 ]
 

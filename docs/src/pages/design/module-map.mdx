@@ -21,7 +21,7 @@ that share one dependency direction:
 flowchart TB
     subgraph L6["L6 · Schemes"]
         MLDSA["mldsa (ML-DSA-44/65/87)"]
-        MLKEM["mlkem (planned)"]
+        MLKEM["mlkem (FIPS 203)"]
         FALCON["falcon (planned)"]
         ZK["protocols: zkSNARK line"]
     end
@@ -137,7 +137,7 @@ const-generic engine is the only path.
 | Module | Owns | Status |
 | --- | --- | --- |
 | `mldsa` | ML-DSA-44/65/87 (FIPS 204): parameter ZSTs, `SigningKey`/`VerifyingKey`, deterministic & hedged signing, hint machinery, FIPS encodings; per-set API modules (`mldsa::mldsa_65::…`) | ✅ (KAT alignment 📋) |
-| `mlkem` | ML-KEM-512/768/1024 (FIPS 203), incl. the layered NTT instance | 📋 (M4) |
+| `mlkem` | ML-KEM-512/768/1024 (FIPS 203), incl. the seven-layer NTT with `BaseCaseMultiply` | ✅ |
 | `falcon` | Falcon-512/1024 (FIPS 206 draft), float FFT sampler sub-module | 📋 (M5) |
 
 ## Cross-cutting

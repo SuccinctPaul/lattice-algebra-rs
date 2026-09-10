@@ -20,7 +20,7 @@ directly.
 | Crate | Path | Contents |
 | --- | --- | --- |
 | `lattice-algebra` | [`crates/algebra`](crates/algebra) | L0–L4 foundation: scalar rings (`Zq`), negacyclic polynomial rings (`PolyRing`), capability traits (`Ring`/`Field`/`TwoAdicRing`/`CenteredRing`), NTT + NTT-domain views, module-lattice vectors/matrices, XOF / transcript / sampling crypto |
-| `lattice-pqc` | [`crates/pqc`](crates/pqc) | NIST PQC schemes on the foundation: **ML-DSA** (FIPS 204) keygen / sign / verify for all three parameter sets. ML-KEM and FN-DSA planned |
+| `lattice-pqc` | [`crates/pqc`](crates/pqc) | NIST PQC schemes on the foundation: **ML-KEM** (FIPS 203) keygen / encapsulate / decapsulate and **ML-DSA** (FIPS 204) keygen / sign / verify, all three parameter sets each, byte-exact with the official ACVP vectors. FN-DSA planned |
 | `lattice-zk` | [`crates/zk`](crates/zk) | Lattice zkSNARK building blocks: Ajtai/SIS commitments, Lyubashevsky Σ-protocols, batch opening, ring-sumcheck, gadget IPA, Nova-style folding / IVC |
 
 ## Usage
