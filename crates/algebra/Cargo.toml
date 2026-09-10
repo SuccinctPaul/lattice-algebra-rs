@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 description = "L0-L4 algebraic foundation: scalar rings, negacyclic polynomial rings, NTT, module lattices, XOF and sampling"
 readme = "README.md"
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lib]
 name = "algebra"
