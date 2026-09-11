@@ -104,9 +104,11 @@ pub fn ntt(a: &mut [u64; N]) {
     }
 }
 
-/// FIPS 203 inverse NTT (Algorithm 10): the same twiddle table consumed in
-/// descending index order (it supplies the *inverses* of the forward
-/// twiddles along the inverse traversal), then scaled by `128⁻¹ = 3303`.
+/// FIPS 203 inverse NTT (Algorithm 10): it consumes the SAME plain `Zetas`
+/// table (`ζ^brv7(i)`, `i` starting at 127 and descending) — NOT inverted
+/// twiddles; the descending traversal is what supplies the twiddle inverses.
+/// The result is finally scaled by `128⁻¹ = 3303`, not `256⁻¹` (seven
+/// layers, see below).
 pub fn intt(a: &mut [u64; N]) {
     let mut i = 127usize;
     let mut len = 2;
@@ -119,6 +121,10 @@ pub fn intt(a: &mut [u64; N]) {
                 let t = a[j];
                 let u = a[j + len];
                 a[j] = (t + u) % Q_U64;
+                // Second update is zeta·(f[j+len] − t) = zeta·(u − t):
+                // u MINUS t, not t − u. A flipped sign here still passes a
+                // casual read of Algorithm 10 yet silently breaks
+                // byte-exactness against the ACVP vectors.
                 let du = (u + Q_U64 - t) % Q_U64;
                 a[j + len] = mul_mod(du, zeta);
             }
@@ -126,6 +132,8 @@ pub fn intt(a: &mut [u64; N]) {
         }
         len <<= 1;
     }
+    // Seven layers ⇒ the last one already split into 128 quadratic pairs,
+    // so the inverse scales by 128⁻¹ = 3303 mod q (NOT 256⁻¹).
     for c in a.iter_mut() {
         *c = mul_mod(*c, HALF_N_INV);
     }
@@ -169,6 +177,9 @@ fn sample_ntt<X: Xof>(rho: &[u8; 32], col: u8, row: u8) -> [u64; N] {
     while pos < N {
         let mut buf = [0u8; 3];
         xof.squeeze(&mut buf);
+        // Algorithm 7 reads a contiguous 12-bit little-endian stream, three
+        // bytes per two candidates: d1 = C[0] + 256·(C[1] mod 16),
+        // d2 = ⌊C[1]/16⌋ + 16·C[2]. A candidate with d ≥ q is rejected.
         let d1 = buf[0] as u64 + 256 * (buf[1] as u64 & 0x0F);
         let d2 = (buf[1] >> 4) as u64 + 16 * buf[2] as u64;
         if d1 < Q {

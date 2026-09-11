@@ -4,8 +4,9 @@
 //! Byte encodings pack `d`-bit coefficients LSB-first into bytes; decoding
 //! is total over correctly-sized inputs (values ≥ q can arise from hostile
 //! ciphertexts and are handled by modular arithmetic downstream). The
-//! compress/decompress pair implements the spec's round-half-up rounding in
-//! pure integer arithmetic (`q` is odd, so `Compress_d` never hits ties).
+//! compress/decompress pair implements the spec's round-half-up rounding
+//! in pure integer arithmetic (`q` is odd, so `Compress_d` never hits exact
+//! ties; `Decompress_d` ties are possible and round up).
 
 use super::params::N;
 use super::params::Q;
@@ -52,7 +53,9 @@ pub(crate) fn compress(x: u64, d: u32) -> u64 {
     (((x * two_pow_d) + Q / 2) / Q) % two_pow_d
 }
 
-/// FIPS 203 `Decompress_d(y) = round(q/2^d · y)` (round-half-up).
+/// FIPS 203 `Decompress_d(y) = round(q/2^d · y)` (round-half-up). Unlike
+/// `Compress_d`, exact ties can occur here (e.g. `q/2^d` with even
+/// numerator) and they round up.
 #[inline]
 pub(crate) fn decompress(y: u64, d: u32) -> u64 {
     debug_assert!((1..=12).contains(&d) && y < 1 << d);
