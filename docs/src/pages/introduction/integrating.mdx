@@ -10,12 +10,16 @@ afternoon. Everything here is verified by the workspace's own tests.
 | Crate | Gives you | Depends on |
 | --- | --- | --- |
 | `lattice-algebra` | rings, NTT, polynomials, module lattices, XOF/sampling | `rand`, `rustfft`, `serde`, `sha3`, optional `rayon` |
-| `lattice-pqc` | ML-DSA (FIPS 204) | `lattice-algebra` only |
+| `lattice-pqc` | ML-KEM (FIPS 203), ML-DSA (FIPS 204) | `lattice-algebra`, plus `sha3` (fixed-length SHA3-256/512, FIPS 203 §4.1) and `zeroize` |
 | `lattice-zk` | Ajtai commitments, Σ-protocols, batched opening, sumcheck, IPA, folding | `lattice-algebra` only |
 
-Scheme crates add **no** crypto dependencies of their own — all hashing and
-arithmetic flows through the foundation, so there is exactly one NTT and one
-SHAKE in your dependency graph.
+All arithmetic, streaming-XOF and sampling flows through the foundation —
+exactly one generic NTT engine and one SHAKE wrapper in the graph. The two
+scheme crates add only what the FIPS algorithms demand beyond it: `sha3` for
+the *fixed-length* SHA3-256/512 hashes (`H`/`G` in FIPS 203 §4.1), `zeroize`
+for key-material hygiene, and their own spec-exact NTT variants
+(`mlkem::ntt`, `mldsa::ntt`) for the parameter-specific conventions the
+generic engine deliberately does not model.
 
 ## Feature flags
 
