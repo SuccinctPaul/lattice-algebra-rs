@@ -1,8 +1,10 @@
 # lattice-pqc
 
 NIST post-quantum schemes built directly on the
-[`lattice-algebra`](../algebra) foundation — no bespoke arithmetic, every
-scheme reuses the same rings, NTT and samplers.
+[`lattice-algebra`](../algebra) foundation — rings, norms, codecs and the
+streaming-XOF/sampling layer all flow through the foundation, while each
+scheme's spec-exact NTT convention lives in its own sub-module
+(`mldsa::ntt`, `mlkem::ntt`).
 
 ## Implemented
 

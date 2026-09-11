@@ -1,6 +1,6 @@
 # NIST PQC Mapping
 
-How the lattice NIST schemes land **directly** on the base library — all of it inside the `lattice-pqc` crate (`pqc::mlkem`, `pqc::mldsa`), which depends only on `lattice-algebra`.: every specification step maps to a base API, and schemes reduce to *parameter tables + call order + packing rules*.
+How the lattice NIST schemes land **directly** on the base library — all of it inside the `lattice-pqc` crate (`pqc::mlkem`, `pqc::mldsa`), built on `lattice-algebra` (plus `sha3` for the fixed-length FIPS hashes): every specification step maps to a base API, and schemes reduce to *parameter tables + call order + packing rules*.
 
 > Scope: KEM = ML-KEM (FIPS 203, **implemented**); signatures = ML-DSA (FIPS 204, **implemented**) + Falcon/FN-DSA (FIPS 206 draft, planned). SLH-DSA (FIPS 205) is hash-based, not lattice — out of scope.
 
