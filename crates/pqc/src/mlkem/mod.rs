@@ -137,8 +137,10 @@ pub struct KpkeSecretKey {
 
 /// FIPS 203 `K-PKE.KeyGen(d)` (Algorithm 13).
 pub fn kpke_keygen<P: MlKemParams, const K: usize>(d: &[u8; 32]) -> (KpkePublicKey, KpkeSecretKey) {
-    // (ρ, σ) ← G(d ‖ k): byte 33 is the module dimension, for domain
-    // separation between parameter sets (FIPS 203, Alg. 13, footnote 1).
+    // (ρ, σ) ← G(d ‖ k) — FIPS 203, Algorithm 13, line 1. The module
+    // dimension k (2/3/4) is appended as byte 33 before SHA3-512 so each
+    // parameter set derives a distinct (ρ, σ) from the same d (footnote 1:
+    // domain separation between parameter sets).
     let (rho, sigma) = hash_g(&[d, &[K as u8]]);
     let a_hat = ntt::expand_a::<Shake128Xof, K>(&rho);
 
@@ -192,10 +194,13 @@ pub fn kpke_encrypt<P: MlKemParams, const K: usize>(
         .collect();
     let e1: Vec<[i64; N]> = (0..K)
         .map(|i| {
+            // e1 continues the shared PRF counter: k..2k−1.
             let bytes = prf(r, (K + i) as u8, 64 * P::ETA2);
             sample_cbd(&bytes, P::ETA2)
         })
         .collect();
+    // e2 takes the last counter, 2k. (Keygen's s/e use 0..k−1 and k..2k−1 —
+    // easy to copy the wrong offsets here.)
     let e2_bytes = prf(r, (2 * K) as u8, 64 * P::ETA2);
     let e2 = sample_cbd(&e2_bytes, P::ETA2);
 
@@ -329,8 +334,10 @@ impl<P: MlKemParams> EncapsulationKey<P> {
         out
     }
 
-    /// FIPS 203 `ekDecode` combined with the (optional) modulus part of
-    /// `EncapsulationKeyCheck`: wrong length or any NTT coefficient ≥ q
+    /// FIPS 203 `ekDecode` (§7.2) combined with the modulus part of
+    /// `EncapsulationKeyCheck`. The spec's `ByteEncode12(ByteDecode12(ek)) ==
+    /// ek` fixed-point condition is enforced as "every decoded coefficient
+    /// < q" (equivalent for 12-bit encodings). Wrong length or any violation
     /// yields `None`.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() != P::EK_BYTES {
@@ -472,6 +479,9 @@ pub fn encapsulate_internal<P: MlKemParams, const K: usize>(
 ) -> (Vec<u8>, SharedSecret) {
     let ek_bytes = ek.to_bytes();
     let h = sha3_256(&[&ek_bytes]);
+    // (K̄, r) ← G(m ‖ H(ek)): hashing the encoded encapsulation key (not
+    // just m) binds the derived key and randomness to ek — a FIPS 203
+    // final-standard change relative to round-3 Kyber, which hashed only m.
     let (k_bar, r) = hash_g(&[m, &h]);
     let c = kpke_encrypt::<P, K>(&ek_bytes, m, &r);
     (c, SharedSecret(k_bar))
@@ -484,6 +494,9 @@ pub fn decapsulate<P: MlKemParams, const K: usize>(
     dk: &DecapsulationKey<P>,
     c: &[u8],
 ) -> SharedSecret {
+    // k_bar = J(z ‖ c) is computed up front so every rejection cause
+    // (re-encryption mismatch, wrong length) returns the same way — no
+    // validity oracle.
     let k_bar = j_hash(&[&dk.z, c]);
     let m_prime = if c.len() == P::CT_BYTES {
         decrypt_with_s_hat::<P, K>(&dk.s_hat, c)
