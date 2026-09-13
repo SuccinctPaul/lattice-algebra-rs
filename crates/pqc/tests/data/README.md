@@ -5,7 +5,8 @@ These JSON files hold byte-exact known-answer tests extracted from the
 
 - ML-DSA source: <https://github.com/usnistgov/ACVP-Server>, `gen-val/json-files/`
   (`ML-DSA-keyGen-FIPS204`, `ML-DSA-sigGen-FIPS204`, `ML-DSA-sigVer-FIPS204`)
-  — revision `master@975de31eb83d87039ec88934fdc47d8c312b892d` (fetched 2026-09-05);
+  — revision `master@975de31eb83d87039ec88934fdc47d8c312b892d` (fetched
+  2026-09-05, re-extracted 2026-09-14 for the internal/preHash modes);
 - ML-KEM source: same repo/layout (`ML-KEM-keyGen-FIPS203`,
   `ML-KEM-encapDecap-FIPS203`) — same revision (fetched 2026-09-11).
 
@@ -20,16 +21,28 @@ that consume them live in `crates/pqc/tests/acvp_kat.rs` (ML-DSA) and
 | `acvp-keygen.json` | 75 | all 25 keyGen vectors for each of ML-DSA-44/65/87 (seed → pk, sk) |
 | `acvp-siggen.json` | 27 | pure-mode sigGen: 6 per deterministic group and 3 per randomized group (fixed `rnd`) for all parameter sets |
 | `acvp-sigver.json` | 24 | pure-mode sigVer accept **and** reject cases (first 8 of every group) |
+| `acvp-siggen-internal.json` | 54 | internal-interface sigGen: external-μ groups (precomputed 64-byte μ) and μ = H(tr ‖ M) groups, deterministic + randomized |
+| `acvp-sigver-internal.json` | 48 | internal-interface sigVer: external-μ and μ = H(tr' ‖ M) accept/reject cases |
+| `acvp-siggen-prehash.json` | 27 | external preHash sigGen (OID-separated M', ACVP draft variant), deterministic + randomized |
+| `acvp-sigver-prehash.json` | 24 | external preHash sigVer (OID-separated M') accept/reject cases |
 | `acvp-mlkem.json` | 183 | ML-KEM: keyGen 75 (all sets), encaps 24, decaps 24 (incl. implicit rejection), keyCheck 60 (accept + reject) |
 | `falcon-kat.json` | 10 | Falcon round-3 submission KAT: falcon512 × 5, falcon1024 × 5 — full keygen/sign/verify bundles (the official `.rsp` files have 100 tests per set) |
 
-ML-DSA scope: **pure mode, external interface** — the `ML-DSA.Sign/Verify(message,
-context)` API this crate implements. The official dataset also contains
-`preHash` groups (HashML-DSA), `internal` groups with an externally supplied
-`mu`, and `internal` groups whose message is hashed *without* the pure-mode
-`(0x00, ctxLen, ctx)` prefix (confirmed against the reference
-implementation); those exercise different variants/APIs and are excluded.
-They become in-scope when the corresponding APIs are added.
+ML-DSA scope: pure mode (the `ML-DSA.Sign/Verify(message, context)` API)
+**plus the internal interfaces** — external-μ signing/verification
+(`sign_mu`/`verify_mu`, the `Sign_internal`/`Verify_internal` signing-loop
+primitive), internal groups whose μ is `H(tr ‖ M)` **without** the pure-mode
+`(0x00, ctxLen, ctx)` prefix (confirmed against the ACVP-Server reference,
+`Dilithium.Sign(sk, m, rnd)`; exercised through `sign_mu`/`verify_mu` with
+the μ composed in the harness), and the external preHash groups. The
+preHash groups are the ACVP *draft* OID-separated variant — the tested
+composition is `M' = 1 ‖ |ctx| ‖ ctx ‖ OID ‖ PH(M)` (per the ACVP-Server
+`ExternalSignatureBase.ExternalPreHashSign`, PH lengths fixed by its
+`ShaAttributes`: digest size for SHA-2/SHA-3, 256 bits for SHAKE-128,
+512 bits for SHAKE-256). That is deliberately **not** the final FIPS 204
+HashML-DSA composition (no OID): the crate implements the final one
+(`sign_hash_mldsa`/`verify_hash_mldsa`), and the harness composes the ACVP
+M' through the `sign_m_prime`/`verify_m_prime` internal interfaces.
 
 ## Regenerating
 

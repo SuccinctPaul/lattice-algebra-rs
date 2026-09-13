@@ -2,10 +2,10 @@
  "_meta": {
   "source": "usnistgov/ACVP-Server gen-val/json-files (official ACVP sample vectors)",
   "revision": "master@975de31eb83d87039ec88934fdc47d8c312b892d",
-  "fetched": "2026-09-05",
-  "algorithm": "ML-DSA (FIPS 204), pure mode, external interface",
+  "fetched": "2026-09-14",
   "extractor": "crates/pqc/tests/data/extract_acvp.py"
  },
+ "algorithm": "ML-DSA keyGen (all parameter sets)",
  "testCases": [
   {
    "parameterSet": "ML-DSA-44",

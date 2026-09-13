@@ -56,7 +56,7 @@ Acceptance (all green in CI):
 - exact encoded sizes: signatures 2420 / 3309 / 4627 B, public keys 1312 / 1952 / 2592 B, secret keys 2560 / 4032 / 4896 B;
 - key roundtrip through the canonical byte encodings.
 
-**Done**: official KAT/ACVP alignment — 126 pure-mode vectors (keyGen/sigGen/sigVer) pass byte-exactly, powered by the FIPS 204 NTT (`mldsa::ntt`); see [security status](/introduction/security-status). Measured keygen/sign/verify costs: [Performance](/reference/performance). Deployment readiness: [Security status](/introduction/security-status).
+**Done**: official KAT/ACVP alignment — 279 vectors (pure, internal-`mu` and preHash modes across keyGen/sigGen/sigVer) pass byte-exactly, powered by the FIPS 204 NTT (`mldsa::ntt`); see [security status](/introduction/security-status). Measured keygen/sign/verify costs: [Performance](/reference/performance). Deployment readiness: [Security status](/introduction/security-status).
 
 ## ML-KEM (FIPS 203) — implemented
 

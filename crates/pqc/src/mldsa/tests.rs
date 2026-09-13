@@ -113,3 +113,91 @@ macro_rules! mldsa_roundtrip_tests {
 mldsa_roundtrip_tests!(ml_dsa_44, MlDsa44, 4, 4, 1312, 2420, 2560);
 mldsa_roundtrip_tests!(ml_dsa_65, MlDsa65, 6, 5, 1952, 3309, 4032);
 mldsa_roundtrip_tests!(ml_dsa_87, MlDsa87, 8, 7, 2592, 4627, 4896);
+
+/// Tests for the internal interfaces: precomputed-μ (ACVP external-mu
+/// mode) and HashML-DSA pre-hashed signing.
+macro_rules! mldsa_internal_api_tests {
+    ($mod_name:ident, $params:ty, $k:literal, $l:literal) => {
+        mod $mod_name {
+            use super::*;
+
+            #[test]
+            fn mu_roundtrip() {
+                let (sk, vk) = keygen_seed::<$params, $k, $l>(&[11u8; 32]);
+                let mu = [0xA5u8; 64];
+                let sigma = sign_mu::<$params, $k, $l>(&sk, &mu, &[9u8; 32]);
+                assert!(verify_mu::<$params, $k, $l>(&vk, &mu, &sigma));
+                let mut flipped = mu;
+                flipped[0] ^= 1;
+                assert!(!verify_mu::<$params, $k, $l>(&vk, &flipped, &sigma));
+            }
+
+            #[test]
+            fn sign_mu_reproduces_pure_signing() {
+                let (sk, _) = keygen_seed::<$params, $k, $l>(&[12u8; 32]);
+                let rnd = [0x33u8; 32];
+                let via_core = sign_core::<$params, $k, $l>(&sk, CTX, MSG, &rnd);
+                let mu = message_representative(&sk.tr, CTX, MSG);
+                assert_eq!(
+                    via_core,
+                    sign_mu::<$params, $k, $l>(&sk, &mu, &rnd),
+                    "Sign_internal(mu path) must match the pure-mode pipeline"
+                );
+            }
+
+            #[test]
+            fn m_prime_consistency() {
+                let (sk, vk) = keygen_seed::<$params, $k, $l>(&[13u8; 32]);
+                let rnd = [0x44u8; 32];
+                // Pure M' = 0 ‖ |ctx| ‖ ctx ‖ M.
+                let mut m_prime = vec![0u8, CTX.len() as u8];
+                m_prime.extend_from_slice(CTX);
+                m_prime.extend_from_slice(MSG);
+                let via_core = sign_core::<$params, $k, $l>(&sk, CTX, MSG, &rnd);
+                assert_eq!(
+                    sign_core::<$params, $k, $l>(&sk, CTX, MSG, &rnd),
+                    sign_m_prime::<$params, $k, $l>(&sk, &m_prime, &rnd)
+                );
+                // HashML-DSA M' = 1 ‖ |ctx| ‖ ctx ‖ PH(M) verifies too.
+                let ph = [0x77u8; 48];
+                let sigma = sign_hash_mldsa::<$params, $k, $l>(&sk, CTX, &ph, &rnd);
+                assert!(verify_hash_mldsa::<$params, $k, $l>(&vk, CTX, &ph, &sigma));
+                // The M' construction is what the verifier recomputes.
+                assert!(verify_m_prime::<$params, $k, $l>(&vk, &m_prime, &via_core));
+            }
+
+            #[test]
+            fn hash_mldsa_binds_prehash_and_context() {
+                let (sk, vk) = keygen_seed::<$params, $k, $l>(&[14u8; 32]);
+                let rnd = [0x55u8; 32];
+                let ph = [0x21u8; 64];
+                let sigma = sign_hash_mldsa::<$params, $k, $l>(&sk, CTX, &ph, &rnd);
+                let mut other_ph = ph;
+                other_ph[0] ^= 1;
+                assert!(!verify_hash_mldsa::<$params, $k, $l>(
+                    &vk, CTX, &other_ph, &sigma
+                ));
+                assert!(!verify_hash_mldsa::<$params, $k, $l>(
+                    &vk, b"other", &ph, &sigma
+                ));
+                // Empty context is legal.
+                let sigma_empty = sign_hash_mldsa::<$params, $k, $l>(&sk, b"", &ph, &rnd);
+                assert!(verify_hash_mldsa::<$params, $k, $l>(
+                    &vk,
+                    b"",
+                    &ph,
+                    &sigma_empty
+                ));
+                // A ≥256-byte context must be rejected on verify (no panic).
+                let long_ctx = vec![0u8; 256];
+                assert!(!verify_hash_mldsa::<$params, $k, $l>(
+                    &vk, &long_ctx, &ph, &sigma
+                ));
+            }
+        }
+    };
+}
+
+mldsa_internal_api_tests!(internal_api_44, MlDsa44, 4, 4);
+mldsa_internal_api_tests!(internal_api_65, MlDsa65, 6, 5);
+mldsa_internal_api_tests!(internal_api_87, MlDsa87, 8, 7);

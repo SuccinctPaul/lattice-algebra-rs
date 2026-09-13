@@ -68,7 +68,7 @@ flowchart TB
 ## Status
 
 - **L0–L4 foundation** (capability-trait scalar rings, const-generic NTT engine with explicit NTT-domain representation, module lattices with type-level dimensions, streaming XOF, reference-exact samplers incl. a discrete Gaussian): **implemented**.
-- **L6 PQC**: **ML-DSA, ML-KEM and Falcon implemented and tested** — ML-DSA-44/65/87 (FIPS 204 encodings, deterministic + hedged signing, 126 ACVP vectors), ML-KEM-512/768/1024 (183 ACVP vectors), Falcon-512/1024 (round-3 spec, official KATs byte-exact). FN-DSA (FIPS 206) is still a draft: parameter sets may shift before the freeze — **no stable release until then**.
+- **L6 PQC**: **ML-DSA, ML-KEM and Falcon implemented and tested** — ML-DSA-44/65/87 (FIPS 204 encodings, deterministic + hedged signing, internal-`mu` and preHash interfaces, 279 ACVP vectors), ML-KEM-512/768/1024 (183 ACVP vectors), Falcon-512/1024 (round-3 spec, official KATs byte-exact). FN-DSA (FIPS 206) is still a draft: parameter sets may shift before the freeze — **no stable release until then**.
 - **L5–L6 ZK**: **Z1–Z4 implemented** — Ajtai/SIS commitments, Lyubashevsky Σ-protocol FS-NIZK, LaBRADOR-style batched opening, ring-sumcheck, gadget-IPA, Nova-style folding/IVC.
 
 ## Why trust the foundation (and where it stops)

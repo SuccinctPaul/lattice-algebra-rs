@@ -426,10 +426,58 @@ fn high_bits_of<P: MlDsaParams, const K: usize>(w: &[[i64; N]; K]) -> Vec<[u64; 
         .collect()
 }
 
-/// FIPS 204 `Sign_internal(sk, M', rnd)` — the core signing loop.
-///
-/// Deterministic when `rnd` is fixed; FIPS 204's randomized outer signature
-/// passes fresh 32 bytes of randomness.
+/// FIPS 204 `ML-DSA.Sign(sk, M, ctx)` with explicit randomness (hedged).
+pub fn sign_with_randomness<P: MlDsaParams, const K: usize, const L: usize>(
+    sk: &SigningKey<P>,
+    ctx: &[u8],
+    msg: &[u8],
+    rnd: &[u8; 32],
+) -> Vec<u8> {
+    sign_core::<P, K, L>(sk, ctx, msg, rnd)
+}
+
+/// Deterministic signing (`rnd = 0^32`).
+pub fn sign_deterministic<P: MlDsaParams, const K: usize, const L: usize>(
+    sk: &SigningKey<P>,
+    ctx: &[u8],
+    msg: &[u8],
+) -> Vec<u8> {
+    sign_core::<P, K, L>(sk, ctx, msg, &[0u8; 32])
+}
+
+/// FIPS 204 `Sign_internal(sk, M', rnd)`: signs an already-formed message
+/// representative `M'` (the `(domain ‖ ctxLen ‖ ctx ‖ ...)` string), hashing
+/// it with `tr` into μ exactly as the standard's internal interface does.
+pub fn sign_m_prime<P: MlDsaParams, const K: usize, const L: usize>(
+    sk: &SigningKey<P>,
+    m_prime: &[u8],
+    rnd: &[u8; 32],
+) -> Vec<u8> {
+    let mu: [u8; 64] = h_n(&[&sk.tr, m_prime], 64).try_into().unwrap();
+    sign_mu::<P, K, L>(sk, &mu, rnd)
+}
+
+/// HashML-DSA (FIPS 204 §5.4): sign over a caller-supplied pre-hash `PH(M)`
+/// of the message, with domain separator `1`. The caller chooses the
+/// approved hash function behind `PH`; this API binds it into `M'`
+/// (`1 ‖ |ctx| ‖ ctx ‖ PH(M)`) and signs the result.
+pub fn sign_hash_mldsa<P: MlDsaParams, const K: usize, const L: usize>(
+    sk: &SigningKey<P>,
+    ctx: &[u8],
+    ph_m: &[u8],
+    rnd: &[u8; 32],
+) -> Vec<u8> {
+    assert!(ctx.len() < 256, "context must be shorter than 256 bytes");
+    let mut m_prime = Vec::with_capacity(2 + ctx.len() + ph_m.len());
+    m_prime.push(1u8);
+    m_prime.push(ctx.len() as u8);
+    m_prime.extend_from_slice(ctx);
+    m_prime.extend_from_slice(ph_m);
+    sign_m_prime::<P, K, L>(sk, &m_prime, rnd)
+}
+
+/// FIPS 204 pure-mode internal signing: `μ = H(tr ‖ 0 ‖ |ctx| ‖ ctx ‖ M)`
+/// followed by the signing loop. Deterministic when `rnd` is fixed.
 pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
     sk: &SigningKey<P>,
     ctx: &[u8],
@@ -437,11 +485,22 @@ pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
     rnd: &[u8; 32],
 ) -> Vec<u8> {
     let mu = message_representative(&sk.tr, ctx, msg);
+    sign_mu::<P, K, L>(sk, &mu, rnd)
+}
 
+/// The signing loop with a precomputed 64-byte message representative μ —
+/// FIPS 204 one level below `Sign_internal` (what the ACVP "external mu"
+/// interface exercises). Deterministic when `rnd` is fixed; FIPS 204's
+/// randomized outer signature passes fresh 32 bytes of randomness.
+pub fn sign_mu<P: MlDsaParams, const K: usize, const L: usize>(
+    sk: &SigningKey<P>,
+    mu: &[u8; 64],
+    rnd: &[u8; 32],
+) -> Vec<u8> {
     let a_hat: [[[u64; N]; L]; K] = ntt::expand_a::<Shake128Xof, K, L>(&sk.rho);
 
     let mut y_seed = [0u8; 64];
-    y_seed.copy_from_slice(&h_n(&[&sk.k, rnd, &mu], 64));
+    y_seed.copy_from_slice(&h_n(&[&sk.k, rnd, mu], 64));
 
     // Secret vectors as ring elements.
     let s1_vec: ModuleVector<ZqD, L, N> = ModuleVector::from_fn(|i| rq_from_i64(&sk.s1[i]));
@@ -458,7 +517,7 @@ pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
         let y_ntt: [[u64; N]; L] = std::array::from_fn(|i| poly_to_ntt(y.get(i)));
         let w_rows: [[i64; N]; K] = mat_vec_ntt::<K, L>(&a_hat, &y_ntt);
         let w1 = high_bits_of::<P, K>(&w_rows);
-        let c_tilde = h_n(&[&mu, &w1_encode(&w1, w_max as u64)], P::C_TILDE_BYTES);
+        let c_tilde = h_n(&[mu, &w1_encode(&w1, w_max as u64)], P::C_TILDE_BYTES);
         let c = sample_challenge::<P>(&c_tilde);
 
         // z ← y + c·s1
@@ -541,25 +600,6 @@ pub fn sign_core<P: MlDsaParams, const K: usize, const L: usize>(
     }
 }
 
-/// FIPS 204 `ML-DSA.Sign(sk, M, ctx)` with explicit randomness (hedged).
-pub fn sign_with_randomness<P: MlDsaParams, const K: usize, const L: usize>(
-    sk: &SigningKey<P>,
-    ctx: &[u8],
-    msg: &[u8],
-    rnd: &[u8; 32],
-) -> Vec<u8> {
-    sign_core::<P, K, L>(sk, ctx, msg, rnd)
-}
-
-/// Deterministic signing (`rnd = 0^32`).
-pub fn sign_deterministic<P: MlDsaParams, const K: usize, const L: usize>(
-    sk: &SigningKey<P>,
-    ctx: &[u8],
-    msg: &[u8],
-) -> Vec<u8> {
-    sign_core::<P, K, L>(sk, ctx, msg, &[0u8; 32])
-}
-
 // ===========================================================================
 // Verification
 // ===========================================================================
@@ -574,7 +614,52 @@ pub fn verify_core<P: MlDsaParams, const K: usize, const L: usize>(
     if ctx.len() >= 256 {
         return false;
     }
+    let mut m_prime = Vec::with_capacity(2 + ctx.len() + msg.len());
+    m_prime.push(0u8);
+    m_prime.push(ctx.len() as u8);
+    m_prime.extend_from_slice(ctx);
+    m_prime.extend_from_slice(msg);
+    verify_m_prime::<P, K, L>(vk, &m_prime, sigma)
+}
 
+/// FIPS 204 `Verify_internal(pk, M', σ)`: verifies against an
+/// already-formed message representative `M'`.
+pub fn verify_m_prime<P: MlDsaParams, const K: usize, const L: usize>(
+    vk: &VerifyingKey<P>,
+    m_prime: &[u8],
+    sigma: &[u8],
+) -> bool {
+    let tr: [u8; 64] = h_n(&[&vk.to_bytes()], 64).try_into().unwrap();
+    let mu: [u8; 64] = h_n(&[&tr, m_prime], 64).try_into().unwrap();
+    verify_mu::<P, K, L>(vk, &mu, sigma)
+}
+
+/// HashML-DSA (FIPS 204 §5.4) verification: `PH(M)` is the caller-supplied
+/// pre-hash of the message, bound in as `M' = 1 ‖ |ctx| ‖ ctx ‖ PH(M)`.
+pub fn verify_hash_mldsa<P: MlDsaParams, const K: usize, const L: usize>(
+    vk: &VerifyingKey<P>,
+    ctx: &[u8],
+    ph_m: &[u8],
+    sigma: &[u8],
+) -> bool {
+    if ctx.len() >= 256 {
+        return false;
+    }
+    let mut m_prime = Vec::with_capacity(2 + ctx.len() + ph_m.len());
+    m_prime.push(1u8);
+    m_prime.push(ctx.len() as u8);
+    m_prime.extend_from_slice(ctx);
+    m_prime.extend_from_slice(ph_m);
+    verify_m_prime::<P, K, L>(vk, &m_prime, sigma)
+}
+
+/// The verification loop against a precomputed 64-byte message
+/// representative μ — what the ACVP "external mu" interface exercises.
+pub fn verify_mu<P: MlDsaParams, const K: usize, const L: usize>(
+    vk: &VerifyingKey<P>,
+    mu: &[u8; 64],
+    sigma: &[u8],
+) -> bool {
     // sigDecode
     let c_tilde_len = P::C_TILDE_BYTES;
     let z_len = P::L * div_ceil8(N * encoding::bit_len((2 * P::GAMMA1 - 1) as u64) as usize);
@@ -601,8 +686,6 @@ pub fn verify_core<P: MlDsaParams, const K: usize, const L: usize>(
     {
         return false;
     }
-
-    let mu = message_representative(&h_n(&[&vk.to_bytes()], 64).try_into().unwrap(), ctx, msg);
 
     // w' ← NTT⁻¹(Â∘NTT(z) − NTT(c)∘NTT(t1·2^d))
     let a_hat: [[[u64; N]; L]; K] = ntt::expand_a::<Shake128Xof, K, L>(&vk.rho);
@@ -639,7 +722,7 @@ pub fn verify_core<P: MlDsaParams, const K: usize, const L: usize>(
         .collect();
 
     let w_max = ((Q - 1) / (2 * P::GAMMA2) - 1) as u64;
-    let c_tilde_prime = h_n(&[&mu, &w1_encode(&w1_prime, w_max)], P::C_TILDE_BYTES);
+    let c_tilde_prime = h_n(&[mu, &w1_encode(&w1_prime, w_max)], P::C_TILDE_BYTES);
     c_tilde_prime == c_tilde
 }
 
@@ -687,6 +770,45 @@ macro_rules! instantiate_mldsa {
                 sigma: &[u8],
             ) -> bool {
                 super::verify_core::<super::params::$params, $k, $l>(vk, ctx, msg, sigma)
+            }
+
+            /// Signing loop over a precomputed 64-byte message
+            /// representative μ (ACVP external-mu interface).
+            pub fn sign_mu(
+                sk: &SigningKey<super::params::$params>,
+                mu: &[u8; 64],
+                rnd: &[u8; 32],
+            ) -> Vec<u8> {
+                super::sign_mu::<super::params::$params, $k, $l>(sk, mu, rnd)
+            }
+
+            /// Verification loop over a precomputed 64-byte μ.
+            pub fn verify_mu(
+                vk: &VerifyingKey<super::params::$params>,
+                mu: &[u8; 64],
+                sigma: &[u8],
+            ) -> bool {
+                super::verify_mu::<super::params::$params, $k, $l>(vk, mu, sigma)
+            }
+
+            /// HashML-DSA signature over a caller-supplied `PH(M)`.
+            pub fn sign_hash_mldsa(
+                sk: &SigningKey<super::params::$params>,
+                ctx: &[u8],
+                ph_m: &[u8],
+                rnd: &[u8; 32],
+            ) -> Vec<u8> {
+                super::sign_hash_mldsa::<super::params::$params, $k, $l>(sk, ctx, ph_m, rnd)
+            }
+
+            /// HashML-DSA verification over a caller-supplied `PH(M)`.
+            pub fn verify_hash_mldsa(
+                vk: &VerifyingKey<super::params::$params>,
+                ctx: &[u8],
+                ph_m: &[u8],
+                sigma: &[u8],
+            ) -> bool {
+                super::verify_hash_mldsa::<super::params::$params, $k, $l>(vk, ctx, ph_m, sigma)
             }
         }
     };

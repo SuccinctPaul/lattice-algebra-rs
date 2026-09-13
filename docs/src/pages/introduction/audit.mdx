@@ -27,7 +27,7 @@ Point-in-time audit of the codebase against the [target architecture](/design/ar
 | L5 | ZK completeness: blinding (full ZK beyond Z1's HVZK) | 📋 |
 | L5 | Estimator-calibrated parameters | ✅ `algebra::security` (Core-SVP: LWE primal/dual + Lyu12-SIS), calibrated against the published ML-DSA figures; Z1 instances calibrated ([security status](/introduction/security-status)) |
 | L6 | ML-KEM (incl. the spec's layered NTT instance), Falcon | ✅ M4 done (183 ACVP vectors) · M5 done (round-3 KAT byte-exact) |
-| Eng | Official KAT/ACVP vector files for ML-DSA (pure mode); differential cross-checks against the reference implementation | ✅ 126 official ACVP vectors green (keyGen 75, sigGen 27, sigVer 24); the FIPS 204 NTT ordering and a real `r0`-gate bug were found and fixed by the harness. Falcon: official round-3 KATs byte-exact and the `fpr` soft-float differentially tested over 13 000 operand cases |
+| Eng | Official KAT/ACVP vector files for ML-DSA (pure, internal-`mu` and preHash modes); differential cross-checks against the reference implementation | ✅ 279 official ACVP vectors green (keyGen 75; sigGen 27 pure + 54 internal + 27 preHash; sigVer 24 pure + 48 internal + 24 preHash); the FIPS 204 NTT ordering and a real `r0`-gate bug were found and fixed by the harness. Falcon: official round-3 KATs byte-exact and the `fpr` soft-float differentially tested over 13 000 operand cases |
 | Eng | Constant-time secret-value arithmetic, zeroization | ✅ `crypto::ct` + hardened ML-DSA paths; residual leaks documented ([security status](/introduction/security-status)) |
 | Eng | Decoder fuzzing, dudect-style CT statistics | 📋 |
 | Eng | Criterion benchmarks **landed** (`cargo bench --workspace`); CI thresholds | ✅ benches / 📋 thresholds |

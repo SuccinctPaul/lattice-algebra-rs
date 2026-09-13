@@ -136,7 +136,7 @@ const-generic engine is the only path.
 
 | Module | Owns | Status |
 | --- | --- | --- |
-| `mldsa` | ML-DSA-44/65/87 (FIPS 204): parameter ZSTs, `SigningKey`/`VerifyingKey`, deterministic & hedged signing, hint machinery, FIPS encodings; per-set API modules (`mldsa::mldsa_65::…`) | ✅ (126 ACVP vectors) |
+| `mldsa` | ML-DSA-44/65/87 (FIPS 204): parameter ZSTs, `SigningKey`/`VerifyingKey`, deterministic & hedged signing, hint machinery, FIPS encodings, internal interfaces (`sign_mu`/`verify_mu`, `sign_m_prime`/`verify_m_prime`, HashML-DSA); per-set API modules (`mldsa::mldsa_65::…`) | ✅ (279 ACVP vectors) |
 | `mlkem` | ML-KEM-512/768/1024 (FIPS 203), incl. the seven-layer NTT with `BaseCaseMultiply` | ✅ (183 ACVP vectors) |
 | `falcon` | Falcon-512/1024 (FIPS 206 draft / round-3 spec): verbatim reference port — `fpr` soft-float, complex FFT, mod-q NTT, NTRU solver chain, LDL-tree signing, codecs; per-set API modules (`falcon::falcon512::…`); reference-anchored until the FIPS 206 freeze | ✅ (round-3 KAT byte-exact) |
 
