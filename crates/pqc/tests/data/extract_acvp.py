@@ -18,21 +18,33 @@ Usage
 
 Scope
 -----
-ML-DSA *pure mode, external interface* — the mode and API this crate
-implements (`ML-DSA.Sign/Verify(message, context)`). The ACVP dataset also
-contains `preHash` groups (HashML-DSA, `PH(M)` with OID separation),
-`internal` groups with an externally supplied `mu`, and `internal` groups
-whose message is hashed without the pure-mode `(0x00, ctxLen, ctx)` prefix
-(verified against the reference implementation); those exercise different
-scheme variants/APIs and are deliberately excluded.
+ML-DSA pure mode (external interface, `ML-DSA.Sign/Verify(message, context)`)
+plus the internal interfaces added for FIPS 204 §5.4 alignment:
+
+  - pure sigGen/sigVer (external interface, `preHash = "pure"`);
+  - internal sigGen/sigVer with an externally supplied `mu` (the
+    `Sign_internal`/`Verify_internal` signing-loop primitive — the ACVP
+    "external mu" mode), and internal groups without one, whose message
+    representative is mu = H(tr ‖ message) with **no** pure-mode
+    `(0x00, ctxLen, ctx)` prefix (confirmed against the ACVP-Server
+    reference, `Dilithium.Sign(sk, m, rnd)`);
+  - preHash sigGen/sigVer (external interface). NOTE: the ACVP dataset's
+    preHash mode is the *OID-separated* pre-hash variant — the tested
+    construction is M' = 1 ‖ |ctx| ‖ ctx ‖ OID ‖ PH(M) (per the
+    ACVP-Server `ExternalSignatureBase.ExternalPreHashSign`), with PH
+    output lengths fixed by `ShaAttributes` (digest size for SHA-2/SHA-3,
+    256 bits for SHAKE-128, 512 bits for SHAKE-256). That is *not* the
+    final FIPS 204 HashML-DSA composition (no OID); the crate exposes the
+    final one (`sign_hash_mldsa`/`verify_hash_mldsa`) while the test
+    harness composes the ACVP M' via `sign_m_prime`/`verify_m_prime`.
 
 Selection rules (keeps the committed fixtures small while covering every
 parameter set, deterministic and randomized signing, and accept+reject
 verification):
-  - keyGen:   every test (25 per parameter set);
-  - sigGen:   first 6 tests of every deterministic pure group and first 3 of
-              every randomized pure group (the randomized ones fix `rnd`);
-  - sigVer:   first 8 tests of every pure group (accept and reject cases).
+  - keyGen:         every test (25 per parameter set);
+  - sigGen (all):   first 6 tests of every deterministic group and first 3
+                    of every randomized group (the randomized ones fix `rnd`);
+  - sigVer (all):   first 8 tests of every group (accept and reject cases).
 """
 
 import json
@@ -42,13 +54,6 @@ from pathlib import Path
 
 def load(scratch: Path, name: str, part: str):
     return json.loads((scratch / f"ML-DSA-{name}-FIPS204-{part}.json").read_text())
-
-
-def is_pure_group(g):
-    """Pure-mode groups: external interface with preHash='pure', or the
-    internal interface without an external mu (message + context inputs)."""
-    return (g.get("signatureInterface") == "external"
-            and g.get("preHash") == "pure")
 
 
 def join(prompt, expected, group_filter=None):
@@ -76,11 +81,17 @@ def main(scratch: Path, out: Path) -> None:
         })
     keygen = records
 
-    # ---- sigGen: 4 per deterministic group, 2 per randomized group -------
-    records = []
+    # ---- sigGen (pure + internal + preHash) ------------------------------
+    pure, internal, prehash = [], [], []
     for g, pos, t in join(load(scratch, "sigGen", "prompt"),
-                          load(scratch, "sigGen", "expectedResults"),
-                          group_filter=is_pure_group):
+                          load(scratch, "sigGen", "expectedResults")):
+        is_pure = (g.get("signatureInterface") == "external"
+                   and g.get("preHash") == "pure")
+        is_prehash = (g.get("signatureInterface") == "external"
+                      and g.get("preHash") == "preHash")
+        is_internal = g.get("signatureInterface") == "internal"
+        if not (is_pure or is_prehash or is_internal):
+            continue
         cap = 6 if g["deterministic"] else 3
         if pos >= cap:
             continue
@@ -88,46 +99,90 @@ def main(scratch: Path, out: Path) -> None:
             "parameterSet": g["parameterSet"],
             "tcId": t["tcId"],
             "deterministic": g["deterministic"],
-            "message": t.get("message", ""),
-            "context": t.get("context", ""),
             "sk": t["sk"],
             "signature": t["signature"],
         }
         if not g["deterministic"]:
             rec["rnd"] = t["rnd"]
-        records.append(rec)
-    siggen = records
+        if is_pure:
+            rec["message"] = t.get("message", "")
+            rec["context"] = t.get("context", "")
+            pure.append(rec)
+        elif is_internal:
+            rec["externalMu"] = g["externalMu"]
+            if g["externalMu"]:
+                rec["mu"] = t["mu"]
+            else:
+                rec["message"] = t["message"]
+            internal.append(rec)
+        else:
+            rec["hashAlg"] = t["hashAlg"]
+            rec["message"] = t["message"]
+            rec["context"] = t.get("context", "")
+            prehash.append(rec)
+    siggen_pure, siggen_internal, siggen_prehash = pure, internal, prehash
 
-    # ---- sigVer: first 6 of every group ----------------------------------
-    records = []
+    # ---- sigVer (pure + internal + preHash) ------------------------------
+    pure, internal, prehash = [], [], []
     for g, pos, t in join(load(scratch, "sigVer", "prompt"),
-                          load(scratch, "sigVer", "expectedResults"),
-                          group_filter=is_pure_group):
+                          load(scratch, "sigVer", "expectedResults")):
+        is_pure = (g.get("signatureInterface") == "external"
+                   and g.get("preHash") == "pure")
+        is_prehash = (g.get("signatureInterface") == "external"
+                      and g.get("preHash") == "preHash")
+        is_internal = g.get("signatureInterface") == "internal"
+        if not (is_pure or is_prehash or is_internal):
+            continue
         if pos >= 8:
             continue
-        records.append({
+        rec = {
             "parameterSet": g["parameterSet"],
             "tcId": t["tcId"],
             "pk": t["pk"],
-            "message": t.get("message", ""),
-            "context": t.get("context", ""),
             "signature": t["signature"],
             "testPassed": t["testPassed"],
-        })
-    sigver = records
+        }
+        if is_pure:
+            rec["message"] = t.get("message", "")
+            rec["context"] = t.get("context", "")
+            pure.append(rec)
+        elif is_internal:
+            rec["externalMu"] = g["externalMu"]
+            if g["externalMu"]:
+                rec["mu"] = t["mu"]
+            else:
+                rec["message"] = t["message"]
+            internal.append(rec)
+        else:
+            rec["hashAlg"] = t["hashAlg"]
+            rec["message"] = t["message"]
+            rec["context"] = t.get("context", "")
+            prehash.append(rec)
+    sigver_pure, sigver_internal, sigver_prehash = pure, internal, prehash
 
     meta = {
         "_meta": {
             "source": "usnistgov/ACVP-Server gen-val/json-files (official ACVP sample vectors)",
             "revision": "master@975de31eb83d87039ec88934fdc47d8c312b892d",
-            "fetched": "2026-09-05",
-            "algorithm": "ML-DSA (FIPS 204), pure mode, external interface",
+            "fetched": "2026-09-14",
             "extractor": "crates/pqc/tests/data/extract_acvp.py",
         }
     }
-    for name, data in [("acvp-keygen", keygen), ("acvp-siggen", siggen),
-                       ("acvp-sigver", sigver)]:
-        doc = {**meta, "testCases": data}
+    files = [
+        ("acvp-keygen", keygen, "ML-DSA keyGen (all parameter sets)"),
+        ("acvp-siggen", siggen_pure, "ML-DSA sigGen, pure mode (external interface)"),
+        ("acvp-siggen-internal", siggen_internal,
+         "ML-DSA sigGen, internal interface (external mu and mu = H(tr||M) groups)"),
+        ("acvp-siggen-prehash", siggen_prehash,
+         "ML-DSA sigGen, external preHash groups (OID-separated M', ACVP draft variant)"),
+        ("acvp-sigver", sigver_pure, "ML-DSA sigVer, pure mode (external interface)"),
+        ("acvp-sigver-internal", sigver_internal,
+         "ML-DSA sigVer, internal interface (external mu and mu = H(tr'||M) groups)"),
+        ("acvp-sigver-prehash", sigver_prehash,
+         "ML-DSA sigVer, external preHash groups (OID-separated M', ACVP draft variant)"),
+    ]
+    for name, data, algo in files:
+        doc = {**meta, "algorithm": algo, "testCases": data}
         dest = out / f"{name}.json"
         dest.write_text(json.dumps(doc, indent=1) + "\n")
         print(f"{dest.name}: {len(data)} test cases, {dest.stat().st_size} bytes")

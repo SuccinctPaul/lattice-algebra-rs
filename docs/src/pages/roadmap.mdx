@@ -48,7 +48,7 @@ flowchart LR
 ### ✅ M3 · ML-DSA (the architecture litmus test)
 
 - `MlDsa44/65/87` ZSTs; `keygen`/`sign_deterministic`/`sign_with_randomness`/`verify`; FIPS 204 encodings;
-- **gate (met)**: roundtrip + determinism + tamper/context/wrong-key rejection for all parameter sets; exact size assertions (2420/3309/4627 B signatures); key serialization roundtrips. **KAT/ACVP alignment landed** in W2 (126 official vectors green).
+- **gate (met)**: roundtrip + determinism + tamper/context/wrong-key rejection for all parameter sets; exact size assertions (2420/3309/4627 B signatures); key serialization roundtrips. **KAT/ACVP alignment landed** in W2 (126 official pure-mode vectors green), extended in the release pass to 279 vectors by wiring the ACVP internal-`mu` interface (`sign_mu`/`verify_mu`) and the OID-separated preHash groups (`sign_m_prime`/`verify_m_prime`).
 
 ### ✅ M4 · ML-KEM
 
@@ -90,7 +90,7 @@ flowchart LR
 ### ✅ W2 · Hardening: KAT/ACVP, constant time, calibrated levels
 
 - `mldsa::ntt`: the FIPS 204 NTT (ζ = 1753, bit-reversed evaluation order) — `ExpandA` reproduces the official `RejNTTPoly` streams; the base `algebra::ntt` engine stays generic;
-- official ACVP fixtures (keyGen 75 / sigGen 27 / sigVer 24, pure mode) with provenance + regeneration script; **found and fixed** a one-sided `r0` restart gate via the vectors;
+- official ACVP fixtures (keyGen 75 / sigGen 27 + 54 internal / 27 preHash; sigVer 24 + 48 internal + 24 preHash) with provenance + regeneration script; **found and fixed** a one-sided `r0` restart gate via the vectors;
 - `crypto::ct` branch-free primitives; ML-DSA norm gates, rounding/hints, sampler value mappings and encodings hardened; CT variants for `RejBounded` and the CDT Gaussian; `SigningKey` zeroization + redacted `Debug`;
 - `algebra::security`: Core-SVP estimation (LWE primal/dual, Lyu12-SIS) calibrated against the published ML-DSA figures; Z1 instances calibrated (Σ soundness 2^225.7 classical);
 - **gate (met)**: `cargo test --workspace` green incl. the ACVP harness; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean; block sizes frozen as regression tests.

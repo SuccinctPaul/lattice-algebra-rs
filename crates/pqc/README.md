@@ -130,7 +130,8 @@ cargo run  -p lattice-pqc --example kem
 cargo bench -p lattice-pqc              # criterion: keygen / sign / verify / encaps / decaps
 ```
 
-KAT/ACVP vector alignment: ML-DSA (pure mode, 126 vectors) and ML-KEM
+KAT/ACVP vector alignment: ML-DSA (279 vectors across pure, internal-mu
+and preHash modes) and ML-KEM
 (183 vectors) match the official NIST ACVP sample vectors byte-for-byte,
 and Falcon matches the official round-3 submission KAT vectors (10
 keygen/sign/verify bundles) — see `tests/data/README.md` for provenance.
