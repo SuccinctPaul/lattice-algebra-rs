@@ -1,6 +1,21 @@
 //! Port of the Falcon reference `codec.c`: key and signature encodings.
+//!
+//! Conventions shared by all functions: values are packed most-significant
+//! chunk first (big-endian bit order) into the output stream, trailing
+//! padding bits must be zero, and any violation (value out of range,
+//! buffer too small, forbidden pattern, non-zero padding) is reported by
+//! returning 0 — encode functions return the byte count written, decode
+//! functions the number of bytes consumed.
+//!
+//! - `modq_*`: fixed-length encoding, 14 bits per coefficient (< q).
+//! - `trim_i8_*`: fixed-length `bits`-bit two's-complement chunks; the
+//!   all-ones value −2^(bits−1) is forbidden so the encoding is injective.
+//! - `comp_*`: variable-length signature coefficients (see
+//!   [`comp_encode`]).
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 
-/// Reference `modq_encode`: n 14-bit values packed LSB-first.
+/// Reference `modq_encode`: n 14-bit values packed most-significant chunk
+/// first (big-endian bit order), zero-padded to a byte boundary.
 pub fn modq_encode(out: &mut [u8], x: &[u16]) -> usize {
     let n = x.len();
     for &v in x {
@@ -59,7 +74,9 @@ pub fn modq_decode(x: &mut [u16], input: &[u8]) -> usize {
     in_len
 }
 
-/// Reference `trim_i8_encode`.
+/// Reference `trim_i8_encode`: n signed values as fixed `bits`-bit
+/// two's-complement chunks (bit width from `MAX_FG_BITS`); values beyond
+/// ±(2^(bits−1) − 1) are rejected so the −2^(bits−1) pattern stays unused.
 pub fn trim_i8_encode(out: &mut [u8], x: &[i8], bits: u32) -> usize {
     let n = x.len();
     let maxv = (1i32 << (bits - 1)) - 1;
@@ -112,7 +129,7 @@ pub fn trim_i8_decode(x: &mut [i8], bits: u32, input: &[u8]) -> usize {
         while acc_len >= bits && u < n {
             acc_len -= bits;
             let mut w = (acc >> acc_len) & mask1;
-            w |= -(w & mask2);
+            w |= (w & mask2).wrapping_neg();
             if w == mask2.wrapping_neg() {
                 // The -2^(bits-1) value is forbidden.
                 return 0;
@@ -127,9 +144,13 @@ pub fn trim_i8_decode(x: &mut [i8], bits: u32, input: &[u8]) -> usize {
     in_len
 }
 
-/// Reference `comp_encode`: variable-length signature coefficient encoding.
+/// Reference `comp_encode`: variable-length signature coefficient encoding
+/// (the spec's compressed-signature format). Coefficients must lie in
+/// [−2047, 2047]; each is emitted as: 1 sign bit, the low 7 bits of |v|,
+/// then w = |v| >> 7 zero bits terminated by a single one — a unary
+/// length prefix, 9 + w bits per coefficient.
 pub fn comp_encode(out: &mut [u8], x: &[i16]) -> usize {
-    let n = x.len();
+    let _n = x.len();
     for &v in x {
         if !(-2047..=2047).contains(&v) {
             return 0;
@@ -178,7 +199,9 @@ pub fn comp_encode(out: &mut [u8], x: &[i16]) -> usize {
     v
 }
 
-/// Reference `comp_decode`. Returns the number of input bytes consumed.
+/// Reference `comp_decode`: inverse of [`comp_encode`]; additionally
+/// rejects a negative zero ("-0"), any implied magnitude above 2047, and
+/// non-zero trailing padding. Returns the number of input bytes consumed.
 pub fn comp_decode(x: &mut [i16], input: &[u8]) -> usize {
     let n = x.len();
     let mut acc: u32 = 0;
@@ -190,7 +213,7 @@ pub fn comp_decode(x: &mut [i16], input: &[u8]) -> usize {
         }
         acc = (acc << 8) | input[v] as u32;
         v += 1;
-        let b = (acc >> acc_len) as u32;
+        let b = acc >> acc_len;
         let s = b & 128;
         let mut m = b & 127;
 
@@ -228,8 +251,8 @@ pub fn comp_decode(x: &mut [i16], input: &[u8]) -> usize {
 /// Reference `max_fg_bits[]`.
 pub const MAX_FG_BITS: [u8; 11] = [0, 8, 8, 8, 8, 8, 7, 7, 6, 6, 5];
 
-/// Reference `max_FG_bits[]`.
-pub const MAX_FG_BITS: [u8; 11] = [0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8];
+/// Reference `max_FG_bits[]` for F, G (always 8 bits).
+pub const MAX_BIG_FG_BITS: [u8; 11] = [0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8];
 
 /// Reference `max_sig_bits[]`.
 #[allow(dead_code)]

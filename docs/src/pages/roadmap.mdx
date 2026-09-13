@@ -11,6 +11,8 @@ flowchart LR
         M1["M1 · NTT/L2 cleanup<br/>NttDomain, SparsePolynomial"]
         M2["M2 · L3 modules + L4 infra<br/>ModuleVector/Matrix, ExpandA,<br/>XOF, samplers, transcripts, bit packing"]
         M3["M3 · ML-DSA 44/65/87<br/>sign/verify + encodings + tests"]
+        M4["M4 · ML-KEM + ACVP KATs<br/>183 vectors byte-exact"]
+        M5["M5 · Falcon<br/>round-3 KAT byte-exact"]
         M6["M6 · Z1 Σ-protocols"]
         M7["M7 · Z2 batched openings"]
         M8["M8 · Z3 sumcheck + IPA"]
@@ -18,15 +20,10 @@ flowchart LR
         W1["W1 · Multi-crate workspace<br/>algebra / pqc / zk + facade"]
         W2["W2 · Hardening: ACVP KATs,<br/>constant-time, calibrated levels"]
     end
-    subgraph NEXT["Next"]
-        M4["M4 · ML-KEM + KATs"]
-        M5["M5 · Falcon"]
-    end
     M0 --> M1 --> M2 --> M3
     M3 --> M6 --> M7 --> M8 --> M9 --> W1
     W1 --> W2
-    W2 --> M4
-    W2 --> M5
+    W2 --> M4 --> M5
 ```
 
 ## Milestones and acceptance criteria
@@ -58,10 +55,10 @@ flowchart LR
 - `pqc::mlkem`: FIPS 203 keygen / encapsulation / decapsulation (implicit rejection) for all three parameter sets, including the spec's seven-layer NTT instance with `BaseCaseMultiply` pair products ([L1 note](/design/ntt)) and the optional `EncapsulationKeyCheck` / `DecapsulationKeyCheck` (length, modulus, hash-consistency);
 - **gate (met)**: 183 official ACVP vectors byte-exact (keyGen 75, encaps 24, decaps 24 incl. implicit rejection, keyCheck 60) plus roundtrip / determinism / tamper / wrong-length rejection tests, exact size assertions (800/1632/768 B, 1184/2400/1088 B, 1568/3168/1568 B), key serialization roundtrips.
 
-### M5 · Falcon
+### ✅ M5 · Falcon
 
-- FFT Gaussian sampler (isolated sub-module, non-CT documented); compression encodings.
-- **Gate**: byte-level agreement with the reference; norm-verification edge cases. No stable release before the draft freezes.
+- `pqc::falcon`: complete port of the Falcon round-3 reference implementation (2020-10-01 spec) — integer soft-float `fpr` (bit-exact with the C `fpr.c`, differentially tested over 13 000 random operand cases), complex FFT, mod-q NTT (Montgomery), the recursive RNS NTRU-solver chain (deepest / intermediate / binary lift) with Babai reduction, the ChaCha20 sampler with the AVX2-interleaved output layout, LDL-tree FFT signing and compressed-signature codecs; keygen / sign / verify exposed for falcon512 and falcon1024 with canonical key serialization;
+- **gate (met)**: official round-3 KAT vectors pass byte-exact for both parameter sets (keygen → pk/sk, signing → complete `sm` bundle, and verification accept), driven through a ported katrng (AES-256-CTR DRBG) exactly like the NIST generator; an embedded AES-256 known-answer test guards the DRBG. Note: FIPS 206 (FN-DSA) is still a draft — parameter sets may shift before the freeze (expected late 2026 / early 2027), so the `falcon` module stays reference-anchored and **no stable release ships until the FIPS 206 freeze**.
 
 ### ✅ M6 · Z1 Σ-protocol primitives
 

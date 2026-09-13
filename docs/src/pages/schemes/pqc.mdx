@@ -1,8 +1,8 @@
 # NIST PQC Mapping
 
-How the lattice NIST schemes land **directly** on the base library — all of it inside the `lattice-pqc` crate (`pqc::mlkem`, `pqc::mldsa`), built on `lattice-algebra` (plus `sha3` for the fixed-length FIPS hashes): every specification step maps to a base API, and schemes reduce to *parameter tables + call order + packing rules*.
+How the lattice NIST schemes land **directly** on the base library — all of it inside the `lattice-pqc` crate (`pqc::mlkem`, `pqc::mldsa`, `pqc::falcon`), built on `lattice-algebra` (plus `sha3` for the fixed-length FIPS hashes): every specification step maps to a base API, and schemes reduce to *parameter tables + call order + packing rules*. Falcon is the one exception — a verbatim port of the round-3 reference implementation in self-contained sub-modules.
 
-> Scope: KEM = ML-KEM (FIPS 203, **implemented**); signatures = ML-DSA (FIPS 204, **implemented**) + Falcon/FN-DSA (FIPS 206 draft, planned). SLH-DSA (FIPS 205) is hash-based, not lattice — out of scope.
+> Scope: KEM = ML-KEM (FIPS 203, **implemented**); signatures = ML-DSA (FIPS 204, **implemented**) + Falcon/FN-DSA (FIPS 206 draft, **implemented** against the round-3 spec — reference-anchored until the FIPS 206 freeze; **no stable release before then**). SLH-DSA (FIPS 205) is hash-based, not lattice — out of scope.
 
 ## Scheme → base dependency graph
 
@@ -14,8 +14,8 @@ flowchart TB
     subgraph MLDSA["ML-DSA (FIPS 204) — implemented"]
         D1["KeyGen / Sign / Verify"]
     end
-    subgraph FALCON["Falcon (FIPS 206 draft) — planned"]
-        F1["FFT sampling + NTT products"]
+    subgraph FALCON["Falcon (FIPS 206 draft, round-3 spec) — implemented"]
+        F1["KeyGen / Sign / Verify<br/>verbatim reference port:<br/>fpr soft-float, FFT, mod-q NTT,<br/>NTRU solve, codecs"]
     end
     subgraph BASE["Base layers"]
         L3["L3 modules: ModuleMatrix/Vector, ExpandA, rounding/hints, norms"]
@@ -27,7 +27,7 @@ flowchart TB
     end
     D1 --> L3 & L4S & L4H & L4P
     K1 --> L3 & L4S & L4H & L4P
-    F1 --> L2N & GAUSS & L4H & L4P
+    F1 --> GAUSS
 ```
 
 ## ML-DSA (FIPS 204) — implemented
@@ -82,20 +82,40 @@ Acceptance (all green in CI):
 
 Measured keygen/encaps/decaps costs: [Performance](/reference/performance).
 
-## Falcon / FN-DSA (FIPS 206 draft) — planned
+## Falcon / FN-DSA (FIPS 206 draft) — implemented (round-3 spec)
 
-| Specification component | Base API |
+`pqc::falcon` is a verbatim port of the Falcon round-3 reference
+implementation (2020-10-01 spec): integer soft-float `fpr` (bit-exact with
+the C `fpr.c`, differentially tested over 13 000 random operand cases),
+complex FFT, mod-q NTT (Montgomery), the recursive RNS NTRU-solver chain
+with Babai reduction, the ChaCha20 sampler with the AVX2-interleaved output
+layout, LDL-tree FFT signing and the compressed-signature codecs. Both
+parameter sets (`falcon::falcon512`, `falcon::falcon1024`) expose the same
+per-set API:
+
+| API | Notes |
 | --- | --- |
-| ring `Z_q[X]/(X^n+1)`, q = 12289 | `PolyRing<Zq<12289>, N>` |
-| hash-to-point | `HashToRing` (planned) |
-| signature sampling | `gaussian::fft_sampler` (CDT base + fast Fourier sampling, non-CT documented) |
-| norm verification | L0/L3 norm APIs (`⌈1.17√q⌉` bound) |
-| encodings | 14-bit pk packing; variable-length signature encoding |
+| `keygen(seed: &[u8; 48])` | SHAKE256-expanded entropy, exactly like the reference |
+| `sign(sk, msg, nonce, sig_seed)` | 40-byte nonce + 48-byte signing seed (fresh uniform randomness); returns header ‖ compressed s2 |
+| `verify(pk, msg, nonce, esig)` | **mirrors `sign`** — same message/nonce split, no pre-concatenation of `nonce ‖ message` |
+| `public_key_from_bytes` / `secret_key_from_bytes` | canonical encodings with length/modulus checks |
 
-The draft is still moving; the implementation anchors to reference behavior and stays in a narrowed sub-module until parameter freeze.
+Acceptance (all green in CI):
+
+- official round-3 submission KAT vectors pass byte-exact for both
+  parameter sets (keygen → pk/sk, signing → complete `sm` bundle, verify
+  accept), driven through a ported katrng (AES-256-CTR DRBG);
+- tampered-message rejection and key serialization roundtrips
+  ([example](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/pqc/examples/sign_falcon.rs)).
+
+> **FIPS 206 tracking**: FN-DSA is still a draft — parameter sets may shift
+> before the freeze (expected late 2026 / early 2027). The module anchors to
+> reference behavior and the official round-3 KAT vectors; **no stable
+> release ships before the FIPS 206 freeze**. See the
+> [roadmap](/roadmap) (M5) and [security status](/introduction/security-status).
 
 ## Cross-cutting
 
-- **Key material hygiene**: secret-key types will implement `Drop → zeroize` (feature-gated).
+- **Key material hygiene**: ML-DSA's `SigningKey` zeroizes on drop with a redacted `Debug`; the remaining key types are caller-managed byte buffers.
 - **Implicit rejection**: KEM decapsulation failures and signing restarts are indistinguishable by design.
-- **KAT framework**: `tests/acvp_kat.rs` + `tests/data/` for the official ACVP vectors (provenance and regeneration script included), so scheme-level vectors gate every change.
+- **KAT framework**: `tests/acvp_kat.rs`, `tests/acvp_mlkem_kat.rs`, `tests/falcon_kat.rs` + `tests/data/` for the official ACVP and round-3 vectors (provenance and regeneration scripts included), so scheme-level vectors gate every change.

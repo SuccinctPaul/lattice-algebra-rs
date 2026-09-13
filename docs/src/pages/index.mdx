@@ -1,7 +1,7 @@
 # Lattice Algebra RS
 
 > **Positioning: the arkworks / plonky3 of lattice-based cryptography.**
-> One unified algebra foundation from which **NIST PQC schemes** (ML-DSA today; ML-KEM, FN-DSA next) and **lattice-based zkSNARKs** (LaBRADOR / GreyHound / LatticeFold-style) derive directly — shipped as a three-crate workspace: [`algebra`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/algebra) · [`pqc`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/pqc) · [`zk`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/zk).
+> One unified algebra foundation from which **NIST PQC schemes** (ML-DSA, ML-KEM and Falcon today; FN-DSA tracks the FIPS 206 draft) and **lattice-based zkSNARKs** (LaBRADOR / GreyHound / LatticeFold-style) derive directly — shipped as a three-crate workspace: [`algebra`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/algebra) · [`pqc`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/pqc) · [`zk`](https://github.com/SuccinctPaul/lattice-algebra-rs/tree/main/crates/zk).
 
 ## Why a unified foundation
 
@@ -68,7 +68,7 @@ flowchart TB
 ## Status
 
 - **L0–L4 foundation** (capability-trait scalar rings, const-generic NTT engine with explicit NTT-domain representation, module lattices with type-level dimensions, streaming XOF, reference-exact samplers incl. a discrete Gaussian): **implemented**.
-- **L6 PQC**: **ML-DSA-44/65/87 implemented and tested** (FIPS 204 encodings, deterministic + hedged signing); ML-KEM and FN-DSA scheduled next.
+- **L6 PQC**: **ML-DSA, ML-KEM and Falcon implemented and tested** — ML-DSA-44/65/87 (FIPS 204 encodings, deterministic + hedged signing, 126 ACVP vectors), ML-KEM-512/768/1024 (183 ACVP vectors), Falcon-512/1024 (round-3 spec, official KATs byte-exact). FN-DSA (FIPS 206) is still a draft: parameter sets may shift before the freeze — **no stable release until then**.
 - **L5–L6 ZK**: **Z1–Z4 implemented** — Ajtai/SIS commitments, Lyubashevsky Σ-protocol FS-NIZK, LaBRADOR-style batched opening, ring-sumcheck, gadget-IPA, Nova-style folding/IVC.
 
 ## Why trust the foundation (and where it stops)
@@ -77,7 +77,7 @@ Every claim below is backed by an artifact in the repository:
 
 | Evidence | Artifact |
 | --- | --- |
-| 474 tests, ring axioms over 15 moduli (2 … 2³²) | `cargo test --workspace` |
+| 542 tests, ring axioms over 15 moduli (2 … 2³²) | `cargo test --workspace` |
 | Reference-exact FIPS samplers (differential tests) | `crypto::sampling` |
 | Spec-step-to-API mapping with exact byte sizes | [PQC mapping](/schemes/pqc) |
 | Criterion benchmarks per crate, methodology quoted | [Performance](/reference/performance) |

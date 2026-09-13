@@ -38,7 +38,7 @@ let cs1 = s1_vec.mul_scalar(&c_poly);
 
 ## Cyclic ring
 
-`Z_q[X]/(X^n − 1)` (for Falcon verification and some SNARK parameters) is designed as a separate type sharing the L1 engine without the twist — type-level isolation prevents negacyclic/cyclic mixing. Scheduled with the Falcon milestone.
+`Z_q[X]/(X^n − 1)` (for some SNARK parameters) is designed as a separate type sharing the L1 engine without the twist — type-level isolation prevents negacyclic/cyclic mixing. Falcon shipped as a self-contained reference port and does not require it.
 
 ## Testing
 

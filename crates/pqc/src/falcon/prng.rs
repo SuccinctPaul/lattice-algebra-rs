@@ -2,12 +2,13 @@
 //! the signature sampler. The output byte layout reproduces the AVX2
 //! 8-way interleaving of the reference implementation bit-for-bit (this is
 //! required for KAT reproducibility).
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 
 /// Reference `prng` structure: 64-byte state (key + IV + counter) and a
-/// 1024-byte output buffer.
+/// 512-byte output buffer.
 pub struct Prng {
     state: [u8; 64],
-    buf: [u8; 1024],
+    buf: [u8; 512],
     ptr: usize,
 }
 
@@ -24,7 +25,7 @@ impl Prng {
         // two little-endian u32 halves in the reference — identical here).
         let mut p = Self {
             state,
-            buf: [0u8; 1024],
+            buf: [0u8; 512],
             ptr: 0,
         };
         p.refill();
@@ -34,6 +35,7 @@ impl Prng {
     /// Reference `prng_refill`: regenerate the 1024-byte output buffer with
     /// eight ChaCha20 blocks (AVX2-style interleaving).
     pub fn refill(&mut self) {
+        // ChaCha20 "expand 32-byte k" constants.
         const CW: [u32; 4] = [0x6170_7865, 0x3320_646E, 0x7962_2D32, 0x6B20_6574];
 
         let mut cc = u64::from_le_bytes(self.state[48..56].try_into().unwrap());
@@ -82,13 +84,14 @@ impl Prng {
         self.ptr = 0;
     }
 
-    /// Reference `prng_get_bytes`.
+    /// Reference `prng_get_bytes` (note: the reference copies from the
+    /// start of its buffer, not at `ptr`, and we reproduce that verbatim).
     pub fn get_bytes(&mut self, out: &mut [u8]) {
         let mut done = 0usize;
         while done < out.len() {
             let avail = self.buf.len() - self.ptr;
             let clen = avail.min(out.len() - done);
-            out[done..done + clen].copy_from_slice(&self.buf[self.ptr..self.ptr + clen]);
+            out[done..done + clen].copy_from_slice(&self.buf[..clen]);
             done += clen;
             self.ptr += clen;
             if self.ptr == self.buf.len() {
@@ -97,21 +100,31 @@ impl Prng {
         }
     }
 
-    /// Reference `prng_get_u64` (little-endian 8-byte draw).
+    /// Reference `prng_get_u64` (little-endian 8-byte draw): like the
+    /// reference, the buffer is refilled eagerly once fewer than 9 bytes
+    /// remain, dropping the tail — this is observable in the KAT stream.
     pub fn get_u64(&mut self) -> u64 {
-        let mut buf = [0u8; 8];
-        self.get_bytes(&mut buf);
-        u64::from_le_bytes(buf)
+        if self.ptr >= self.buf.len() - 9 {
+            self.refill();
+        }
+        let u = self.ptr;
+        self.ptr = u + 8;
+        u64::from_le_bytes(self.buf[u..u + 8].try_into().unwrap())
     }
 
     /// Reference `prng_get_u8`.
     pub fn get_u8(&mut self) -> u8 {
-        let mut buf = [0u8; 1];
-        self.get_bytes(&mut buf);
-        buf[0]
+        let v = self.buf[self.ptr];
+        self.ptr += 1;
+        if self.ptr == self.buf.len() {
+            self.refill();
+        }
+        v
     }
 }
 
+/// One ChaCha20 quarter-round on the 16-word state; ten double-rounds
+/// (eight quarter-rounds each) make one block.
 #[inline]
 fn qround(s: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) {
     s[a] = s[a].wrapping_add(s[b]);

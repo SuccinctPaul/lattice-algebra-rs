@@ -14,7 +14,7 @@ that share one dependency direction:
 | --- | --- | --- |
 | `lattice-algebra` (`algebra`) | `crates/algebra` | `ring`, `ntt`, `poly`, `module`, `crypto`, `matrix`, `security`, `utils` (L0–L4 + security) |
 | `lattice-zk` / `lattice-pqc` | per-crate `parallel` feature (rayon): Z2/Z3/Z4 gate loops fan out above a 256-gate threshold; ML-DSA XOF streams are deliberately sequential (dispatch overhead > stream work, measured) | ✅ |
-| `lattice-pqc` (`pqc`) | `crates/pqc` | `mldsa` (L6 PQC, incl. the FIPS-exact NTT `mldsa::ntt`) |
+| `lattice-pqc` (`pqc`) | `crates/pqc` | `mldsa`, `mlkem` (L6 PQC, incl. the FIPS-exact NTTs `mldsa::ntt` / `mlkem::ntt`) + `falcon` (round-3 reference port) |
 | `lattice-zk` (`zk`) | `crates/zk` | `protocols` (L5–L6 ZK line) |
 
 ```mermaid
@@ -22,7 +22,7 @@ flowchart TB
     subgraph L6["L6 · Schemes"]
         MLDSA["mldsa (ML-DSA-44/65/87)"]
         MLKEM["mlkem (FIPS 203)"]
-        FALCON["falcon (planned)"]
+        FALCON["falcon (Falcon-512/1024, round-3 reference port)"]
         ZK["protocols: zkSNARK line"]
     end
     subgraph L5["L5 · Protocol components"]
@@ -136,16 +136,16 @@ const-generic engine is the only path.
 
 | Module | Owns | Status |
 | --- | --- | --- |
-| `mldsa` | ML-DSA-44/65/87 (FIPS 204): parameter ZSTs, `SigningKey`/`VerifyingKey`, deterministic & hedged signing, hint machinery, FIPS encodings; per-set API modules (`mldsa::mldsa_65::…`) | ✅ (KAT alignment 📋) |
-| `mlkem` | ML-KEM-512/768/1024 (FIPS 203), incl. the seven-layer NTT with `BaseCaseMultiply` | ✅ |
-| `falcon` | Falcon-512/1024 (FIPS 206 draft), float FFT sampler sub-module | 📋 (M5) |
+| `mldsa` | ML-DSA-44/65/87 (FIPS 204): parameter ZSTs, `SigningKey`/`VerifyingKey`, deterministic & hedged signing, hint machinery, FIPS encodings; per-set API modules (`mldsa::mldsa_65::…`) | ✅ (126 ACVP vectors) |
+| `mlkem` | ML-KEM-512/768/1024 (FIPS 203), incl. the seven-layer NTT with `BaseCaseMultiply` | ✅ (183 ACVP vectors) |
+| `falcon` | Falcon-512/1024 (FIPS 206 draft / round-3 spec): verbatim reference port — `fpr` soft-float, complex FFT, mod-q NTT, NTRU solver chain, LDL-tree signing, codecs; per-set API modules (`falcon::falcon512::…`); reference-anchored until the FIPS 206 freeze | ✅ (round-3 KAT byte-exact) |
 
 ## Cross-cutting
 
 | Concern | Owner | Status |
 | --- | --- | --- |
 | Ring-axiom property tests (≥ 8 moduli) | `ring::axiom_tests` | ✅ (15 moduli) |
-| KAT framework (FIPS vectors, ACVP) | `tests/kats/` + per-scheme tests | 🚧 (M3) |
+| KAT framework (FIPS vectors, ACVP) | `tests/data/` + per-scheme harnesses (`acvp_kat`, `acvp_mlkem_kat`, `falcon_kat`) | ✅ (ML-DSA / ML-KEM ACVP + Falcon round-3) |
 | Benchmarks (criterion) | `benches/` in every crate (`cargo bench --workspace`) | ✅ (CI thresholds 📋) |
 | Documentation site (this site) | `docs/` | ✅ |
 
