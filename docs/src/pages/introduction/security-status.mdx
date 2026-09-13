@@ -12,6 +12,7 @@ an explicit claims page more useful than silence.
 | Reference-exact derivation primitives | RejBounded nibble formulas, SampleInBall ordering, `ExpandMask` chunking and `power2round`/`decompose`/hint are differential-tested against the reference bit tricks |
 | **Official KAT/ACVP alignment (ML-DSA, pure mode)** | 126 official NIST ACVP vectors pass byte-exactly: keyGen 75/75 (seed → pk, sk), sigGen 27/27 (deterministic and randomized with fixed `rnd`), sigVer 24/24 (accept **and** reject). Fixtures with provenance and a regeneration script live in `crates/pqc/tests/data/`; the harness runs in `cargo test`. The ACVP run caught and fixed a real one-sided `r0` restart gate (valid-but-non-canonical signatures) — the harness bites. |
 | **FIPS 204 NTT convention** | `mldsa::ntt` implements the standard's transform exactly (ζ = 1753, bit-reversed evaluation order `ζ^(2·brv8(i)+1)`), so `ExpandA` reproduces the official `RejNTTPoly` streams; validated by roundtrip/negacyclic property tests and the keyGen vectors. |
+| **Falcon round-3 KAT alignment** | `pqc::falcon` is a verbatim port of the round-3 reference implementation; the official round-3 submission KAT vectors (falcon512 × 5, falcon1024 × 5: keygen → pk/sk, signing → complete `sm` bundle, verify accept) pass byte-exactly, driven through a ported katrng (AES-256-CTR DRBG) guarded by an embedded AES-256 known-answer test. The reference's integer soft-float `fpr` is bit-exact with the C `fpr.c` and differentially tested over 13 000 random operand cases. Fixtures with provenance live in `crates/pqc/tests/data/`. Note: FIPS 206 (FN-DSA) is still a draft — parameter sets may shift before the freeze, so **no stable release ships before then**. |
 | Arithmetic correctness | 500+ tests, including ring-axiom property tests over 15 moduli (2 … 2³², prime and composite), NTT-vs-schoolbook cross-checks, NTT-homomorphism tests |
 | Determinism and reproducibility | All samplers and derivations are XOF-driven (seed + domain label, no bare RNG); same inputs ⇒ same outputs, KAT-friendly by construction |
 | Semantic rejection behavior | Tampered message / wrong context / wrong key / corrupted or truncated signatures, tampered proofs and folded instances are rejected — tested (and exercised by the ACVP sigVer reject vectors) |
@@ -43,7 +44,8 @@ tests in `algebra::security`.
 | --- | --- | --- |
 | **Constant time — residuals** | 🟡 partial by design | The secret-*value* paths are branch-free (see claimed table). Two leaks remain, both inherent to the spec's derivations and shaped like the reference implementation: (1) rejection-sampling **loop counts** depend on the XOF stream — never on a secret-indexed table lookup or a secret-valued branch inside the loop body; (2) `HintBitPack` compaction writes through a secret-dependent index whose final value is public (it is part of the signature). Signing reveals its rejection/restart behavior exactly as the FIPS 204 reference does; NIST's own analysis argues this is safe because per-coefficient rejection probabilities are independent of secret data. A dudect-style statistical harness and an assembly audit are the follow-up hardening steps. |
 | **Third-party audit** | ❌ none | No external review has been performed. Treat all claims on this page as engineering evidence, not assurance. |
-| **ACVP modes beyond the covered set** | 📋 scoped until the APIs exist | ML-KEM (FIPS 203) ships with its own official fixtures (183 cases: keyGen, encaps, decaps incl. implicit rejection, key checks). Still scoped: HashML-DSA (`preHash`, OID-separated hashing) and the internal `mu` interface for ML-DSA, plus FN-DSA vectors (M5). |
+| **ACVP modes beyond the covered set** | 📋 scoped until the APIs exist | ML-KEM (FIPS 203) ships with its own official fixtures (183 cases: keyGen, encaps, decaps incl. implicit rejection, key checks); Falcon is covered by the official round-3 submission KATs (10 keygen/sign/verify bundles). Still scoped: HashML-DSA (`preHash`, OID-separated hashing) and the internal `mu` interface for ML-DSA; FIPS 206 (FN-DSA) official vectors await the draft's publication. |
+| **Falcon constant time** | ❌ not claimed | The Falcon reference does not claim constant time and this port inherits that: the FFT sampler, the keygen NTRU-solve chain and the signing rejection loop are not constant-time. Hash-to-point and the sampler leak no secret-key-dependent branches by construction, but no CT claim is made for `pqc::falcon`. |
 | **Estimator refinement** | 📋 | The closed-form conditions are frozen with the published zone-based figures quoted alongside; reproducing the zone-based simulation (sample/column truncation, ℓ∞ shape heuristics) with archived runs under `scripts/params/` remains the refinement item. |
 | **Production hardening** | ❌ out of scope today | No fuzzing harness for the decoders yet, no `no_std` story. Zeroization of `SigningKey` is done; `to_bytes()` output buffers are caller-managed. |
 
@@ -54,8 +56,9 @@ tests in `algebra::security`.
 - ✅ Teaching and studying how FIPS 203/204 map onto algebra primitives
 - ✅ As the shared substrate for a *family* of experiments (PQC ↔ ZK) that
   must reuse the same norms, decompositions and challenge derivations
-- ✅ As a KAT-verified reference: ML-DSA (pure mode, 126 vectors) and
-  ML-KEM (183 vectors) match the official ACVP vectors byte-for-byte
+- ✅ As a KAT-verified reference: ML-DSA (pure mode, 126 vectors), ML-KEM
+  (183 vectors) and Falcon (round-3, 10 keygen/sign/verify bundles) match
+  the official vectors byte-for-byte
 - ⚠️ Pre-production integrations, with the residual table above as the
   risk register
 - ❌ Production deployments holding real secret keys (use

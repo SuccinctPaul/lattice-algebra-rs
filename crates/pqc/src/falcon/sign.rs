@@ -27,12 +27,12 @@ pub struct SamplerCtx {
 /// Reference `gaussian0_sampler`: half-Gaussian centered on 0 with
 /// σ = 1.8205, sampled at 72-bit precision.
 fn gaussian0_sampler(p: &mut Prng) -> i32 {
-    const DIST: [u32; 51] = [
-        10745844, 3068844, 3741698, 5559083, 1580863, 8248194, 2260429, 13669192, 2736639,
-        708981, 4421575, 10046180, 169348, 7122675, 4136815, 30538, 13063405, 7650655, 4132,
-        14505003, 7826148, 417, 16768101, 11363290, 31, 8444042, 8086568, 1, 12844466, 265321,
-        0, 1232676, 13644283, 0, 38047, 9111839, 0, 870, 6138264, 0, 14, 12545723, 0, 0,
-        3104126, 0, 0, 28824, 0, 0, 198, 0, 0, 1,
+    const DIST: [u32; 54] = [
+        10745844, 3068844, 3741698, 5559083, 1580863, 8248194, 2260429, 13669192, 2736639, 708981,
+        4421575, 10046180, 169348, 7122675, 4136815, 30538, 13063405, 7650655, 4132, 14505003,
+        7826148, 417, 16768101, 11363290, 31, 8444042, 8086568, 1, 12844466, 265321, 0, 1232676,
+        13644283, 0, 38047, 9111839, 0, 870, 6138264, 0, 14, 12545723, 0, 0, 3104126, 0, 0, 28824,
+        0, 0, 198, 0, 0, 1,
     ];
 
     let lo = p.get_u64();
@@ -41,6 +41,10 @@ fn gaussian0_sampler(p: &mut Prng) -> i32 {
     let v1 = ((lo >> 24) as u32) & 0xFF_FFFF;
     let v2 = ((lo >> 48) as u32) | (hi << 16);
 
+    // DIST packs 18 consecutive 72-bit thresholds as triples of three
+    // 24-bit lanes (big-endian: DIST[u] is the most significant lane). The
+    // loop borrow-chains the 72-bit draw through the comparisons and
+    // counts, branchlessly, how many thresholds the draw stays under.
     let mut z: i32 = 0;
     let mut u = 0usize;
     while u < DIST.len() {
@@ -63,7 +67,8 @@ fn berexp(p: &mut Prng, x: Fpr, ccs: Fpr) -> i32 {
     let r = fpr_sub(x, fpr_mul(fpr_of(s as i64), FPR_LOG2));
 
     // Saturate s at 63.
-    let sw = (s as u32) ^ ((s as u32 ^ 63) & -((63u32.wrapping_sub(s as u32) >> 31) != 0) as u32);
+    let sw = (s as u32)
+        ^ ((s as u32 ^ 63) & ((((63u32.wrapping_sub(s as u32)) >> 31) != 0) as u32).wrapping_neg());
     s = sw as i32;
 
     // exp(-r) scaled to 2^63, up to 2^64, right-shifted by s.
@@ -109,7 +114,14 @@ pub fn sampler(spc: &mut SamplerCtx, mu: Fpr, isigma: Fpr) -> i32 {
 }
 
 /// Reference `ffSampling_fft_dyntree` (Fast Fourier sampling over the LDL
-/// levels of the Gram matrix, computed on the fly).
+/// levels of the Gram matrix, computed on the fly rather than from a
+/// precomputed tree). Each level LDL-decomposes the 2×2 Gram system,
+/// splits the d00/d11 polynomials to the two half-size sub-trees, samples
+/// the right child first, propagates the correction t0 += (t1 − z1)·l10
+/// through the FFT embedding, then samples the left child. At the leaf
+/// (logn 0) both coordinates are sampled directly with
+/// sigma = sqrt(g00[0])·FPR_INV_SIGMA[orig_logn].
+#[allow(clippy::too_many_arguments)]
 fn ffsampling_dyntree(
     spc: &mut SamplerCtx,
     t0: &mut [Fpr],
@@ -137,13 +149,15 @@ fn ffsampling_dyntree(
 
     // Split d00 and d11; save l10 in tmp.
     {
-        let g00c = g00.clone();
-        super::fft::poly_split_fft(&mut tmp[..hn], &mut tmp[hn..n], &g00c, logn);
+        let g00c = g00.to_vec();
+        let (ta, tb) = tmp.split_at_mut(hn);
+        super::fft::poly_split_fft(ta, &mut tb[..hn], &g00c, logn);
         g00.copy_from_slice(&tmp[..n]);
-        let g11c = g11.clone();
-        super::fft::poly_split_fft(&mut tmp[..hn], &mut tmp[hn..n], &g11c, logn);
+        let g11c = g11.to_vec();
+        let (ta, tb) = tmp.split_at_mut(hn);
+        super::fft::poly_split_fft(ta, &mut tb[..hn], &g11c, logn);
         g11.copy_from_slice(&tmp[..n]);
-        let g01c = g01.clone();
+        let g01c = g01.to_vec();
         tmp[..n].copy_from_slice(&g01c);
         g01[..hn].copy_from_slice(&g00[..hn]);
         g01[hn..n].copy_from_slice(&g11[..hn]);
@@ -159,19 +173,21 @@ fn ffsampling_dyntree(
     // Split t1; right recursion on the right sub-tree; merge into tmp[2n..].
     let mut z1 = tmp[n..2 * n].to_vec();
     {
-        let t1c = t1.clone();
-        super::fft::poly_split_fft(&mut z1[..hn], &mut z1[hn..n], &t1c, logn);
+        let t1c = t1.to_vec();
+        let (za, zb) = z1.split_at_mut(hn);
+        super::fft::poly_split_fft(za, zb, &t1c, logn);
     }
     {
-        // Right sub-tree materialization.
-        let mut r_g00 = g11[..n].to_vec();
+        // Right sub-tree materialization (half-degree: hn words each).
+        let mut r_g00 = g11[..hn].to_vec();
         let mut r_g01 = g11[hn..n].to_vec();
         let mut r_g11 = g01[hn..n].to_vec();
         let mut r_tmp = vec![0u64; 3 * hn];
+        let (za, zb) = z1.split_at_mut(hn);
         ffsampling_dyntree(
             spc,
-            &mut z1[..hn],
-            &mut z1[hn..n],
+            za,
+            zb,
             &mut r_g00,
             &mut r_g01,
             &mut r_g11,
@@ -181,52 +197,61 @@ fn ffsampling_dyntree(
         );
     }
     {
-        let z1c = z1.clone();
+        let z1c = z1.to_vec();
         super::fft::poly_merge_fft(&mut tmp[2 * n..3 * n], &z1c[..hn], &z1c[hn..n], logn);
     }
 
     // tb0 = t0 + (t1 - z1) * l10 (l10 in tmp, merged z1 in tmp[2n..3n]).
     {
-        let t1c = t1.clone();
+        let t1c = t1.to_vec();
         z1.copy_from_slice(&t1c);
         let z1m = tmp[2 * n..3 * n].to_vec();
-        super::fft::poly_sub(z1, &z1m, logn);
+        super::fft::poly_sub(&mut z1, &z1m, logn);
         t1.copy_from_slice(&tmp[2 * n..3 * n]);
-        let z1c = z1.clone();
-        super::fft::poly_mul_fft(tmp, &z1c, logn);
-        super::fft::poly_add(t0, tmp, logn);
+        let z1c = z1.to_vec();
+        super::fft::poly_mul_fft(&mut tmp[..n], &z1c, logn);
+        super::fft::poly_add(t0, &tmp[..n], logn);
     }
 
     // Left recursion on the split tb0 and the left sub-tree.
     let mut z0 = tmp[..n].to_vec();
     {
-        let t0c = t0.clone();
-        super::fft::poly_split_fft(&mut z0[..hn], &mut z0[hn..n], &t0c, logn);
+        let t0c = t0.to_vec();
+        let (za, zb) = z0.split_at_mut(hn);
+        super::fft::poly_split_fft(za, zb, &t0c, logn);
     }
     {
-        let mut l_g00 = g00[..n].to_vec();
+        let mut l_g00 = g00[..hn].to_vec();
         let mut l_g01 = g00[hn..n].to_vec();
-        let mut l_g11 = g01[..n].to_vec();
-        let mut l_tmp = vec![0u64; 3 * hn];
+        let mut l_g11 = g01[..hn].to_vec();
+        let (za, zb) = z0.split_at_mut(hn);
+        let mut ztmp = vec![0u64; 3 * hn];
         ffsampling_dyntree(
             spc,
-            &mut z0[..hn],
-            &mut z0[hn..n],
+            za,
+            zb,
             &mut l_g00,
             &mut l_g01,
             &mut l_g11,
             orig_logn,
             logn - 1,
-            &mut l_tmp,
+            &mut ztmp,
         );
     }
     {
-        let z0c = z0.clone();
+        let z0c = z0.to_vec();
         super::fft::poly_merge_fft(t0, &z0c[..hn], &z0c[hn..n], logn);
     }
 }
 
-/// Reference `do_sign_dyn` + `sign_dyn` with the rejection loop.
+/// Reference `do_sign_dyn` + `sign_dyn` with the rejection loop. Every
+/// attempt seeds a fresh ChaCha20 sampler from `rng` (56 bytes, exactly
+/// like the reference), builds the target from the hash point `hm`, draws
+/// (t0, t1) by FFT sampling over the on-the-fly Gram LDL tree, and accepts
+/// the first (s1, s2) = (hm − ⌊t0⌉, −⌊t1⌉) whose squared norm passes
+/// `is_short_half` (‖(s1, s2)‖² ≤ beta², beta from the spec). Only s2 is
+/// written to `sig`; the verifier recomputes s2·h − c ≡ −s1.
+#[allow(clippy::too_many_arguments)]
 pub fn sign_dyn(
     sig: &mut [i16],
     rng: &mut super::common::InnerShake256,
@@ -261,7 +286,9 @@ pub fn sign_dyn(
         super::fft::poly_neg(&mut b01, logn);
         super::fft::poly_neg(&mut b11, logn);
 
-        // Gram matrix (upper triangle), keeping b01/b11 for the target.
+        // Gram matrix (upper triangle). The original b01 (-f in FFT) must
+        // survive the Gram overwrite: like the reference, it is saved into
+        // t0 and used for the target vector below.
         let mut t0 = vec![0u64; n];
         let mut t1 = vec![0u64; n];
         t0.copy_from_slice(&b01);
@@ -277,6 +304,8 @@ pub fn sign_dyn(
         t1.copy_from_slice(&b11);
         super::fft::poly_mulselfadj_fft(&mut t1, logn);
         super::fft::poly_add(&mut b10, &t1, logn);
+        // b01 now holds g01; the original b01 lives on in t0.
+        let b01_orig = t0.clone();
 
         // Target vector [hm, 0], then the basis application.
         for u in 0..n {
@@ -285,7 +314,7 @@ pub fn sign_dyn(
         super::fft::fft(&mut t0, logn);
         let ni = FPR_INVERSE_OF_Q;
         t1.copy_from_slice(&t0);
-        super::fft::poly_mul_fft(&mut t1, &b01, logn);
+        super::fft::poly_mul_fft(&mut t1, &b01_orig, logn);
         super::fft::poly_mulconst(&mut t1, fpr_neg(ni), logn);
         super::fft::poly_mul_fft(&mut t0, &b11, logn);
         super::fft::poly_mulconst(&mut t0, ni, logn);
@@ -297,8 +326,7 @@ pub fn sign_dyn(
             let mut g11 = b10.clone();
             let mut tmp = vec![0u64; n * 4];
             ffsampling_dyntree(
-                &mut spc, &mut t0, &mut t1, &mut g00, &mut g01, &mut g11, logn, logn,
-                &mut tmp,
+                &mut spc, &mut t0, &mut t1, &mut g00, &mut g01, &mut g11, logn, logn, &mut tmp,
             );
         }
 

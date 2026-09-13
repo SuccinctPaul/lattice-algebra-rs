@@ -20,7 +20,7 @@ directly.
 | Crate | Path | Contents |
 | --- | --- | --- |
 | `lattice-algebra` | [`crates/algebra`](crates/algebra) | L0–L4 foundation: scalar rings (`Zq`), negacyclic polynomial rings (`PolyRing`), capability traits (`Ring`/`Field`/`TwoAdicRing`/`CenteredRing`), NTT + NTT-domain views, module-lattice vectors/matrices, XOF / transcript / sampling crypto |
-| `lattice-pqc` | [`crates/pqc`](crates/pqc) | NIST PQC schemes on the foundation: **ML-KEM** (FIPS 203) keygen / encapsulate / decapsulate and **ML-DSA** (FIPS 204) keygen / sign / verify, all three parameter sets each, byte-exact with the official ACVP vectors. FN-DSA planned |
+| `lattice-pqc` | [`crates/pqc`](crates/pqc) | NIST PQC schemes on the foundation: **ML-KEM** (FIPS 203) keygen / encapsulate / decapsulate and **ML-DSA** (FIPS 204) keygen / sign / verify, all three parameter sets each, byte-exact with the official ACVP vectors, plus **Falcon** (round-3 spec) keygen / sign / verify for both parameter sets, byte-exact with the official round-3 KATs. FN-DSA (FIPS 206) is still a draft — parameter sets may shift before the freeze; no stable release until then |
 | `lattice-zk` | [`crates/zk`](crates/zk) | Lattice zkSNARK building blocks: Ajtai/SIS commitments, Lyubashevsky Σ-protocols, batch opening, ring-sumcheck, gadget IPA, Nova-style folding / IVC |
 
 ## Usage
@@ -48,10 +48,10 @@ use zk::protocols::commitment::CommitmentKey;
 ## Development
 
 ```sh
-cargo test --workspace        # 474 tests (unit + integration + doc)
+cargo test --workspace        # 542 tests (unit + integration + doc)
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
-cargo bench --workspace       # criterion: foundation, ML-DSA, Z1-Z4 protocols
+cargo bench --workspace       # criterion: foundation, ML-DSA, Falcon, Z1-Z4 protocols
 ```
 
 Each crate carries its own `README.md` (see `crates/<name>/README.md`),

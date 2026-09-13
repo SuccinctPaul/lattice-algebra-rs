@@ -1,6 +1,7 @@
 //! Port of the Falcon reference `common.c` (hash-to-point, norm tests)
 //! plus the `inner_shake256_context` wrapper (reference `shake.c`, backed
 //! by the `sha3` crate).
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
@@ -30,7 +31,8 @@ impl InnerShake256 {
 }
 
 /// Reference `hash_to_point_vartime`: squeeze 16-bit samples, reject values
-/// ≥ 61445 (= 5·12289), reduce the rest mod 12289.
+/// ≥ 61445 (= 5·12289), reduce the rest mod 12289. The rejection keeps the
+/// result uniform: the accepted range [0, 5q) is exactly five periods of q.
 pub fn hash_to_point_vartime(sc: &mut InnerShake256, x: &mut [u16]) {
     let mut n = x.len();
     let mut u = 0usize;
@@ -50,24 +52,18 @@ pub fn hash_to_point_vartime(sc: &mut InnerShake256, x: &mut [u16]) {
 }
 
 /// Acceptance bounds for the squared l2-norm, indexed by logn (inclusive
-/// bounds, floor(beta^2)).
+/// bounds, floor(beta^2)). Only logn = 9 (Falcon-512) and logn = 10
+/// (Falcon-1024) are used by the public API.
 const L2BOUND: [u32; 11] = [
-    0,
-    101498,
-    208714,
-    428865,
-    892039,
-    1852696,
-    3842630,
-    7959734,
-    16468416,
-    34034726,
-    70265242,
+    0, 101498, 208714, 428865, 892039, 1852696, 3842630, 7959734, 16468416, 34034726, 70265242,
 ];
 
 /// Reference `is_short`: accept iff ‖(s1,s2)‖² ≤ bound.
 pub fn is_short(s1: &[i16], s2: &[i16], logn: u32) -> bool {
     let n = 1usize << logn;
+    // `ng` accumulates the sign bit of the running sum so that a u32
+    // wraparound in the squared-norm accumulation turns into a huge final
+    // value (hence a rejection) rather than a small one.
     let mut s: u32 = 0;
     let mut ng: u32 = 0;
     for u in 0..n {
@@ -85,6 +81,8 @@ pub fn is_short(s1: &[i16], s2: &[i16], logn: u32) -> bool {
 /// Reference `is_short_half`: accept iff sqn + ‖s2‖² ≤ bound.
 pub fn is_short_half(sqn: u32, s2: &[i16], logn: u32) -> bool {
     let n = 1usize << logn;
+    // Same overflow-to-reject trick as `is_short`: if the incoming sqn or
+    // the running sum overflows u32, `ng` forces a huge final value.
     let mut sqn = sqn;
     let ng = (sqn >> 31).wrapping_neg();
     for &z in s2.iter().take(n) {
