@@ -49,15 +49,19 @@ use zk::protocols::commitment::CommitmentKey;
 ## Development
 
 ```sh
-cargo test --workspace        # 542 tests (unit + integration + doc)
-cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --all --check
+make gate                     # the merge gate: fmt + clippy -D warnings + tests
+cargo test --workspace        # 590+ tests (unit + integration + doc, incl. all KAT suites)
 cargo bench --workspace       # criterion: foundation, ML-DSA, Falcon, Z1-Z4 protocols
+
+make kat                      # regenerate KAT/ACVP fixtures from official NIST sources + verify
+make audit                    # RustSec advisories, licenses, no-unsafe policy scan
 ```
 
 Each crate carries its own `README.md` (see `crates/<name>/README.md`),
 runnable `examples/`, integration tests in `crates/<name>/tests/`, and
-criterion benchmarks in `crates/<name>/benches/`.
+criterion benchmarks in `crates/<name>/benches/`. See
+[`scripts/`](scripts) and the [`Makefile`](Makefile) for the full
+maintenance tooling.
 
 ## Project
 

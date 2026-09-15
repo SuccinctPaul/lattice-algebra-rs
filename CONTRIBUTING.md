@@ -34,6 +34,29 @@ make gate
 Benchmarks compile in CI but do not run; if you touch a hot path, run
 `make bench` and quote before/after numbers in the PR.
 
+CI also gates two things you should run before pushing:
+
+- **rustdoc hygiene** (`cargo doc --workspace --no-deps -- -D warnings`)
+  — unresolved intra-doc links fail the build;
+- **`#![deny(missing_docs)]`** is set in every crate — every public item
+  needs a doc comment to compile.
+
+## KAT fixtures & audits
+
+The committed KAT/ACVP fixtures in `crates/pqc/tests/data/` are generated
+from the official NIST sources; `tests/common` ports the Bassham
+AES-256-CTR DRBG they are driven by. Two maintenance entries:
+
+```sh
+make kat        # download official packages + regenerate fixtures + run the KAT suites
+make kat-check  # run the KAT suites against the committed fixtures only
+make audit      # RustSec advisories / licenses / no-unsafe policy scan
+```
+
+When you add a scheme, add its extractor to `crates/pqc/tests/data/`,
+wire it into `scripts/regen-kat.sh`, and commit a fixture excerpt with
+provenance — the KAT-first rule above starts there.
+
 ## Conventions
 
 - **English only** for docs, comments and commit messages.

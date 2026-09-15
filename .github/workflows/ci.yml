@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC — RustSec advisory sweep
 
 # Cancel superseded runs on the same ref.
 concurrency:
@@ -46,6 +48,10 @@ jobs:
         if: matrix.lint
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
 
+      - name: Rustdoc (deny warnings)
+        if: matrix.lint
+        run: cargo doc --workspace --locked --no-deps -- -D warnings
+
       - name: Build
         run: cargo build --workspace --locked --verbose
 
@@ -55,6 +61,24 @@ jobs:
       - name: Compile benchmarks
         if: matrix.lint
         run: cargo bench --workspace --locked --no-run
+
+  audit:
+    # Weekly cadence so new RustSec advisories surface without a PR; also
+    # runs per push/PR for immediate feedback.
+    name: Supply-chain audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: RustSec advisories
+        run: cargo audit
+
+      - name: Unsafe-code policy (no unsafe blocks anywhere)
+        run: |
+          ! grep -rn --include='*.rs' -E '\bunsafe\s+(fn|impl|\{)' crates/*/src
 
   docs-build:
     name: Docs build
