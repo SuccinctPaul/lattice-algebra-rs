@@ -20,8 +20,7 @@ pub trait NtruParams: 'static {
     /// Bytes consumed to sample `(f, g)`: HPS draws `(n−1)` iid bytes
     /// plus `ceil(30·(n−1)/8)` for the fixed-type poly; HRSS draws
     /// `2·(n−1)` iid bytes.
-    const SAMPLE_FG_BYTES: usize = Self::N
-        - 1
+    const SAMPLE_FG_BYTES: usize = Self::N - 1
         + if Self::HPS {
             (30 * (Self::N - 1)).div_ceil(8)
         } else {
@@ -34,8 +33,7 @@ pub trait NtruParams: 'static {
     /// Public-key / ciphertext length: `ceil(logq·(n−1)/8)`.
     const PUBLICKEY_BYTES: usize = (Self::LOGQ as usize * (Self::N - 1)).div_ceil(8);
     /// Secret key: `f ‖ f⁻¹ ‖ f⁻¹h ‖ PRF key`.
-    const SECRETKEY_BYTES: usize =
-        2 * Self::PACK_TRINARY_BYTES + Self::PUBLICKEY_BYTES + 32;
+    const SECRETKEY_BYTES: usize = 2 * Self::PACK_TRINARY_BYTES + Self::PUBLICKEY_BYTES + 32;
 }
 
 /// ntruhps2048677 (NIST security category 1).

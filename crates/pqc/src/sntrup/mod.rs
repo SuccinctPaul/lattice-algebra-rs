@@ -25,12 +25,12 @@ pub use params::{
 };
 
 use encoding::small_encode;
-use poly::{rq_mult3, rq_mult_small, r3_from_rq, r3_mult, r3_recip, rq_recip3, round3};
+use poly::{r3_from_rq, r3_mult, r3_recip, round3, rq_mult3, rq_mult_small, rq_recip3};
 use sha2::Digest;
 use std::marker::PhantomData;
 use zeroize::Zeroize;
 
-use poly::{Small, Fq};
+use poly::{Fq, Small};
 
 // ===========================================================================
 // Keys / shared secret
@@ -258,7 +258,10 @@ pub fn keygen<P: SntrupParams>(
     rho: &[u8],
 ) -> Option<(SecretKey<P>, PublicKey<P>)> {
     assert_eq!(rho.len(), P::SMALL_BYTES, "rho length");
-    let ZKeygen { pk: pk_bytes, sk_core } = zkeygen::<P>(g_random, f_random)?;
+    let ZKeygen {
+        pk: pk_bytes,
+        sk_core,
+    } = zkeygen::<P>(g_random, f_random)?;
 
     let mut sk = sk_core;
     sk.extend_from_slice(&pk_bytes);
@@ -279,11 +282,7 @@ pub fn keygen<P: SntrupParams>(
 }
 
 /// `Hide`: ciphertext core + confirmation over `(r_enc, pk, cache)`.
-fn hide<P: SntrupParams>(
-    r: &[Small],
-    pk: &[u8],
-    cache: &[u8; 32],
-) -> (Vec<u8>, Vec<u8>) {
+fn hide<P: SntrupParams>(r: &[Small], pk: &[u8], cache: &[u8; 32]) -> (Vec<u8>, Vec<u8>) {
     let r_enc = small_encode::<P>(r);
     let mut ct = zencrypt::<P>(r, pk);
     let confirm = hash_prefix(2, &[&hash_prefix(3, &[&r_enc]), cache]);
@@ -299,10 +298,7 @@ fn hash_session(b: u8, r_enc: &[u8], ct_and_confirm: &[u8]) -> SharedSecret {
 
 /// SNTRU encapsulation. `r_random` is the reference's `urandom32` stream
 /// (`4·p` bytes) driving `Short_random(r)`.
-pub fn encapsulate<P: SntrupParams>(
-    ek: &PublicKey<P>,
-    r_random: &[u8],
-) -> (Vec<u8>, SharedSecret) {
+pub fn encapsulate<P: SntrupParams>(ek: &PublicKey<P>, r_random: &[u8]) -> (Vec<u8>, SharedSecret) {
     let r = short_from_bytes::<P>(r_random);
     let pk_bytes = ek.to_bytes();
     let cache = hash_prefix(4, &[&pk_bytes]);
@@ -316,7 +312,8 @@ pub fn encapsulate<P: SntrupParams>(
 pub fn decapsulate<P: SntrupParams>(dk: &SecretKey<P>, ct: &[u8]) -> SharedSecret {
     let sk = &dk.bytes;
     let pk = &sk[2 * P::SMALL_BYTES..2 * P::SMALL_BYTES + P::RQ_BYTES];
-    let rho = &sk[2 * P::SMALL_BYTES + P::RQ_BYTES..2 * P::SMALL_BYTES + P::RQ_BYTES + P::SMALL_BYTES];
+    let rho =
+        &sk[2 * P::SMALL_BYTES + P::RQ_BYTES..2 * P::SMALL_BYTES + P::RQ_BYTES + P::SMALL_BYTES];
     let cache_offset = 2 * P::SMALL_BYTES + P::RQ_BYTES + P::SMALL_BYTES;
     let cache: [u8; 32] = sk[cache_offset..cache_offset + 32].try_into().unwrap();
 
@@ -378,10 +375,7 @@ macro_rules! instantiate_sntrup {
             }
 
             /// SNTRU decapsulation with implicit rejection.
-            pub fn decapsulate(
-                dk: &SecretKey<super::params::$params>,
-                ct: &[u8],
-            ) -> SharedSecret {
+            pub fn decapsulate(dk: &SecretKey<super::params::$params>, ct: &[u8]) -> SharedSecret {
                 super::decapsulate::<super::params::$params>(dk, ct)
             }
         }
@@ -397,4 +391,3 @@ instantiate_sntrup!(sntrup1277, Sntrup1277, "sntrup1277.");
 
 #[cfg(test)]
 mod tests;
-

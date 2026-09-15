@@ -38,7 +38,8 @@ pub trait FrodoParams: 'static {
     const DK_BYTES: usize =
         Self::SS_BYTES + Self::EK_BYTES + 2 * Self::N * Self::NBAR + Self::SS_BYTES;
     /// Ciphertext length: `LOGQ·(N·N̄ + N̄²)/8`.
-    const CT_BYTES: usize = Self::LOGQ as usize * (Self::N * Self::NBAR + Self::NBAR * Self::NBAR) / 8;
+    const CT_BYTES: usize =
+        Self::LOGQ as usize * (Self::N * Self::NBAR + Self::NBAR * Self::NBAR) / 8;
 }
 
 /// FrodoKEM-640 (NIST security category 1), matrix `A` via AES128.

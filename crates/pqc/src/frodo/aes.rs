@@ -22,7 +22,9 @@ const SBOX: [u8; 256] = [
     0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16,
 ];
 
-const RCON: [u8; 11] = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36];
+const RCON: [u8; 11] = [
+    0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36,
+];
 
 fn xtime(x: u8) -> u8 {
     // Multiply by x in GF(2^8) with the FIPS-197 polynomial.
@@ -38,7 +40,12 @@ fn key_expansion(key: &[u8; 16]) -> [[u8; 4]; 44] {
     for i in 4..44 {
         let mut temp = w[i - 1];
         if i % 4 == 0 {
-            temp = [SBOX[temp[1] as usize], SBOX[temp[2] as usize], SBOX[temp[3] as usize], SBOX[temp[0] as usize]];
+            temp = [
+                SBOX[temp[1] as usize],
+                SBOX[temp[2] as usize],
+                SBOX[temp[3] as usize],
+                SBOX[temp[0] as usize],
+            ];
             temp[0] ^= RCON[i / 4];
         }
         for j in 0..4 {

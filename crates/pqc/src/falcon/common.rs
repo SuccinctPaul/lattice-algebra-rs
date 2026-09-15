@@ -6,8 +6,8 @@
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
 
-/// Reference `inner_shake256_context`: absorb with [`Self::inject`], switch
-/// to squeezing with [`Self::flip`], draw with [`Self::extract`].
+/// Reference `inner_shake256_context`: absorb with `inject`, switch
+/// to squeezing with `flip`, draw with `extract`.
 pub struct InnerShake256 {
     reader: sha3::Shake256Reader,
 }

@@ -6,7 +6,7 @@
 //! `Fpr` slots organized as n/2 complex FFT points — index `u < n/2` is
 //! the real part and index `u + n/2` the imaginary part of point `u`.
 //! The twiddles come from `FPR_GM_TAB` as consecutive (re, im) pairs of
-//! the roots of the FFT embedding (Z[X]/(X^n+1) ↪ C[X]/(X^(n/2) − i)),
+//! the roots of the FFT embedding (`Z[X]/(X^n+1)` into `C[X]/(X^(n/2) − i)`),
 //! indexed exactly the way [`fft`]/[`ifft`] consume them. Adjacency of
 //! real/imaginary halves is what all the pointwise helpers below rely on.
 

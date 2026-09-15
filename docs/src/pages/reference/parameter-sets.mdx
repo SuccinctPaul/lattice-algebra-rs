@@ -63,3 +63,53 @@ Sampling: CDT base sampler + fast Fourier sampling (floating-point path — see 
 ## Instantiation cost note
 
 const-generic instantiation count = number of `(q, n, k, l, …)` combinations touched. Policy: instantiate whitelisted parameter sets via macros (the `mldsa` module shows the pattern); tests additionally instantiate small parameters (`Zq<17>`, `n = 8`) through the same generic code paths so whitelist specializations cannot hide bugs.
+
+## FrodoKEM (round-3 spec) — implemented
+
+Shared: `n̄ = 8`, CDF-sampled noise, matrix `A` generated on the fly.
+
+| Set | n | log₂q | extracted bits | ss (B) | μ (B) | pk (B) | sk (B) | ct (B) | NIST |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| FrodoKEM-640 | 640 | 15 | 2 | 16 | 16 | 9616 | 19888 | 9720 | I |
+| FrodoKEM-976 | 976 | 16 | 3 | 24 | 24 | 15632 | 31296 | 15744 | III |
+| FrodoKEM-1344 | 1344 | 16 | 4 | 32 | 32 | 21520 | 43088 | 21632 | V |
+
+Each size ships in two matrix-`A` variants: AES128 (`frodo640`/…) and
+SHAKE128 (`frodo640_shake`/…). CDF tables: 13 entries (640, χ ≈ 2.4),
+11 entries (976, χ ≈ 1.6), 7 entries (1344, χ ≈ 1.2). KAT: 100 official
+tests per size/variant (`frodo_kat` exercises 3 each).
+
+## NTRU (round-3 spec) — implemented
+
+Ring `Z_q[x]/(x^n − 1)`, secrets in `{0,±1}` (HPS: product-form `f`,
+fixed-weight `g`,`m`; HRSS: sign-fixed sampling and `g = 3(x−1)g′`).
+
+| Set | n | log₂q | weight q/8−2 | pk (B) | sk (B) | ct (B) | NIST |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ntruhps2048677 | 677 | 11 | 254 | 930 | 1234 | 930 | I |
+| ntruhps2048821 | 821 | 11 | 254 | 1128 | 1488 | 1128 | III |
+| ntruhps4096821 | 821 | 12 | 510 | 1230 | 1590 | 1230 | III |
+| ntruhps40961229 | 1229 | 12 | 510 | 1842 | 2366 | 1842 | V |
+| ntruhrss701 | 701 | 13 | — (iid+sign-fix) | 1138 | 1450 | 1138 | I |
+
+KAT: the official round-3 KAT directory covers hps2048677 (PQCkemKAT_1234),
+hps4096821 (PQCkemKAT_1590) and hrss701 (PQCkemKAT_1450) — 100 tests each
+(`ntru_kat` exercises 3 each).
+
+## Streamlined NTRU Prime (round-3 spec, ntruprime-20201007) — implemented
+
+Ring `Z_q[x]/(x^p − x − 1)`, centered `F_q`/`F_3` representatives,
+weight-`w` short polynomials.
+
+| Set | p | q | w | Small (B) | pk (B) | sk (B) | ct (B) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| sntrup653 | 653 | 4621 | 288 | 164 | 994 | 1150 | 897 |
+| sntrup761 | 761 | 4591 | 286 | 191 | 1158 | 1763 | 1039 |
+| sntrup857 | 857 | 5167 | 322 | 215 | 1322 | 2075 | 1184 |
+| sntrup953 | 953 | 6343 | 396 | 239 | 1505 | 2273 | 1349 |
+| sntrup1013 | 1013 | 7177 | 448 | 254 | 1623 | 2464 | 1455 |
+| sntrup1277 | 1277 | 7879 | 492 | 320 | 2067 | 3111 | 1847 |
+
+`sk = f ‖ ginv ‖ pk ‖ rho ‖ Hash₄(pk)`; `ct = Rounded ‖ HashConfirm` (32 B).
+KAT: the official `kat_kem.rsp` files cover 761/857/953/1277 — 100 tests
+each (`sntrup_kat` exercises 3 each); 653/1013 ship no official KAT.

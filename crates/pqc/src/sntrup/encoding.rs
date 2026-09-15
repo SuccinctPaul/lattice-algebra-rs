@@ -4,7 +4,7 @@
 //! packing.
 
 use super::params::SntrupParams;
-use super::poly::{self, mod_uint14, q12, Small, Fq};
+use super::poly::{self, mod_uint14, q12, Fq, Small};
 
 // ===========================================================================
 // crypto_sort_uint32 (uint32.c)
@@ -277,9 +277,7 @@ mod tests {
     #[test]
     fn encode_decode_roundtrip() {
         // Rq roundtrip: digits of radix q.
-        let r: Vec<u16> = (0..761u32)
-            .map(|i| ((i * 7919) % 4591) as u16)
-            .collect();
+        let r: Vec<u16> = (0..761u32).map(|i| ((i * 7919) % 4591) as u16).collect();
         let m = vec![Sntrup761::Q; 761];
         let mut out = Vec::new();
         encode(&mut out, &r, &m);
@@ -319,4 +317,3 @@ mod tests {
         assert_eq!(v, sorted);
     }
 }
-

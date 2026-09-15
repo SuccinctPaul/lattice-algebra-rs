@@ -5,7 +5,8 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SuccinctPaul/lattice-algebra-rs)
 
 A multi-crate Rust workspace for lattice-based cryptography: one algebraic
-foundation from which both NIST PQC schemes (ML-KEM / ML-DSA / Falcon) and
+foundation from which both NIST PQC schemes (ML-KEM / ML-DSA / Falcon plus
+the round-3 alternates FrodoKEM / NTRU / Streamlined NTRU Prime) and
 lattice-based zkSNARKs (LaBRADOR / GreyHound / LatticeFold-style) derive
 directly.
 
@@ -20,7 +21,7 @@ directly.
 | Crate | Path | Contents |
 | --- | --- | --- |
 | `lattice-algebra` | [`crates/algebra`](crates/algebra) | L0–L4 foundation: scalar rings (`Zq`), negacyclic polynomial rings (`PolyRing`), capability traits (`Ring`/`Field`/`TwoAdicRing`/`CenteredRing`), NTT + NTT-domain views, module-lattice vectors/matrices, XOF / transcript / sampling crypto |
-| `lattice-pqc` | [`crates/pqc`](crates/pqc) | NIST PQC schemes on the foundation: **ML-KEM** (FIPS 203) keygen / encapsulate / decapsulate and **ML-DSA** (FIPS 204) keygen / sign / verify, all three parameter sets each, byte-exact with the official ACVP vectors, plus **Falcon** (round-3 spec) keygen / sign / verify for both parameter sets, byte-exact with the official round-3 KATs. FN-DSA (FIPS 206) is still a draft — parameter sets may shift before the freeze; no stable release until then |
+| `lattice-pqc` | [`crates/pqc`](crates/pqc) | NIST PQC schemes on the foundation: **ML-KEM** (FIPS 203) keygen / encapsulate / decapsulate and **ML-DSA** (FIPS 204) keygen / sign / verify, all three parameter sets each, byte-exact with the official ACVP vectors; **Falcon** (round-3 spec) keygen / sign / verify, byte-exact with the official round-3 KATs; and the round-3 lattice alternates **FrodoKEM** (both AES/SHAKE matrix-A variants), **NTRU** and **Streamlined NTRU Prime** (all parameter sets), byte-exact with the official round-3 submission KATs. FN-DSA (FIPS 206) is still a draft — parameter sets may shift before the freeze; no stable release until then |
 | `lattice-zk` | [`crates/zk`](crates/zk) | Lattice zkSNARK building blocks: Ajtai/SIS commitments, Lyubashevsky Σ-protocols, batch opening, ring-sumcheck, gadget IPA, Nova-style folding / IVC |
 
 ## Usage

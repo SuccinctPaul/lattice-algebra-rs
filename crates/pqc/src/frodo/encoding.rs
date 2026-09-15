@@ -6,7 +6,11 @@
 /// Pack the low `lsb` bits of each `u16` of `input` into `output`
 /// (most-significant bits first — the reference `frodo_pack`).
 pub fn pack(output: &mut [u8], input: &[u16], lsb: u32) {
-    assert_eq!(output.len(), input.len() * lsb as usize / 8, "packed length");
+    assert_eq!(
+        output.len(),
+        input.len() * lsb as usize / 8,
+        "packed length"
+    );
     output.iter_mut().for_each(|b| *b = 0);
 
     let mut i = 0usize; // whole bytes already filled in
@@ -43,7 +47,11 @@ pub fn pack(output: &mut [u8], input: &[u16], lsb: u32) {
 
 /// Inverse of [`pack`]: take `lsb` bits per element from the byte stream.
 pub fn unpack(output: &mut [u16], input: &[u8], lsb: u32) {
-    assert_eq!(input.len(), output.len() * lsb as usize / 8, "unpacked length");
+    assert_eq!(
+        input.len(),
+        output.len() * lsb as usize / 8,
+        "unpacked length"
+    );
     output.iter_mut().for_each(|v| *v = 0);
 
     let mut i = 0usize; // whole u16s already filled in
@@ -134,7 +142,9 @@ mod tests {
 
     #[test]
     fn pack_roundtrip_15_and_16_bits() {
-        let input: Vec<u16> = (0u32..8192).map(|i| (i.wrapping_mul(2654435761) % 32768) as u16).collect();
+        let input: Vec<u16> = (0u32..8192)
+            .map(|i| (i.wrapping_mul(2654435761) % 32768) as u16)
+            .collect();
         let mut bytes = vec![0u8; input.len() * 15 / 8];
         pack(&mut bytes, &input, 15);
         let mut back = vec![0u16; input.len()];

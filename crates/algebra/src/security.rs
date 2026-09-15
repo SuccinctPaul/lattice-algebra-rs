@@ -1,4 +1,4 @@
-//! Core-SVP concrete-security estimation ([`security`]), implementing the
+//! Core-SVP concrete-security estimation (this module), implementing the
 //! methodology the Dilithium / ML-DSA security analysis rests on.
 //!
 //! This is the [Alkim–Ducas–Pöppelmann–Schwabe 2016] "Core-SVP" estimate,
@@ -19,7 +19,7 @@
 //!
 //! The implementation reproduces the published Dilithium analysis for the
 //! ML-DSA parameter sets (≈ 2^124 / 2^186 / 2^265 classical core-SVP);
-//! [`security::MLDSA_ANCHORS`] freezes those published values as tests.
+//! Regression tests in this module freeze those published values as anchors.
 //!
 //! [Alkim–Ducas–Pöppelmann–Schwabe 2016]: https://eprint.iacr.org/2015/048
 //! [Albrecht et al. 2017]: https://eprint.iacr.org/2016/1102

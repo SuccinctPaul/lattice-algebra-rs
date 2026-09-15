@@ -68,16 +68,14 @@ The extractors keep the committed payload small by capping per-group
 selections (ML-KEM: keyGen all 25/set, encaps + decaps first 8/set,
 keyCheck all); edit the filters to embed more (or all) vectors.
 
-# FrodoKEM: from the round-3 submission package (FrodoKEM-Round3.zip), place
-# the six .rsp files in /tmp/pqc-kat/rsp:
-#   PQCkemKAT_{19888,31296,43088}.rsp  PQCkemKAT_{19888,31296,43088}_shake.rsp
-python3 extract_frodokem_kat.py /tmp/pqc-kat/rsp .
+## Regenerating (automated)
 
-# NTRU: from the round-3 submission package (NTRU-Round3.zip), point at the
-# KAT directory (param-set subdirectories):
-python3 extract_ntru_kat.py /tmp/ntru-kat .
+`scripts/regen-kat.sh` regenerates every fixture above end-to-end: it
+downloads the four official round-3 submission packages from
+csrc.nist.gov, fetches the pinned ACVP-Server sample vectors from
+GitHub, runs all six extractors, and leaves the JSON fixtures in this
+directory. `make kat` runs the pipeline plus all six KAT test suites;
+`make kat-check` runs only the suites against the committed fixtures.
 
-# Streamlined NTRU Prime: from the round-3 submission package
-# (NTRU-Prime-Round3.zip), point at the KAT/kem directory (param-set
-# subdirectories):
-python3 extract_sntrup_kat.py /tmp/ntruprime-kat .
+The per-suite extractor scripts remain usable directly when you already
+hold the source material:

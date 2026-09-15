@@ -116,7 +116,7 @@ fn crypto_sort_int32(x: &mut [i32]) {
 }
 
 /// `sample_iid`: uniform ternary from `n−1` random bytes via the
-/// reference's byte-wise mod-3 fold (Pr[0] = 86/256, Pr[±1] = 85/256).
+/// reference's byte-wise mod-3 fold (`Pr[0]` = 86/256, `Pr[±1]` = 85/256).
 pub fn sample_iid<P: NtruParams>(uniform: &[u8]) -> Poly {
     let n = P::N;
     assert_eq!(uniform.len(), n - 1, "sample_iid input length");
@@ -142,7 +142,10 @@ fn mod3_sample(b: u8) -> u16 {
 /// from `u` with forced low bits. Consumes `ceil(30·(n−1)/8)` bytes.
 pub fn sample_fixed_type<P: NtruParams>(u: &[u8]) -> Poly {
     let n = P::N;
-    assert!(u.len() >= (30 * (n - 1)).div_ceil(8), "sample_fixed_type input length");
+    assert!(
+        u.len() >= (30 * (n - 1)).div_ceil(8),
+        "sample_fixed_type input length"
+    );
     let mut s = vec![0i32; n - 1];
 
     let mut i = 0usize;
@@ -159,10 +162,8 @@ pub fn sample_fixed_type<P: NtruParams>(u: &[u8]) -> Poly {
             + (u15(9) << 14)
             + (u15(10) << 22)
             + (u15(11) << 30)) as i32;
-        s[4 * i + 3] = ((u15(11) & 0xfc)
-            + (u15(12) << 8)
-            + (u15(13) << 16)
-            + (u15(14) << 24)) as i32;
+        s[4 * i + 3] =
+            ((u15(11) & 0xfc) + (u15(12) << 8) + (u15(13) << 16) + (u15(14) << 24)) as i32;
         i += 1;
     }
     if (n - 1) > ((n - 1) / 4) * 4 {
@@ -243,7 +244,9 @@ mod tests {
 
     #[test]
     fn fixed_type_weight() {
-        let u: Vec<u8> = (0..(30 * 676_usize).div_ceil(8)).map(|i| (i * 37 + 11) as u8).collect();
+        let u: Vec<u8> = (0..(30 * 676_usize).div_ceil(8))
+            .map(|i| (i * 37 + 11) as u8)
+            .collect();
         let g = sample_fixed_type::<NtruHps2048677>(&u);
         let ones = g.iter().filter(|&&c| c == 1).count();
         let twos = g.iter().filter(|&&c| c == 2).count();

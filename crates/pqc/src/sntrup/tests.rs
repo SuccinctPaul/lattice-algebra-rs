@@ -37,7 +37,10 @@ macro_rules! sntrup_roundtrip_tests {
             fn key_sizes_and_roundtrip() {
                 let (sk, pk) = keygen_pair(1);
                 assert_eq!(pk.to_bytes().len(), <$params as SntrupParams>::RQ_BYTES);
-                assert_eq!(sk.to_bytes().len(), <$params as SntrupParams>::SECRETKEY_BYTES);
+                assert_eq!(
+                    sk.to_bytes().len(),
+                    <$params as SntrupParams>::SECRETKEY_BYTES
+                );
                 let r = fresh_bytes(9, 4 * <$params as SntrupParams>::P);
                 let (ct, ss) = encapsulate(&pk, &r);
                 assert_eq!(ct.len(), <$params as SntrupParams>::CIPHERTEXT_BYTES);

@@ -95,6 +95,36 @@ flowchart LR
 - `algebra::security`: Core-SVP estimation (LWE primal/dual, Lyu12-SIS) calibrated against the published ML-DSA figures; Z1 instances calibrated (Σ soundness 2^225.7 classical);
 - **gate (met)**: `cargo test --workspace` green incl. the ACVP harness; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean; block sizes frozen as regression tests.
 
+### ✅ W4 · Round-3 lattice alternates (FrodoKEM / NTRU / sntrup)
+
+- `pqc::frodo`: FrodoKEM-640/976/1344 verbatim reference port — both
+  matrix-`A` variants (AES128 default, SHAKE128 alternative) with an
+  embedded FIPS-197-validated AES-128, the per-set XOF (`SHAKE128` for 640,
+  `SHAKE256` for 976/1344), per-set CDF tables, `u16`-wrapping matrix
+  arithmetic with the reference's transposed sampling layout, and the
+  constant-time rejection select;
+- `pqc::ntru`: NTRU verbatim reference port — all five round-3 sets
+  (hps2048677 / hps2048821 / hps4096821 / hps40961229 / hrss701), the
+  almost-inverse `R2`/`S3`/`Rq` inversions, the HRSS `x−1` lift,
+  fixed-weight sampling through the supercop `crypto_sort_int32` network,
+  and implicit rejection via the 32-byte PRF key;
+- `pqc::sntrup`: Streamlined NTRU Prime verbatim reference port — all six
+  sizes (653…1277), the mixed-radix `Encode`/`Decode` compressor, the
+  branchless `crypto_sort_uint32` `Short_fromlist`, the constant-time
+  `R3_recip`/`Rq_recip3` extended GCDs and the SHA-512
+  `HashConfirm`/`HashSession` with the `1+mask` rejection domain split;
+- KAT harnesses + the shared Bassham DRBG port (`tests/common`), with
+  sntrup's `urandom32` granule consumption and the reference's
+  `R3_recip` resampling loop reproduced exactly (one official sntrup1277
+  count genuinely exercises a failed first `g`);
+- **gate (met)**: official round-3 submission KAT vectors byte-exact —
+  FrodoKEM 18 bundles (3 sizes × AES/SHAKE), NTRU 9 bundles (the three
+  sets the official KAT directory covers), sntrup 12 bundles (the four
+  sets with official files) — plus round-trip / tamper / wrong-length
+  rejection tests for every parameter set, key serialization roundtrips,
+  `cargo clippy -D warnings` and `cargo fmt --check` clean, zero rustdoc
+  warnings.
+
 ### ZK line remaining work (details in the [ZK page](/schemes/zk-snark))
 
 - **Remaining**: ZK blinding; the LaBRADOR recursion for Z2/Z3 (committing the masked terms before the challenges open them — the one-shot masked-term check contributes one bit of soundness, audited and documented). W3 protocol audit landed: non-unit challenge fix for Z2/IPA (a vacuous-check break), corrected Nova cross-term algebra in Z4 with a homomorphic error fold, sumcheck verifier closure, and gate-level parallelism (`parallel` feature: Z2 prove/verify −78% at 512 gates). Estimator calibration and the ML-DSA KAT/ACVP alignment landed in W2.
