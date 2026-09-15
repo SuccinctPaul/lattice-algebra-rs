@@ -60,6 +60,20 @@ docs: # Build the design site (vocs) into docs/dist.
 docs-dev: # Serve the design site with live reload.
 	cd docs && npm install && npm run dev
 
+##@ KAT fixtures & audits
+.PHONY: kat
+kat: # Regenerate all KAT/ACVP fixtures from the official NIST sources, then run the KAT suites.
+	bash scripts/regen-kat.sh
+	cargo test -p lattice-pqc --test falcon_kat --test frodo_kat --test ntru_kat --test sntrup_kat
+
+.PHONY: kat-check
+kat-check: # Run the KAT suites against the committed fixtures (no downloads).
+	cargo test -p lattice-pqc --test falcon_kat --test frodo_kat --test ntru_kat --test sntrup_kat
+
+.PHONY: audit
+audit: # Supply-chain audit: RustSec advisories, licenses, unsafe-code policy.
+	bash scripts/audit.sh
+
 ##@ Release
 .PHONY: changelog
 changelog: # Regenerate CHANGELOG.md with git-cliff (cargo install git-cliff).

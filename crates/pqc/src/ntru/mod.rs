@@ -8,6 +8,8 @@
 //! returns `SHA3-256(PRF key ‖ ciphertext)` instead of the session key —
 //! implicit rejection without a validity oracle.
 //!
+//! [Sch18]: https://eprint.iacr.org/2018/1174
+//!
 //! Randomness is explicit: [`keygen`] takes the `SAMPLE_FG_BYTES` of DRBG
 //! output the reference's `crypto_kem_keypair` draws plus the 32-byte PRF
 //! key, [`encapsulate`] takes the `SAMPLE_RM_BYTES` for `(r, m)`.
@@ -17,7 +19,7 @@ pub mod poly;
 pub mod sampling;
 
 pub use params::{
-    NtruHps2048677, NtruHps2048821, NtruHps4096821, NtruHps40961229, NtruHrss701, NtruParams,
+    NtruHps2048677, NtruHps2048821, NtruHps40961229, NtruHps4096821, NtruHrss701, NtruParams,
 };
 
 use sha3::digest::Digest;
@@ -281,7 +283,9 @@ fn owcpa_dec<P: NtruParams>(ct: &[u8], sk: &[u8]) -> (Vec<u8>, bool) {
     for (bv, &lv) in b.iter_mut().zip(liftm.iter()) {
         *bv = bv.wrapping_sub(lv);
     }
-    let invh = poly::sq_frombytes::<P>(&sk[2 * P::PACK_TRINARY_BYTES..2 * P::PACK_TRINARY_BYTES + P::PUBLICKEY_BYTES]);
+    let invh = poly::sq_frombytes::<P>(
+        &sk[2 * P::PACK_TRINARY_BYTES..2 * P::PACK_TRINARY_BYTES + P::PUBLICKEY_BYTES],
+    );
     let r = poly::sq_mul::<P>(&b, &invh);
 
     fail |= !check_r::<P>(&r);
@@ -303,10 +307,7 @@ fn owcpa_dec<P: NtruParams>(ct: &[u8], sk: &[u8]) -> (Vec<u8>, bool) {
 /// NTRU key generation: `seed` is the reference's `randombytes(
 /// SAMPLE_FG_BYTES)` draw and `prf_key` the trailing 32 secret bytes of
 /// the decapsulation key.
-pub fn keygen<P: NtruParams>(
-    seed: &[u8],
-    prf_key: &[u8; 32],
-) -> (SecretKey<P>, PublicKey<P>) {
+pub fn keygen<P: NtruParams>(seed: &[u8], prf_key: &[u8; 32]) -> (SecretKey<P>, PublicKey<P>) {
     let (owcpa_sk, pk_bytes) = owcpa_keypair::<P>(seed);
     let mut sk = owcpa_sk;
     sk.extend_from_slice(prf_key);
@@ -324,12 +325,13 @@ pub fn keygen<P: NtruParams>(
 
 /// NTRU encapsulation: `rm_seed` is the reference's `randombytes(
 /// SAMPLE_RM_BYTES)` draw for `(r, m)`.
-pub fn encapsulate<P: NtruParams>(
-    ek: &PublicKey<P>,
-    rm_seed: &[u8],
-) -> (Vec<u8>, SharedSecret) {
+pub fn encapsulate<P: NtruParams>(ek: &PublicKey<P>, rm_seed: &[u8]) -> (Vec<u8>, SharedSecret) {
     let n = P::N;
-    assert_eq!(rm_seed.len(), P::SAMPLE_RM_BYTES, "encapsulation seed length");
+    assert_eq!(
+        rm_seed.len(),
+        P::SAMPLE_RM_BYTES,
+        "encapsulation seed length"
+    );
 
     let (r, m) = if P::HPS {
         (
@@ -408,10 +410,7 @@ macro_rules! instantiate_ntru {
             }
 
             /// NTRU decapsulation with implicit rejection.
-            pub fn decapsulate(
-                dk: &SecretKey<super::params::$params>,
-                ct: &[u8],
-            ) -> SharedSecret {
+            pub fn decapsulate(dk: &SecretKey<super::params::$params>, ct: &[u8]) -> SharedSecret {
                 super::decapsulate::<super::params::$params>(dk, ct)
             }
         }
@@ -426,4 +425,3 @@ instantiate_ntru!(ntruhrss701, NtruHrss701, "ntruhrss701.");
 
 #[cfg(test)]
 mod tests;
-

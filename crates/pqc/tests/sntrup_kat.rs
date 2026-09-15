@@ -72,11 +72,19 @@ fn run_case<P: SntrupParams>(
     }
     let (ct, ss) = sntrup::encapsulate::<P>(&pk, &r_random);
     assert_eq!(ct, expected.2.as_slice(), "{set} count {count}: ct");
-    assert_eq!(ss.as_bytes(), expected.3.as_slice(), "{set} count {count}: ss");
+    assert_eq!(
+        ss.as_bytes(),
+        expected.3.as_slice(),
+        "{set} count {count}: ss"
+    );
 
     // dec: re-derives the same shared secret.
     let ss2 = sntrup::decapsulate::<P>(&sk, &ct);
-    assert_eq!(ss2.as_bytes(), expected.3.as_slice(), "{set} count {count}: decaps");
+    assert_eq!(
+        ss2.as_bytes(),
+        expected.3.as_slice(),
+        "{set} count {count}: decaps"
+    );
 }
 
 fn run_set(set: &str) {

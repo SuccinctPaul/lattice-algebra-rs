@@ -41,12 +41,24 @@ fn run_case<P: FrodoParams>(
     let mut mu = vec![0u8; P::MU_BYTES];
     drbg.fill(&mut mu);
     let (ct, ss) = frodo::encapsulate::<P>(&pk, &mu);
-    assert_eq!(ct.as_bytes(), expected.2.as_slice(), "{set} count {count}: ct");
-    assert_eq!(ss.as_bytes(), expected.3.as_slice(), "{set} count {count}: ss");
+    assert_eq!(
+        ct.as_bytes(),
+        expected.2.as_slice(),
+        "{set} count {count}: ct"
+    );
+    assert_eq!(
+        ss.as_bytes(),
+        expected.3.as_slice(),
+        "{set} count {count}: ss"
+    );
 
     // dec: re-derives the same shared secret.
     let ss2 = frodo::decapsulate::<P>(&sk, &ct);
-    assert_eq!(ss2.as_bytes(), expected.3.as_slice(), "{set} count {count}: decaps");
+    assert_eq!(
+        ss2.as_bytes(),
+        expected.3.as_slice(),
+        "{set} count {count}: decaps"
+    );
 }
 
 fn run_set(set: &str) {

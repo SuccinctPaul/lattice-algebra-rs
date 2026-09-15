@@ -87,7 +87,12 @@ fn aes256_encrypt_block(key: &[u8; 32], block: &[u8; 16]) -> [u8; 16] {
             }
         }
         for c in 0..4 {
-            let col = [state[4 * c], state[4 * c + 1], state[4 * c + 2], state[4 * c + 3]];
+            let col = [
+                state[4 * c],
+                state[4 * c + 1],
+                state[4 * c + 2],
+                state[4 * c + 3],
+            ];
             let dbl = [xtime(col[0]), xtime(col[1]), xtime(col[2]), xtime(col[3])];
             state[4 * c] = dbl[0] ^ xtime(col[1]) ^ col[1] ^ col[2] ^ col[3];
             state[4 * c + 1] = col[0] ^ dbl[1] ^ xtime(col[2]) ^ col[2] ^ col[3];
@@ -130,10 +135,7 @@ impl Drbg {
         let mut temp = [0u8; 48];
         for i in 0..3 {
             drbg.increment_v();
-            temp[16 * i..16 * (i + 1)].copy_from_slice(&aes256_encrypt_block(
-                &drbg.key,
-                &drbg.v,
-            ));
+            temp[16 * i..16 * (i + 1)].copy_from_slice(&aes256_encrypt_block(&drbg.key, &drbg.v));
         }
         for i in 0..48 {
             temp[i] ^= entropy_input[i];
@@ -168,10 +170,7 @@ impl Drbg {
         let mut temp = [0u8; 48];
         for i in 0..3 {
             self.increment_v();
-            temp[16 * i..16 * (i + 1)].copy_from_slice(&aes256_encrypt_block(
-                &self.key,
-                &self.v,
-            ));
+            temp[16 * i..16 * (i + 1)].copy_from_slice(&aes256_encrypt_block(&self.key, &self.v));
         }
         self.key.copy_from_slice(&temp[..32]);
         self.v.copy_from_slice(&temp[32..]);

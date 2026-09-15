@@ -6,7 +6,9 @@ use super::*;
 /// Deterministic pseudo-random byte fill (round-trip tests don't need
 /// statistical randomness — only independence between test cases).
 fn fresh_bytes(tag: u8, len: usize) -> Vec<u8> {
-    (0..len).map(|i| tag.wrapping_mul(31).wrapping_add(i as u8)).collect()
+    (0..len)
+        .map(|i| tag.wrapping_mul(31).wrapping_add(i as u8))
+        .collect()
 }
 
 macro_rules! frodo_roundtrip_tests {

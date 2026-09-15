@@ -28,7 +28,7 @@ pub use params::{
     Frodo1344, Frodo1344Shake, Frodo640, Frodo640Shake, Frodo976, Frodo976Shake, FrodoParams,
 };
 
-use sha3::digest::{ExtendableOutput, XofReader, Update};
+use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::{Shake128, Shake256};
 use std::marker::PhantomData;
 
@@ -126,14 +126,7 @@ fn expand_a<P: FrodoParams>(seed_a: &[u8; 16]) -> Vec<u16> {
 /// `frodo_mul_add_as_plus_e`: `B = A·s + e` where `A` is row-indexed
 /// `A[i·n + j]`, `s` is read transposed as `s[k·n + j]` (`n̄ × n`), and
 /// `e`/`B` are `n × n̄` row-major. All sums wrap mod 2¹⁶.
-fn mul_add_as_plus_e(
-    b: &mut [u16],
-    a: &[u16],
-    s: &[u16],
-    e: &[u16],
-    nbar: usize,
-    n: usize,
-) {
+fn mul_add_as_plus_e(b: &mut [u16], a: &[u16], s: &[u16], e: &[u16], nbar: usize, n: usize) {
     b.copy_from_slice(e);
     for i in 0..n {
         for k in 0..nbar {
@@ -178,7 +171,15 @@ fn mul_bs(out: &mut [u16], b: &[u16], s: &[u16], nbar: usize, n: usize, logq: u3
 
 /// `frodo_mul_add_sb_plus_e`: `V = s·b + e` with `s` transposed
 /// (`s[k·n + j]`), `b` as `n × n̄`, result mod q.
-fn mul_add_sb_plus_e(out: &mut [u16], b: &[u16], s: &[u16], e: &[u16], nbar: usize, n: usize, logq: u32) {
+fn mul_add_sb_plus_e(
+    out: &mut [u16],
+    b: &[u16],
+    s: &[u16],
+    e: &[u16],
+    nbar: usize,
+    n: usize,
+    logq: u32,
+) {
     let mask = ((1u32 << logq) - 1) as u16;
     for k in 0..nbar {
         for i in 0..nbar {
@@ -307,7 +308,8 @@ impl<P: FrodoParams> SecretKey<P> {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(P::DK_BYTES);
         out.extend_from_slice(&self.s);
-        out.extend_from_slice(&self.pk.to_bytes());        for &v in &self.s_mat {
+        out.extend_from_slice(&self.pk.to_bytes());
+        for &v in &self.s_mat {
             out.extend_from_slice(&v.to_le_bytes());
         }
         out.extend_from_slice(&self.pkh);
@@ -441,10 +443,7 @@ pub fn keygen<P: FrodoParams>(
 
 /// FrodoKEM encapsulation with fresh encapsulation randomness `mu`
 /// (`EXTRACTED_BITS·n̄²/8` bytes — the reference's `randombytes(mu)`).
-pub fn encapsulate<P: FrodoParams>(
-    ek: &PublicKey<P>,
-    mu: &[u8],
-) -> (Ciphertext, SharedSecret) {
+pub fn encapsulate<P: FrodoParams>(ek: &PublicKey<P>, mu: &[u8]) -> (Ciphertext, SharedSecret) {
     assert_eq!(mu.len(), P::MU_BYTES, "mu length");
     let nbar = P::NBAR;
     let pk_bytes = ek.to_bytes();
@@ -627,7 +626,11 @@ macro_rules! instantiate_frodo {
 
 instantiate_frodo!(frodo640, Frodo640, "FrodoKEM-640 (matrix `A` via AES128).");
 instantiate_frodo!(frodo976, Frodo976, "FrodoKEM-976 (matrix `A` via AES128).");
-instantiate_frodo!(frodo1344, Frodo1344, "FrodoKEM-1344 (matrix `A` via AES128).");
+instantiate_frodo!(
+    frodo1344,
+    Frodo1344,
+    "FrodoKEM-1344 (matrix `A` via AES128)."
+);
 instantiate_frodo!(
     frodo640_shake,
     Frodo640Shake,
@@ -646,4 +649,3 @@ instantiate_frodo!(
 
 #[cfg(test)]
 mod tests;
-

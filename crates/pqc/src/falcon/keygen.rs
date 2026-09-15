@@ -1622,7 +1622,7 @@ fn solve_ntru_binary_depth0(logn: u32, f: &[i8], g: &[i8], tmp: &mut [u32]) -> b
 /// small polynomials (F, G) given small (f, g): descend to the deepest
 /// level (resultants + Bézout), lift back up (intermediate levels, then
 /// the two binary levels), convert to i8 within ±lim and verify the NTRU
-/// equation mod PRIMES[0] before accepting.
+/// equation mod `PRIMES[0]` before accepting.
 #[allow(clippy::too_many_arguments)]
 pub fn solve_ntru(
     logn: u32,

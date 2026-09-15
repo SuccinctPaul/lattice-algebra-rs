@@ -25,8 +25,7 @@ pub trait SntrupParams: 'static {
     const SMALL_BYTES: usize = Self::P.div_ceil(4);
 
     /// Secret key: `f ‖ ginv ‖ pk ‖ rho ‖ hash(pk)`.
-    const SECRETKEY_BYTES: usize =
-        2 * Self::SMALL_BYTES + Self::RQ_BYTES + Self::SMALL_BYTES + 32;
+    const SECRETKEY_BYTES: usize = 2 * Self::SMALL_BYTES + Self::RQ_BYTES + Self::SMALL_BYTES + 32;
     /// Ciphertext: rounded polynomial + 32-byte confirmation.
     const CIPHERTEXT_BYTES: usize = Self::ROUNDED_BYTES + 32;
 }

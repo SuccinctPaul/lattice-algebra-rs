@@ -2,7 +2,7 @@
 
 How the lattice NIST schemes land **directly** on the base library — all of it inside the `lattice-pqc` crate (`pqc::mlkem`, `pqc::mldsa`, `pqc::falcon`), built on `lattice-algebra` (plus `sha3` for the fixed-length FIPS hashes): every specification step maps to a base API, and schemes reduce to *parameter tables + call order + packing rules*. Falcon is the one exception — a verbatim port of the round-3 reference implementation in self-contained sub-modules.
 
-> Scope: KEM = ML-KEM (FIPS 203, **implemented**); signatures = ML-DSA (FIPS 204, **implemented**) + Falcon/FN-DSA (FIPS 206 draft, **implemented** against the round-3 spec — reference-anchored until the FIPS 206 freeze; **no stable release before then**). SLH-DSA (FIPS 205) is hash-based, not lattice — out of scope.
+> Scope: KEM = ML-KEM (FIPS 203, **implemented**) + the round-3 alternates FrodoKEM and NTRU / Streamlined NTRU Prime (**implemented**, verbatim reference ports); signatures = ML-DSA (FIPS 204, **implemented**) + Falcon/FN-DSA (FIPS 206 draft, **implemented** against the round-3 spec — reference-anchored until the FIPS 206 freeze; **no stable release before then**). SLH-DSA (FIPS 205) is hash-based, not lattice — out of scope; HQC (the 2025 backup-KEM selection) is code-based — also out of lattice scope.
 
 ## Scheme → base dependency graph
 
@@ -114,8 +114,56 @@ Acceptance (all green in CI):
 > release ships before the FIPS 206 freeze**. See the
 > [roadmap](/roadmap) (M5) and [security status](/introduction/security-status).
 
+## Round-3 alternates — FrodoKEM / NTRU / sntrup — implemented (verbatim reference ports)
+
+The three NIST round-3 **lattice** alternates round out the KEM line as
+verbatim ports of their submissions' reference implementations, each
+byte-exact with the official round-3 submission KAT vectors. All three
+follow the same API discipline as `mlkem`: explicit randomness inputs
+shaped exactly like the reference's DRBG draws, and implicit rejection.
+
+### FrodoKEM (`pqc::frodo`) — LWE, no NTT
+
+| API | Notes |
+| --- | --- |
+| `keygen(s, seedSE, z)` | the reference's 2·SS + 16-byte keygen draw, split as the reference lays it out (`s`/`seedSE` are `CRYPTO_BYTES`, `z` is 16) |
+| `encapsulate(ek, mu)` | `EXTRACTED_BITS·n̄²/8`-byte fresh randomness |
+| `decapsulate(dk, ct)` | constant-time `ct_verify`/`ct_select`; wrong length → `SHAKE(ct ‖ s)` |
+
+Per-set modules `frodo640/976/1344` plus `_shake` variants: the submission
+defines two matrix-`A` generations (AES128 default, SHAKE128 alternative)
+and per-set XOFs (`SHAKE128` for 640, `SHAKE256` for 976/1344). The crate
+embeds a minimal FIPS-197 AES-128 for the `A` expansion. KAT: 18 bundles
+(3 sizes × 2 variants × 3 counts) byte-exact.
+
+### NTRU (`pqc::ntru`) — product-form secrets, OWCPA + PRF rejection
+
+| API | Notes |
+| --- | --- |
+| `keygen(seed, prf_key)` | `SAMPLE_FG_BYTES` (HPS: iid + fixed-type; HRSS: `sample_iid_plus` ×2) + the 32-byte implicit-rejection PRF key |
+| `encapsulate(pk, rm_seed)` | `SAMPLE_RM_BYTES` for `(r, m)`; session key = `SHA3-256(rm)` |
+| `decapsulate(sk, ct)` | `owcpa_dec` message-space checks (`check_r`/`check_m`, unused-bit check) — no re-encryption needed per [Sch18] Prop. 1; failure → `SHA3-256(PRF ‖ ct)` |
+
+All five round-3 sets (`ntruhps2048677/2048821/4096821/40961229`,
+`ntruhrss701`). KAT: the official KAT directory covers
+hps2048677 / hps4096821 / hrss701 — 9 bundles byte-exact; the other two
+sets share the code path (round-trip tested).
+
+### Streamlined NTRU Prime (`pqc::sntrup`) — the OpenSSH instance
+
+| API | Notes |
+| --- | --- |
+| `keygen(g_random, f_random, rho)` | `g` via `Small_random` (uniform ternary, 30-bit words), `f` via `Short_random`/`Short_fromlist` (weight-`w`), `rho` = one `(p+3)/4`-byte draw; `None` on `R3_recip` failure (caller resamples, like the reference loop) |
+| `encapsulate(pk, r_random)` | `r` via `Short_random`; ct = `Rounded_encode(Round(h·r))` ‖ `HashConfirm` |
+| `decapsulate(sk, ct)` | `Decrypt` forces weight `w` branchlessly; mismatch → `HashSession(1+mask = 0, rho, ct)` |
+
+All six sizes (`sntrup653…1277`; 761 is what OpenSSH deploys). KAT: the
+official `kat_kem.rsp` files cover 761/857/953/1277 — 12 bundles
+byte-exact; 653/1013 ship no official KAT (round-trip tested). The
+companion NTRU-LPRime (`ntrulpr`) variant is not implemented.
+
 ## Cross-cutting
 
 - **Key material hygiene**: ML-DSA's `SigningKey` zeroizes on drop with a redacted `Debug`; the remaining key types are caller-managed byte buffers.
 - **Implicit rejection**: KEM decapsulation failures and signing restarts are indistinguishable by design.
-- **KAT framework**: `tests/acvp_kat.rs`, `tests/acvp_mlkem_kat.rs`, `tests/falcon_kat.rs` + `tests/data/` for the official ACVP and round-3 vectors (provenance and regeneration scripts included), so scheme-level vectors gate every change.
+- **KAT framework**: `tests/acvp_kat.rs`, `tests/acvp_mlkem_kat.rs`, `tests/falcon_kat.rs`, `tests/frodo_kat.rs`, `tests/ntru_kat.rs`, `tests/sntrup_kat.rs` + `tests/data/` for the official ACVP and round-3 vectors (provenance and regeneration scripts included, `scripts/regen-kat.sh` automates the pipeline), so scheme-level vectors gate every change.

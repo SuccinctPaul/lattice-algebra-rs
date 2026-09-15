@@ -87,9 +87,7 @@ pub fn weightw_mask<P: SntrupParams>(r: &[Small]) -> i16 {
 
 /// `Round`: round each coefficient to the nearest multiple of 3.
 pub fn round3<P: SntrupParams>(a: &[Fq]) -> Vec<Fq> {
-    a.iter()
-        .map(|&v| v - f3_freeze(v) as Fq)
-        .collect()
+    a.iter().map(|&v| v - f3_freeze(v) as Fq).collect()
 }
 
 /// `Rq_mult_small`: `h = f·g` with small `g` in `Rq = Z_q[x]/(x^p − x − 1)`.
