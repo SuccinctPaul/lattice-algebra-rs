@@ -113,7 +113,7 @@ const-generic engine is the only path.
 
 | Module | Owns | Status |
 | --- | --- | --- |
-| `crypto::xof` | `Xof` trait + SHAKE128/256; domain-separated, length-encoded absorb; incremental squeeze | ✅ |
+| `crypto::xof` | `Xof` trait + SHAKE128/256; domain-separated, length-encoded absorb; incremental squeeze; one-shot derivation helpers (`shortcuts`: `h256`/`g64`/`prf`/`xof128_2` and the multi-part `shake128_parts`/`shake256_parts` the verbatim reference ports consume) | ✅ |
 | `crypto::sampling` | scheme samplers, XOF-driven and deterministic: uniform over `R_q` (masked rejection, coefficient and NTT domain), `RejBounded(η)` centered uniform (reference-exact for η ∈ {2,4}; constant-time variant `sample_rej_bounded_ct`), `CBD(η)`, `SampleInBall(τ)`, `DiscreteGaussian(σ)` (precomputed CDT; constant-time `sample_ct` inversion) | ✅ (FFT/peikert large-σ Gaussian 📋) |
 | `crypto::ct` | branch-free primitives on secret-dependent data: masked select/comparisons, absolute values, infinity norms, conditional accumulation — exhaustively differential-tested against the scalar forms; scope notes for the residual leaks live in the module docs | ✅ |
 | `security` | Core-SVP concrete-security estimation ([Alk+16] methodology as restated in the Dilithium r3.1 appendix and the NIST QROM evaluation): LWE primal/dual and Lyu12-SIS block sizes, `mldsa_security` scheme report, calibrated against the published 2^124/186/265 figures | ✅ |

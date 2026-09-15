@@ -1,3 +1,4 @@
+#![allow(missing_docs)] // benchmark harness: criterion groups need no API docs
 //! Criterion benchmarks for ML-KEM key generation, encapsulation and
 //! decapsulation across all three parameter sets.
 //!

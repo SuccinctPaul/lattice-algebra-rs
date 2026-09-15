@@ -1,3 +1,4 @@
+#![allow(missing_docs)] // benchmark harness: criterion groups need no API docs
 //! Criterion benchmarks for the algebraic foundation.
 //!
 //! Run with: `cargo bench -p lattice-algebra`

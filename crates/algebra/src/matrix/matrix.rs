@@ -42,8 +42,10 @@ const PARALLEL_THRESHOLD: usize = 32;
 /// `data[i * cols + j]` accesses element at row `i`, column `j`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenericMatrix<T: MatrixElement> {
+    /// Number of rows.
     #[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
     pub rows: usize,
+    /// Number of columns.
     #[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
     pub cols: usize,
     /// Contiguous row-major storage

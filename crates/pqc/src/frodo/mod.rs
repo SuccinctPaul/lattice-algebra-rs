@@ -28,8 +28,7 @@ pub use params::{
     Frodo1344, Frodo1344Shake, Frodo640, Frodo640Shake, Frodo976, Frodo976Shake, FrodoParams,
 };
 
-use sha3::digest::{ExtendableOutput, Update, XofReader};
-use sha3::{Shake128, Shake256};
+use algebra::crypto::xof::shortcuts::{shake128_parts, shake256_parts};
 use std::marker::PhantomData;
 
 // ===========================================================================
@@ -40,17 +39,9 @@ use std::marker::PhantomData;
 /// 976/1344) over concatenated parts.
 fn shake_xof<P: FrodoParams>(input: &[&[u8]], out: &mut [u8]) {
     if P::SHAKE256 {
-        let mut hasher = Shake256::default();
-        for part in input {
-            hasher.update(part);
-        }
-        hasher.finalize_xof().read(out);
+        shake256_parts(input, out);
     } else {
-        let mut hasher = Shake128::default();
-        for part in input {
-            hasher.update(part);
-        }
-        hasher.finalize_xof().read(out);
+        shake128_parts(input, out);
     }
 }
 
@@ -93,9 +84,7 @@ fn expand_a<P: FrodoParams>(seed_a: &[u8; 16]) -> Vec<u16> {
             input[1] = (i >> 8) as u8;
             // The SHAKE-A variant generates rows with fips202 SHAKE128
             // directly (independent of the per-set KEM XOF).
-            let mut hasher = Shake128::default();
-            hasher.update(&input);
-            hasher.finalize_xof().read(&mut row_bytes);
+            shake128_parts(&[&input], &mut row_bytes);
             for (dst, chunk) in row.iter_mut().zip(row_bytes.chunks_exact(2)) {
                 *dst = u16::from_le_bytes([chunk[0], chunk[1]]);
             }

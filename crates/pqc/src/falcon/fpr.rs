@@ -18,9 +18,9 @@ pub type Fpr = u64;
 // Constants (reference fpr.h values, already in encoded form).
 // ------------------------------------------------------------------
 
-// q as a real: 12289.0
+/// The modulus `q` = 12289 as a real.
 pub const FPR_Q: Fpr = 4667981563525332992;
-// 1/q
+/// `1/q` as a real.
 pub const FPR_INVERSE_OF_Q: Fpr = 4545632735260551042;
 /// 1/(2·sigma0²) for sigma0 = 1.8205, the width of the base half-Gaussian.
 pub const FPR_INV_2SQRSIGMA0: Fpr = 4594603506513722306;
@@ -63,23 +63,30 @@ pub const FPR_INV_LOG2: Fpr = 4609176140021203710;
 /// Reference `fpr_bnorm_max` (≈ 16822.4121): key-generation bound on the
 /// orthogonalized (Gram–Schmidt) norm of the (f, g) candidate.
 pub const FPR_BNORM_MAX: Fpr = 4670353323383631276;
+/// Real zero.
 pub const FPR_ZERO: Fpr = 0;
+/// Real one.
 pub const FPR_ONE: Fpr = 4607182418800017408;
+/// Real two.
 pub const FPR_TWO: Fpr = 4611686018427387904;
+/// Real 0.5.
 pub const FPR_ONEHALF: Fpr = 4602678819172646912;
+/// Real `1/√2`.
 pub const FPR_INVSQRT2: Fpr = 4604544271217802189;
+/// Real `1/√8`.
 pub const FPR_INVSQRT8: Fpr = 4600040671590431693;
-// 2^31
+/// Real `2³¹`.
 pub const FPR_PTWO31: Fpr = 4746794007248502784;
-// 2^31 − 1
+/// Real `2³¹ − 1`.
 pub const FPR_PTWO31M1: Fpr = 4746794007244308480;
-// −(2^31 − 1)
+/// Real `−(2³¹ − 1)`.
 pub const FPR_MTWO31M1: Fpr = 13970166044099084288;
-// 2^63 − 1 (rounds to the same binary64 encoding as 2^63: not representable)
+/// Real `2⁶³ − 1` (rounds to the same binary64 encoding as `2^63`:
+/// not representable).
 pub const FPR_PTWO63M1: Fpr = 4890909195324358656;
-// −(2^63 − 1)
+/// Real `−(2⁶³ − 1)`.
 pub const FPR_MTWO63M1: Fpr = 14114281232179134464;
-// 2^63
+/// Real `2⁶³`.
 pub const FPR_PTWO63: Fpr = 4890909195324358656;
 
 // ------------------------------------------------------------------
@@ -528,6 +535,8 @@ pub fn f64_bits(v: f64) -> u64 {
     v.to_bits()
 }
 
+/// Step-by-step trace of an `fpr_add` (the differentially-tested
+/// soft-float addition), for the reference cross-check harness.
 #[cfg(test)]
 pub fn fpr_add_debug(x: Fpr, y: Fpr) -> Vec<String> {
     let mut out = Vec::new();
@@ -574,6 +583,8 @@ pub fn fpr_add_debug(x: Fpr, y: Fpr) -> Vec<String> {
     out
 }
 
+/// Step-by-step trace of an `fpr_rint` round-to-nearest-int, for the
+/// reference cross-check harness.
 #[cfg(test)]
 pub fn fpr_rint_trace(x: Fpr) -> Vec<String> {
     let mut out = Vec::new();

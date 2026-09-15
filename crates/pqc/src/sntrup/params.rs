@@ -32,6 +32,8 @@ pub trait SntrupParams: 'static {
 
 macro_rules! sntrup_params {
     ($name:ident, $p:literal, $q:literal, $w:literal, $rounded:literal, $rq:literal) => {
+        #[doc = concat!("Streamlined NTRU Prime over p = ", stringify!($p),
+                                ", q = ", stringify!($q), " (weight w = ", stringify!($w), ").")]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub struct $name;
         impl SntrupParams for $name {

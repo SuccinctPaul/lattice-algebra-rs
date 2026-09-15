@@ -8,11 +8,12 @@ pub mod poly_ring;
 pub(crate) mod reduction;
 mod sample;
 pub mod traits;
+/// The const-generic scalar ring [`zq::Zq`] and its `rand` support.
 pub mod zq;
 
 pub use traits::*;
 #[cfg(test)]
 mod axiom_tests;
-// Test-only alias; referenced by the axiom and codec tests below.
+/// Test-only alias; referenced by the axiom and codec tests below.
 #[cfg(test)]
 pub type Zq17 = self::zq::Zq<17>;

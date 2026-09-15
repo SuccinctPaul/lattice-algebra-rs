@@ -1,4 +1,5 @@
 #![allow(clippy::module_inception)]
+#![deny(missing_docs)]
 //! L0-L4 algebraic foundation for lattice-based cryptography.
 //!
 //! This crate is the shared substrate that the `lattice-pqc` (NIST PQC
@@ -21,10 +22,15 @@
 //!   order, bit normalization).
 
 pub mod crypto;
+/// Generic matrices/vectors of ring elements with row-major storage.
 pub mod matrix;
 pub mod module;
 pub mod ntt;
+/// Univariate polynomials and sparse challenge polynomials.
 pub mod poly;
 pub mod ring;
 pub mod security;
+/// Small shared bit/byte conversion helpers (little-endian bit order,
+/// bit normalization) kept apart from the FIPS-convention codecs in
+/// [`crate::crypto::bits`].
 pub mod utils;

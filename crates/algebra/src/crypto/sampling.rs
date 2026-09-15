@@ -37,6 +37,8 @@ pub struct BitStream<'a, X: Xof> {
 }
 
 impl<'a, X: Xof> BitStream<'a, X> {
+    /// Wraps an XOF output stream for bit-by-bit consumption (LSB-first
+    /// within each squeezed byte).
     pub fn new(xof: &'a mut X) -> Self {
         Self {
             xof,

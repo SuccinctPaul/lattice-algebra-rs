@@ -131,15 +131,21 @@ pub trait PolynomialQuotientRing:
     + PartialEq
     + Eq
 {
+    /// The scalar ring the coefficients live in.
     type PolyCoeff: Ring;
 
+    /// The defining modulus `x^DEGREE_BOUND + 1` as a coefficient
+    /// polynomial.
     fn modulus() -> UniPolynomial<Self::PolyCoeff>;
     /// Remove leading zero coefficients
     fn normalize(&mut self);
 
+    /// Draws a uniformly random polynomial of the given degree (debug and
+    /// generic paths; scheme sampling lives in `crypto::sampling`).
     fn rand(rng: &mut impl rand::RngCore, degree: usize) -> Self;
 
-    // generate a random PolyRing with default degree 'n', aka the bound degree.
+    /// Draws a uniformly random polynomial at the type's default bound
+    /// degree (`DEGREE_BOUND − 1`).
     // TODO: Does it need to export the BOUND_DGREE in trait?
     fn rand_with_bound_degree(rng: &mut impl rand::RngCore) -> Self;
 

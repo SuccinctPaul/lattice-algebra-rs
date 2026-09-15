@@ -23,8 +23,9 @@ pub mod params;
 
 pub use params::{MlKem1024, MlKem512, MlKem768, MlKemParams, N, Q};
 
-use sha3::digest::{Digest, ExtendableOutput, XofReader};
-use sha3::{Sha3_256, Sha3_512, Shake256};
+use algebra::crypto::xof::shortcuts::shake256_parts;
+use sha3::digest::Digest;
+use sha3::{Sha3_256, Sha3_512};
 use std::marker::PhantomData;
 
 use algebra::crypto::xof::Shake128Xof;
@@ -58,12 +59,7 @@ fn hash_g(parts: &[&[u8]]) -> ([u8; 32], [u8; 32]) {
 
 /// SHAKE-256 squeeze over concatenated parts (shared by `PRF` and `J`).
 fn shake256_squeeze(parts: &[&[u8]], out: &mut [u8]) {
-    use sha3::digest::Update;
-    let mut hasher = Shake256::default();
-    for part in parts {
-        hasher.update(part);
-    }
-    hasher.finalize_xof().read(out);
+    shake256_parts(parts, out);
 }
 
 /// `PRF_η(s, b) = SHAKE256(s ‖ bytes(b))`, squeezed to `out_len` bytes
@@ -126,12 +122,15 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// K-PKE public key: `t̂` (NTT domain) and the matrix seed `ρ`.
 pub struct KpkePublicKey {
+    /// NTT-domain row vectors `t̂_i` of the LWE sample `t = Â·s + e`.
     pub t_hat: Vec<[u64; N]>,
+    /// The matrix seed `ρ`.
     pub rho: [u8; 32],
 }
 
 /// K-PKE secret key: `ŝ` in the NTT domain.
 pub struct KpkeSecretKey {
+    /// NTT-domain secret row vectors `ŝ_i`.
     pub s_hat: Vec<[u64; N]>,
 }
 

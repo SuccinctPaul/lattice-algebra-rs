@@ -44,16 +44,20 @@ impl<const MODULUS: u64> Zq<MODULUS> {
         }
     }
 
+    /// Little-endian 8-byte encoding of the canonical representative.
     pub fn to_le_bytes(&self) -> [u8; 8] {
         self.value.to_le_bytes()
     }
+    /// Rebuilds from a little-endian 8-byte encoding (reduced mod `q`).
     pub fn from_le_bytes(bytes: [u8; 8]) -> Self {
         Self::new(u64::from_le_bytes(bytes))
     }
 
+    /// Big-endian 8-byte encoding of the canonical representative.
     pub fn to_be_bytes(&self) -> [u8; 8] {
         self.value.to_be_bytes()
     }
+    /// Rebuilds from a big-endian 8-byte encoding (reduced mod `q`).
     pub fn from_be_bytes(bytes: [u8; 8]) -> Self {
         Self::new(u64::from_be_bytes(bytes))
     }

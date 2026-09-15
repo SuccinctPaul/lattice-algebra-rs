@@ -1,4 +1,5 @@
 #![allow(clippy::module_inception)]
+#![deny(missing_docs)]
 //! Post-quantum cryptography schemes built on the `algebra` foundation
 //! (crate `lattice-algebra`).
 //!

@@ -10,8 +10,8 @@ pub type Small = i8;
 /// Centered `F_q` value.
 pub type Fq = i16;
 
-pub const Q12_SHIFT: fn(u16) -> Fq = |q| ((q - 1) / 2) as Fq;
-
+/// `⌈q/2⌉`-style half-modulus offset (`(q−1)/2`) used for the centered
+/// representatives.
 #[inline]
 pub fn q12<P: SntrupParams>() -> Fq {
     ((P::Q - 1) / 2) as Fq
