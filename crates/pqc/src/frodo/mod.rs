@@ -26,6 +26,8 @@ pub mod params;
 
 pub use params::{
     Frodo1344, Frodo1344Shake, Frodo640, Frodo640Shake, Frodo976, Frodo976Shake, FrodoParams,
+    KemXof, MatrixAExpansion, SEEDSE_ENCAPS_PREFIX, SEEDSE_KEYGEN_PREFIX, SEED_A_BYTES,
+    STRIPE_STEP,
 };
 
 use algebra::crypto::xof::shortcuts::{shake128_parts, shake256_parts};
@@ -38,10 +40,9 @@ use std::marker::PhantomData;
 /// The submission's per-set `shake` (SHAKE128 for 640, SHAKE256 for
 /// 976/1344) over concatenated parts.
 fn shake_xof<P: FrodoParams>(input: &[&[u8]], out: &mut [u8]) {
-    if P::SHAKE256 {
-        shake256_parts(input, out);
-    } else {
-        shake128_parts(input, out);
+    match P::XOF {
+        KemXof::Shake128 => shake128_parts(input, out),
+        KemXof::Shake256 => shake256_parts(input, out),
     }
 }
 
@@ -72,43 +73,46 @@ fn sample_n(s: &mut [u16], cdf: &[u16]) {
 /// Expand the public matrix `A` (`n × n`, full 16-bit entries):
 /// AES mode packs the index pairs into a buffer and encrypts it with
 /// AES128-ECB; SHAKE mode derives each row from `SHAKE128(i ‖ seed_A)`.
-fn expand_a<P: FrodoParams>(seed_a: &[u8; 16]) -> Vec<u16> {
+fn expand_a<P: FrodoParams>(seed_a: &[u8; SEED_A_BYTES]) -> Vec<u16> {
     let n = P::N;
-    if P::SHAKE_A {
-        let mut out = vec![0u16; n * n];
-        let mut row_bytes = vec![0u8; 2 * n];
-        let mut input = [0u8; 2 + 16];
-        input[2..].copy_from_slice(seed_a);
-        for (i, row) in out.chunks_mut(n).enumerate() {
-            input[0] = i as u8;
-            input[1] = (i >> 8) as u8;
-            // The SHAKE-A variant generates rows with fips202 SHAKE128
-            // directly (independent of the per-set KEM XOF).
-            shake128_parts(&[&input], &mut row_bytes);
-            for (dst, chunk) in row.iter_mut().zip(row_bytes.chunks_exact(2)) {
-                *dst = u16::from_le_bytes([chunk[0], chunk[1]]);
+    match P::A_MODE {
+        MatrixAExpansion::Shake128 => {
+            let mut out = vec![0u16; n * n];
+            let mut row_bytes = vec![0u8; 2 * n];
+            let mut input = [0u8; 2 + SEED_A_BYTES];
+            input[2..].copy_from_slice(seed_a);
+            for (i, row) in out.chunks_mut(n).enumerate() {
+                input[0] = i as u8;
+                input[1] = (i >> 8) as u8;
+                // The SHAKE-A variant generates rows with fips202 SHAKE128
+                // directly (independent of the per-set KEM XOF).
+                shake128_parts(&[&input], &mut row_bytes);
+                for (dst, chunk) in row.iter_mut().zip(row_bytes.chunks_exact(2)) {
+                    *dst = u16::from_le_bytes([chunk[0], chunk[1]]);
+                }
             }
+            out
         }
-        out
-    } else {
-        // Index buffer: every PARAMS_STRIPE_STEP-th pair holds (i, j),
-        // little-endian, everything else zero — then ECB-encrypt in place.
-        let mut buf = vec![0u8; 2 * n * n];
-        for i in 0..n {
-            for j in (0..n).step_by(8) {
-                buf[2 * (i * n + j)] = i as u8;
-                buf[2 * (i * n + j) + 1] = (i >> 8) as u8;
-                buf[2 * (i * n + j + 1)] = j as u8;
-                buf[2 * (i * n + j + 1) + 1] = (j >> 8) as u8;
+        MatrixAExpansion::Aes128 => {
+            // Index buffer: every STRIPE_STEP-th pair holds (i, j),
+            // little-endian, everything else zero — then ECB-encrypt in place.
+            let mut buf = vec![0u8; 2 * n * n];
+            for i in 0..n {
+                for j in (0..n).step_by(STRIPE_STEP) {
+                    buf[2 * (i * n + j)] = i as u8;
+                    buf[2 * (i * n + j) + 1] = (i >> 8) as u8;
+                    buf[2 * (i * n + j + 1)] = j as u8;
+                    buf[2 * (i * n + j + 1) + 1] = (j >> 8) as u8;
+                }
             }
+            for block in buf.chunks_exact_mut(16) {
+                let pt: [u8; 16] = block.try_into().expect("16-byte block");
+                block.copy_from_slice(&aes::encrypt_block(seed_a, &pt));
+            }
+            buf.chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect()
         }
-        for block in buf.chunks_exact_mut(16) {
-            let pt: [u8; 16] = block.try_into().expect("16-byte block");
-            block.copy_from_slice(&aes::encrypt_block(seed_a, &pt));
-        }
-        buf.chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
-            .collect()
     }
 }
 
@@ -193,7 +197,7 @@ fn shake_sample_block<P: FrodoParams>(prefix: u8, seed: &[u8], words: usize) -> 
 }
 
 /// Sample `S`, `E` from the seeded block: `(S ‖ E) =
-/// sample(SHAKE128(0x5F ‖ seedSE))` (keygen) — the reference samples the
+/// sample(shake(SEEDSE_KEYGEN_PREFIX ‖ seedSE))` (keygen) — the reference samples the
 /// first `n·n̄` raw words, then the following `n·n̄`.
 fn split_and_sample_se<P: FrodoParams>(raw: &mut [u16], se_len: usize) -> (Vec<u16>, Vec<u16>) {
     let mut s = raw[..se_len].to_vec();
@@ -211,7 +215,7 @@ fn split_and_sample_se<P: FrodoParams>(raw: &mut [u16], se_len: usize) -> (Vec<u
 /// FrodoKEM public key: the 16-byte `seed_A` plus the `n × n̄` matrix `B`
 /// (values in `[0, q)`).
 pub struct PublicKey<P: FrodoParams> {
-    seed_a: [u8; 16],
+    seed_a: [u8; SEED_A_BYTES],
     b: Vec<u16>,
     _p: PhantomData<P>,
 }
@@ -243,7 +247,7 @@ impl<P: FrodoParams> PublicKey<P> {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(P::EK_BYTES);
         out.extend_from_slice(&self.seed_a);
-        let mut packed = vec![0u8; P::EK_BYTES - 16];
+        let mut packed = vec![0u8; P::EK_BYTES - SEED_A_BYTES];
         encoding::pack(&mut packed, &self.b, P::LOGQ);
         out.extend_from_slice(&packed);
         out
@@ -255,8 +259,8 @@ impl<P: FrodoParams> PublicKey<P> {
         if bytes.len() != P::EK_BYTES {
             return None;
         }
-        let mut seed_a = [0u8; 16];
-        seed_a.copy_from_slice(&bytes[..16]);
+        let mut seed_a = [0u8; SEED_A_BYTES];
+        seed_a.copy_from_slice(&bytes[..SEED_A_BYTES]);
         let mut b = vec![0u16; P::N * P::NBAR];
         encoding::unpack(&mut b, &bytes[16..], P::LOGQ);
         Some(Self {
@@ -391,14 +395,14 @@ pub fn keygen<P: FrodoParams>(
     // and `seedSE` are SS bytes each, `z` is the 16-byte seed_A entropy.
     assert_eq!(s.len(), P::SS_BYTES, "recovery-secret length");
     assert_eq!(seed_se.len(), P::SS_BYTES, "seedSE length");
-    // seed_A = SHAKE128(z).
-    let mut seed_a = [0u8; 16];
+    // seed_A = shake(z).
+    let mut seed_a = [0u8; SEED_A_BYTES];
     shake_xof::<P>(&[z], &mut seed_a);
 
-    // (S ‖ E) ← sample(SHAKE128(0x5F ‖ seedSE)), raw 16-bit draws first.
+    // (S ‖ E) ← sample(shake(SEEDSE_KEYGEN_PREFIX ‖ seedSE)), raw 16-bit draws.
     let nbar = P::NBAR;
     let se_len = P::N * nbar;
-    let mut raw = shake_sample_block::<P>(0x5F, seed_se, 2 * se_len);
+    let mut raw = shake_sample_block::<P>(SEEDSE_KEYGEN_PREFIX, seed_se, 2 * se_len);
     let (s_mat, e) = split_and_sample_se::<P>(&mut raw, se_len);
 
     // B = A·s + e (S read transposed), reduced to the low LOGQ bits —
@@ -445,9 +449,9 @@ pub fn encapsulate<P: FrodoParams>(ek: &PublicKey<P>, mu: &[u8]) -> (Ciphertext,
     let seed_se = g2[..P::SS_BYTES].to_vec();
     let k = g2[P::SS_BYTES..].to_vec();
 
-    // (Sp ‖ Ep ‖ Epp) ← sample(SHAKE128(0x96 ‖ seedSE)).
+    // (Sp ‖ Ep ‖ Epp) ← sample(shake(SEEDSE_ENCAPS_PREFIX ‖ seedSE)).
     let se_len = P::N * nbar;
-    let raw = shake_sample_block::<P>(0x96, &seed_se, 2 * se_len + nbar * nbar);
+    let raw = shake_sample_block::<P>(SEEDSE_ENCAPS_PREFIX, &seed_se, 2 * se_len + nbar * nbar);
     let cdf = P::CDF;
     let mut sp = raw[..se_len].to_vec();
     let mut ep = raw[se_len..2 * se_len].to_vec();
@@ -521,7 +525,7 @@ pub fn decapsulate<P: FrodoParams>(dk: &SecretKey<P>, ct: &Ciphertext) -> Shared
 
     // Recompute B' and C from (Sp', Ep', Epp').
     let cdf = P::CDF;
-    let raw = shake_sample_block::<P>(0x96, &seed_se, 2 * se_len + nbar * nbar);
+    let raw = shake_sample_block::<P>(SEEDSE_ENCAPS_PREFIX, &seed_se, 2 * se_len + nbar * nbar);
     let mut sp = raw[..se_len].to_vec();
     let mut ep = raw[se_len..2 * se_len].to_vec();
     let mut epp = raw[2 * se_len..].to_vec();

@@ -174,16 +174,17 @@ fn owcpa_keypair<P: NtruParams>(seed: &[u8]) -> (Vec<u8>, Vec<u8>) {
     poly::z3_to_zq::<P>(&mut g);
 
     // HPS: g ← 3·g;  HRSS: g ← 3·(x−1)·g.
+    let p3 = P::PLAINTEXT_MODULUS;
     if P::HPS {
         for c in g.iter_mut() {
-            *c = 3u16.wrapping_mul(*c);
+            *c = p3.wrapping_mul(*c);
         }
     } else {
         let old = g.to_vec();
         for i in (1..n).rev() {
-            g[i] = 3u16.wrapping_mul(old[i - 1].wrapping_sub(old[i]));
+            g[i] = p3.wrapping_mul(old[i - 1].wrapping_sub(old[i]));
         }
-        g[0] = 3u16.wrapping_mul(old[0]).wrapping_neg();
+        g[0] = p3.wrapping_mul(old[0]).wrapping_neg();
     }
 
     let gf = poly::rq_mul::<P>(&g, &f);

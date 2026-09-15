@@ -160,9 +160,12 @@ fn hash_prefix(b: u8, input: &[&[u8]]) -> [u8; 32] {
 // Core
 // ===========================================================================
 
+/// One `urandom32()` draw consumes 4 bytes.
+const URANDOM32_BYTES: usize = 4;
+
 /// `urandom32` byte stream → `p` little-endian `u32` words.
 fn urandom_words<P: SntrupParams>(random: &[u8]) -> Vec<u32> {
-    assert_eq!(random.len(), 4 * P::P, "randomness length");
+    assert_eq!(random.len(), URANDOM32_BYTES * P::P, "randomness length");
     random
         .chunks_exact(4)
         .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
