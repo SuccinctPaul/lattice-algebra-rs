@@ -39,9 +39,12 @@
 //! [`approx_slack_bound`] per coefficient — the mechanism full LaBRADOR
 //! recursion uses to keep opened values short.
 
-use crate::protocols::z2_ring::{matrix_from_seed, ring_from_u32, ring_to_u32, Z2Ring, D};
+use crate::encoding::ring_to_u32;
+use crate::fs::absorb_rings;
+use crate::protocols::z2_ring::{Z2Coeff, Z2Ring, D};
+use crate::sampling::{nonunit_linear_poly, uniform_matrix_from_seed, uniform_vec_from_seed};
 use algebra::crypto::transcript::Transcript;
-use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
 
 /// Ajtai key for the IPA (`A_com ∈ R^{N×M}`).
@@ -54,7 +57,7 @@ impl<const N: usize, const M: usize> IpaKey<N, M> {
     /// Derives the key from a seed.
     pub fn setup(seed: &[u8; 32]) -> Self {
         Self {
-            a: matrix_from_seed(seed, N, M),
+            a: uniform_matrix_from_seed::<Z2Coeff, D>(b"", seed, N, M),
         }
     }
 
@@ -93,47 +96,17 @@ pub struct IpaProof<const N: usize> {
     pub t_star: Z2Ring,
 }
 
-fn u32s_to_bytes(v: &[u32]) -> Vec<u8> {
-    v.iter().flat_map(|x| x.to_le_bytes()).collect()
-}
-
 fn challenges(key_seed: &[u8; 32], c: &[Z2Ring], u: &[Z2Ring], d: &[Z2Ring]) -> (Z2Ring, Z2Ring) {
     let mut tr = Transcript::<Shake128Xof>::new(b"lattice-algebra/Z3/ipa");
     tr.absorb(b"key", key_seed);
-    for v in c {
-        tr.absorb(b"c", &u32s_to_bytes(&ring_to_u32(v)));
-    }
-    for v in u {
-        tr.absorb(b"u", &u32s_to_bytes(&ring_to_u32(v)));
-    }
-    for v in d {
-        tr.absorb(b"d", &u32s_to_bytes(&ring_to_u32(v)));
-    }
+    absorb_rings(&mut tr, b"c", c);
+    absorb_rings(&mut tr, b"u", u);
+    absorb_rings(&mut tr, b"d", d);
     let seed = tr.challenge_bytes(64);
-    let mut xof = Shake128Xof::new(&[]);
-    xof.absorb(b"X");
-    xof.absorb(&seed);
     // C = X − a with a odd: a true non-unit (see the module soundness notes).
-    let mut buf = [0u8; 4];
-    xof.squeeze(&mut buf);
-    let a = u32::from_le_bytes(buf) | 1;
-    let mut coeffs = [0u32; D];
-    coeffs[0] = a.wrapping_neg();
-    coeffs[1] = 1;
-    let x = ring_from_u32(&coeffs);
-
-    let mut xof2 = Shake128Xof::new(&[]);
-    xof2.absorb(b"gamma");
-    xof2.absorb(&seed);
-    let gamma = ring_from_u32(&{
-        let mut cc = [0u32; D];
-        let mut b2 = [0u8; 4];
-        for c in &mut cc {
-            xof2.squeeze(&mut b2);
-            *c = u32::from_le_bytes(b2);
-        }
-        cc
-    });
+    let x =
+        nonunit_linear_poly::<Z2Coeff, Shake128Xof, D>(&mut crate::fs::seed_stream(b"X", &seed));
+    let gamma = crate::sampling::uniform_ring_from_seed::<Z2Coeff, D>(b"gamma", &seed);
     (x, gamma)
 }
 
@@ -230,26 +203,15 @@ pub fn approx_slack_bound(drop: u32) -> i64 {
 }
 
 fn mask_ring<const M: usize>(seed: &[u8; 32]) -> Vec<Z2Ring> {
-    let mut xof = Shake128Xof::new(&[]);
-    xof.absorb(b"ipa-mask");
-    xof.absorb(seed);
-    (0..M)
-        .map(|_| {
-            let mut coeffs = [0u32; D];
-            let mut buf = [0u8; 4];
-            for c in &mut coeffs {
-                xof.squeeze(&mut buf);
-                *c = u32::from_le_bytes(buf);
-            }
-            ring_from_u32(&coeffs)
-        })
-        .collect()
+    uniform_vec_from_seed::<Z2Coeff, D>(b"ipa-mask", seed, M)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::encoding::ring_from_u32;
     use crate::protocols::z2_ring::D;
+    use algebra::crypto::xof::Xof;
 
     /// Soundness regression mirroring Z2's: a false inner-product claim
     /// (v ≠ ⟨α, u⟩) with a honestly-shaped binding link must be rejected —

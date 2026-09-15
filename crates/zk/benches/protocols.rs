@@ -1,3 +1,4 @@
+#![allow(missing_docs)] // benchmark harness: criterion groups need no API docs
 //! Criterion benchmarks for the ZK protocol stack: Σ-protocol NIZK (Z1),
 //! batched ring opening (Z2), multilinear sumcheck (Z3) and folding (Z4).
 //!
@@ -10,12 +11,13 @@ use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use zk::encoding::ring_from_u32;
 use zk::protocols::commitment::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
 use zk::protocols::fold::{fold, verify_folded, FoldKey, RelaxedInstance};
 use zk::protocols::sigma::{fs_prove, fs_verify};
 use zk::protocols::sumcheck;
 use zk::protocols::z2::{prove, verify, Z2CommitKey};
-use zk::protocols::z2_ring::{gen_toy_instance, ring_from_u32};
+use zk::protocols::z2_ring::gen_toy_instance;
 
 type Z1Ring = Zq<8380417>;
 const SIGMA_K: usize = 4;

@@ -32,16 +32,12 @@
 //! IVC prover chains folds; every folded instance is checkable by
 //! [`verify_folded`].
 
-use crate::protocols::z2_ring::{
-    map_over_gates, matrix_from_seed, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring, D,
-};
+use crate::fs::absorb_rings;
+use crate::protocols::z2_ring::{map_over_gates, ToyR1cs, Z2Coeff, Z2Ring, D};
+use crate::sampling::{uniform_matrix_from_seed, uniform_ring_from_seed};
 use algebra::crypto::transcript::Transcript;
-use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
-
-fn u32s_to_bytes(v: &[u32]) -> Vec<u8> {
-    v.iter().flat_map(|x| x.to_le_bytes()).collect()
-}
 
 /// Commitment key for the folded layer: `A_z ∈ R^{N×M}` covers both the
 /// witness and the quadratic product vector.
@@ -54,15 +50,11 @@ pub struct FoldKey<const N: usize, const M: usize, const GATES: usize> {
 }
 
 impl<const N: usize, const M: usize, const GATES: usize> FoldKey<N, M, GATES> {
-    /// Derives both matrices from one seed (independent labels).
+    /// Derives both matrices from one seed (independent domain labels).
     pub fn setup(seed: &[u8; 32]) -> Self {
-        let mut z_seed = *seed;
-        let mut q_seed = *seed;
-        z_seed[0] ^= 0xA5;
-        q_seed[0] ^= 0xE5;
         Self {
-            a_z: matrix_from_seed(&z_seed, N, M),
-            a_e: matrix_from_seed(&q_seed, N, GATES),
+            a_z: uniform_matrix_from_seed::<Z2Coeff, D>(b"fold-az", seed, N, M),
+            a_e: uniform_matrix_from_seed::<Z2Coeff, D>(b"fold-ae", seed, N, GATES),
         }
     }
 
@@ -148,41 +140,12 @@ pub fn fold_challenge<const M: usize, const GATES: usize>(
     let mut tr = Transcript::<Shake128Xof>::new(b"lattice-algebra/Z4/fold");
     tr.absorb(b"key00000000000000000000000000000", key_seed);
     tr.absorb(b"r1cs0000000000000000000000000000", r1cs_seed);
-    for v in &inst1.c_z {
-        tr.absorb(
-            b"cz100000000000000000000000000000",
-            &u32s_to_bytes(&ring_to_u32(v)),
-        );
-    }
-    for v in &inst1.c_e {
-        tr.absorb(
-            b"cq100000000000000000000000000000",
-            &u32s_to_bytes(&ring_to_u32(v)),
-        );
-    }
-    for v in &inst2.c_z {
-        tr.absorb(
-            b"cz200000000000000000000000000000",
-            &u32s_to_bytes(&ring_to_u32(v)),
-        );
-    }
-    for v in &inst2.c_e {
-        tr.absorb(
-            b"cq200000000000000000000000000000",
-            &u32s_to_bytes(&ring_to_u32(v)),
-        );
-    }
+    absorb_rings(&mut tr, b"cz100000000000000000000000000000", &inst1.c_z);
+    absorb_rings(&mut tr, b"cq100000000000000000000000000000", &inst1.c_e);
+    absorb_rings(&mut tr, b"cz200000000000000000000000000000", &inst2.c_z);
+    absorb_rings(&mut tr, b"cq200000000000000000000000000000", &inst2.c_e);
     let seed = tr.challenge_bytes(32);
-    let mut xof = Shake128Xof::new(&[]);
-    xof.absorb(b"fold-r00000000000000000000000000");
-    xof.absorb(&seed);
-    let mut coeffs = [0u32; D];
-    let mut buf = [0u8; 4];
-    for c in &mut coeffs {
-        xof.squeeze(&mut buf);
-        *c = u32::from_le_bytes(buf);
-    }
-    ring_from_u32(&coeffs)
+    uniform_ring_from_seed::<Z2Coeff, D>(b"fold-r00000000000000000000000000", &seed)
 }
 
 /// Prover side of the fold: computes the folded instance (cross terms plus
@@ -254,6 +217,8 @@ pub fn fold<const N: usize, const M: usize, const GATES: usize>(
 /// error bound `‖e‖∞ ≤ ERROR_BOUND`.
 pub const ERROR_BOUND: u64 = u32::MAX as u64;
 
+/// Verifies a folded IVC chain instance against the original R1CS
+/// witness (the folding verifier's final check).
 pub fn verify_folded<const N: usize, const M: usize, const GATES: usize>(
     key: &FoldKey<N, M, GATES>,
     r1cs: &ToyR1cs,
@@ -275,6 +240,7 @@ pub fn verify_folded<const N: usize, const M: usize, const GATES: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::encoding::ring_from_u32;
     use crate::protocols::z2_ring::gen_toy_instance;
 
     const N: usize = 8;

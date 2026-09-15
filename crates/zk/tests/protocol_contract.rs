@@ -7,12 +7,13 @@ use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
 use algebra::ring::Ring;
+use zk::encoding::{ring_from_u32, ring_to_u32};
 use zk::protocols::commitment::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
 use zk::protocols::fold::{fold, verify_folded, FoldKey, RelaxedInstance};
 use zk::protocols::sigma::{fs_prove, fs_verify};
 use zk::protocols::sumcheck;
 use zk::protocols::z2::{prove, verify, Z2CommitKey};
-use zk::protocols::z2_ring::{gen_toy_instance, ring_from_u32, ring_to_u32};
+use zk::protocols::z2_ring::gen_toy_instance;
 
 type Z1Ring = Zq<8380417>;
 const K: usize = 4;

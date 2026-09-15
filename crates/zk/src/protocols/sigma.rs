@@ -43,19 +43,17 @@
 //! honest-verifier zero-knowledge (HVZK); malicious-verifier ZK and
 //! blinding are deferred (Z3).
 
+use crate::fs::absorb_rings;
 use crate::protocols::commitment::{CommitmentKey, LatticeCommitment, SisParams};
-use algebra::crypto::sampling::{sample_in_ball_signs, sample_rej_bounded, BitStream};
+use crate::sampling::{centered_bounded_poly, in_ball_poly};
+use algebra::crypto::sampling::BitStream;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::{Shake256Xof, Xof};
 use algebra::module::ModuleVector;
-use algebra::poly::sparse::SparsePolynomial;
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::traits::CenteredRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
-use algebra::ring::Ring;
-
-const Q: i64 = 8_380_417;
 
 /// Errors surfaced by the protocol (ADR-7: typed rejection, no panics on
 /// secret-dependent paths).
@@ -65,28 +63,6 @@ pub enum ProofError {
     RejectionLimit,
     /// Witness exceeds the `B_S` bound.
     WitnessTooLong,
-}
-
-/// Ring element from centered coefficients.
-fn rq_from_i64<const N: usize>(coeffs: &[i64; N]) -> PolyRing<Zq<8380417>, N> {
-    PolyRing::from_coefficients(
-        coeffs
-            .iter()
-            .map(|&c| Zq::<8380417>::new(c.rem_euclid(Q) as u64))
-            .collect(),
-    )
-}
-
-/// Samples one mask polynomial with coefficients in `(−B_Y, B_Y)` via
-/// centered-uniform sampling over a dedicated bit stream.
-fn sample_mask<P: SisParams, const N: usize>(
-    stream: &mut BitStream<'_, impl Xof>,
-) -> PolyRing<Zq<8380417>, N> {
-    let mut coeffs = [0i64; N];
-    for c in &mut coeffs {
-        *c = sample_rej_bounded::<Zq<8380417>>(stream, P::B_Y as u32);
-    }
-    rq_from_i64(&coeffs)
 }
 
 /// Derives `(c̃, c)` — the commitment hash and the sparse challenge — from a
@@ -99,10 +75,7 @@ fn sample_challenge<P: SisParams, const N: usize>(
     let c_tilde = xof.squeeze_vec(32);
     let mut xof2 = Shake256Xof::new(&[]);
     xof2.absorb(&c_tilde);
-    let mut stream = BitStream::new(&mut xof2);
-    let signs = sample_in_ball_signs(&mut stream, P::TAU, N);
-    let sparse = SparsePolynomial::<Zq<8380417>>::from_sign_vector(&signs, N);
-    let c = PolyRing::from_coefficients(sparse.to_coeff_vec());
+    let c = in_ball_poly::<Zq<8380417>, _, N>(&mut BitStream::new(&mut xof2), P::TAU);
     (c_tilde, c)
 }
 
@@ -144,12 +117,8 @@ where
     // Recompute the challenge from the instance + mask commitment.
     let mut tr = Transcript::<Shake256Xof>::new(b"lattice-algebra/Z1/sigma");
     tr.absorb(b"key", key.seed());
-    for p in t.polys() {
-        tr.absorb(b"t", &coeff_bytes(&p.coefficients()));
-    }
-    for p in proof.w.polys() {
-        tr.absorb(b"w", &coeff_bytes(&p.coefficients()));
-    }
+    absorb_rings(&mut tr, b"t", t.polys());
+    absorb_rings(&mut tr, b"w", proof.w.polys());
     let seed = tr.challenge_bytes(32);
     let (c_tilde_check, c) = sample_challenge::<P, N>(&seed);
     if c_tilde_check != proof.c_tilde {
@@ -161,14 +130,6 @@ where
     let ct = t.mul_scalar(&c);
     let rhs = proof.w.clone() + ct;
     az.polys() == rhs.polys()
-}
-
-fn coeff_bytes(coeffs: &[Zq<8380417>]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(coeffs.len() * 4);
-    for c in coeffs {
-        out.extend_from_slice(&(c.to_u128() as u32).to_le_bytes());
-    }
-    out
 }
 
 /// One-shot FS-NIZK prover: relaxed knowledge of a short `s` with
@@ -202,19 +163,16 @@ where
         xof.absorb(b"mask");
         xof.absorb(&rng_seed);
         let mut stream = BitStream::new(&mut xof);
-        let y: ModuleVector<Zq<8380417>, L, N> =
-            ModuleVector::from_fn(|_| sample_mask::<P, N>(&mut stream));
+        let y: ModuleVector<Zq<8380417>, L, N> = ModuleVector::from_fn(|_| {
+            centered_bounded_poly::<Zq<8380417>, _, N>(&mut stream, P::B_Y as u32)
+        });
         let w = key.a_hat().mul_vec_ntt(&y.to_ntt(&op)).from_ntt(&op);
 
         // FS challenge bound to (key, t, w).
         let mut tr = Transcript::<Shake256Xof>::new(b"lattice-algebra/Z1/sigma");
         tr.absorb(b"key", key.seed());
-        for p in t.polys() {
-            tr.absorb(b"t", &coeff_bytes(&p.coefficients()));
-        }
-        for p in w.polys() {
-            tr.absorb(b"w", &coeff_bytes(&p.coefficients()));
-        }
+        absorb_rings(&mut tr, b"t", t.polys());
+        absorb_rings(&mut tr, b"w", w.polys());
         let seed = tr.challenge_bytes(32);
         let (c_tilde, c) = sample_challenge::<P, N>(&seed);
 
@@ -250,6 +208,9 @@ pub fn extract<P: SisParams, const K: usize, const L: usize, const N: usize>(
 mod tests {
     use super::*;
     use crate::protocols::commitment::{Z1Instance, RING_DIM};
+    use crate::sampling::poly_from_centered;
+    use algebra::ring::PolynomialQuotientRing;
+    use algebra::ring::Ring;
 
     const K: usize = 8;
     const L: usize = 6;
@@ -267,7 +228,7 @@ mod tests {
             }
             rows.push(row);
         }
-        let s = ModuleVector::from_fn(|i| rq_from_i64(&rows[i]));
+        let s = ModuleVector::from_fn(|i| poly_from_centered::<Zq<8380417>, RING_DIM>(&rows[i]));
         let t = key.commit(&s);
         (key, s, t)
     }
@@ -307,7 +268,7 @@ mod tests {
         // linear check while (typically) staying inside the norm bound.
         let mut arr = [0i64; RING_DIM];
         arr[0] = 1;
-        let perturbed = rq_from_i64(&arr);
+        let perturbed = poly_from_centered::<Zq<8380417>, RING_DIM>(&arr);
         let mut polys = proof.z.polys().clone();
         polys[0] = polys[0].clone() + perturbed;
         proof.z = ModuleVector::new(polys);
@@ -323,7 +284,8 @@ mod tests {
         for i in 0..L {
             rows.push(if i == 0 { big } else { [0i64; RING_DIM] });
         }
-        let s_bad = ModuleVector::from_fn(|i| rq_from_i64(&rows[i]));
+        let s_bad =
+            ModuleVector::from_fn(|i| poly_from_centered::<Zq<8380417>, RING_DIM>(&rows[i]));
         assert_eq!(
             fs_prove::<Z1Instance, K, L, RING_DIM>(&key, &s_bad, &t, &[0u8; 32]),
             Err(ProofError::WitnessTooLong)
@@ -341,8 +303,9 @@ mod tests {
         let mut xof = Shake256Xof::new(&[]);
         xof.absorb(b"extractor-mask");
         let mut stream = BitStream::new(&mut xof);
-        let y: Witness =
-            ModuleVector::from_fn(|_| sample_mask::<Z1Instance, RING_DIM>(&mut stream));
+        let y: Witness = ModuleVector::from_fn(|_| {
+            centered_bounded_poly::<Zq<8380417>, _, RING_DIM>(&mut stream, Z1Instance::B_Y as u32)
+        });
         let w = key.a_hat().mul_vec_ntt(&y.to_ntt(&op)).from_ntt(&op);
         let _ = w;
 

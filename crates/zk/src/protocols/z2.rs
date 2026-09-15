@@ -55,12 +55,12 @@
 //! is the machinery the full LaBRADOR recursion (Z3) layers into a complete
 //! shortness proof.
 
-use crate::protocols::z2_ring::{
-    map_over_gates, matrix_from_seed, ring_from_seed, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring,
-    D,
-};
+use crate::encoding::{ring_from_u32, ring_to_u32, u32s_to_le_bytes};
+use crate::fs::absorb_rings;
+use crate::protocols::z2_ring::{map_over_gates, ToyR1cs, Z2Coeff, Z2Ring, D};
+use crate::sampling::{nonunit_linear_poly, uniform_ring_from_seed, uniform_vec_from_seed};
 use algebra::crypto::transcript::Transcript;
-use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
 
 /// Commitment-key dimensions: `A_com ∈ R^{N_COMMIT×M_VARS}`.
@@ -78,7 +78,7 @@ impl Z2CommitKey {
     /// Derives the key from a seed.
     pub fn setup(seed: &[u8; 32]) -> Self {
         Self {
-            a: matrix_from_seed(seed, N_COMMIT, M_VARS),
+            a: crate::sampling::uniform_matrix_from_seed::<Z2Coeff, D>(b"", seed, N_COMMIT, M_VARS),
         }
     }
 
@@ -120,10 +120,10 @@ impl Z2Proof {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.encoded_len());
         for r in self.d.iter().chain(&self.z_prime) {
-            out.extend_from_slice(&u32s_to_bytes(&ring_to_u32(r)));
+            out.extend_from_slice(&u32s_to_le_bytes(&ring_to_u32(r)));
         }
-        out.extend_from_slice(&u32s_to_bytes(&ring_to_u32(&self.t_star)));
-        out.extend_from_slice(&u32s_to_bytes(&ring_to_u32(&self.q_star)));
+        out.extend_from_slice(&u32s_to_le_bytes(&ring_to_u32(&self.t_star)));
+        out.extend_from_slice(&u32s_to_le_bytes(&ring_to_u32(&self.q_star)));
         out
     }
 
@@ -139,10 +139,8 @@ impl Z2Proof {
             for _ in 0..n {
                 let mut coeffs = [0u32; D];
                 for c in &mut coeffs {
-                    let mut b = [0u8; 4];
-                    b.copy_from_slice(&bytes[pos..pos + 4]);
+                    *c = u32::from_le_bytes(bytes[pos..pos + 4].try_into().expect("4 bytes"));
                     pos += 4;
-                    *c = u32::from_le_bytes(b);
                 }
                 rows.push(ring_from_u32(&coeffs));
             }
@@ -161,10 +159,6 @@ impl Z2Proof {
     }
 }
 
-fn u32s_to_bytes(v: &[u32]) -> Vec<u8> {
-    v.iter().flat_map(|x| x.to_le_bytes()).collect()
-}
-
 /// FS challenges for an instance+commitment pair: the ring challenge `C`
 /// and the gate-combination challenge `γ`.
 ///
@@ -181,28 +175,13 @@ fn challenges(
     let mut tr = Transcript::<Shake128Xof>::new(b"lattice-algebra/Z2/batched-open");
     tr.absorb(b"key", key_seed);
     tr.absorb(b"r1cs", r1cs_seed);
-    for v in c {
-        tr.absorb(b"c", &u32s_to_bytes(&ring_to_u32(v)));
-    }
-    for v in d {
-        tr.absorb(b"d", &u32s_to_bytes(&ring_to_u32(v)));
-    }
+    absorb_rings(&mut tr, b"c", c);
+    absorb_rings(&mut tr, b"d", d);
     let seed = tr.challenge_bytes(64);
-    let mut xof = Shake128Xof::new(&[]);
-    xof.absorb(b"X");
-    xof.absorb(&seed);
-    let mut buf = [0u8; 4];
-    xof.squeeze(&mut buf);
-    let a = u32::from_le_bytes(buf) | 1; // odd scalar ⇒ X − a is a non-unit
-    let mut coeffs = [0u32; D];
-    coeffs[0] = a.wrapping_neg(); // C = X − a
-    coeffs[1] = 1;
-    let x = ring_from_u32(&coeffs);
-
-    let mut xof2 = Shake128Xof::new(&[]);
-    xof2.absorb(b"gamma");
-    xof2.absorb(&seed);
-    let gamma = ring_from_seed(&mut xof2);
+    // C = X − a with a odd: a true non-unit (see the module soundness notes).
+    let x =
+        nonunit_linear_poly::<Z2Coeff, Shake128Xof, D>(&mut crate::fs::seed_stream(b"X", &seed));
+    let gamma = uniform_ring_from_seed::<Z2Coeff, D>(b"gamma", &seed);
     (x, gamma)
 }
 
@@ -247,6 +226,9 @@ pub fn gate_sel(k: usize, r1cs: &ToyR1cs) -> usize {
     r1cs.sel[k]
 }
 
+/// Evaluates the per-gate constraint residuals `A·z ∘ B·z − C·z` over the
+/// witness `zp` (non-zero entries are the constraints the opening must
+/// account for).
 pub fn constraint_residuals(r1cs: &ToyR1cs, zp: &[Z2Ring]) -> Vec<Z2Ring> {
     map_over_gates(r1cs, |k, row| {
         let mut az = Z2Ring::zero();
@@ -283,20 +265,7 @@ pub fn prove(
     // stability even though the linear check is exact here.
     let rng_seed = *randomness;
     {
-        let mut xof = Shake128Xof::new(&[]);
-        xof.absorb(b"mask");
-        xof.absorb(&rng_seed);
-        let y: Vec<Z2Ring> = (0..M_VARS)
-            .map(|_| {
-                let mut coeffs = [0u32; D];
-                let mut buf = [0u8; 4];
-                for cc in &mut coeffs {
-                    xof.squeeze(&mut buf);
-                    *cc = u32::from_le_bytes(buf);
-                }
-                ring_from_u32(&coeffs)
-            })
-            .collect();
+        let y = uniform_vec_from_seed::<Z2Coeff, D>(b"mask", &rng_seed, M_VARS);
         let d = key.commit(&y);
         // challenges derived AFTER committing (c, d)
         let (x, gamma) = challenges(key_seed, r1cs_seed, &c, &d);
@@ -417,6 +386,7 @@ pub fn approx_linear_check(lhs: &[Z2Ring], reconstructed: &[Z2Ring], drop: u32) 
 mod tests {
     use super::*;
     use crate::protocols::z2_ring::gen_toy_instance;
+    use algebra::crypto::xof::Xof;
 
     fn instance_and_witness() -> (ToyR1cs, Vec<Z2Ring>) {
         gen_toy_instance(b"z2-instance-00000000000000000000", 512, 2)

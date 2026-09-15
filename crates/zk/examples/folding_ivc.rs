@@ -6,9 +6,10 @@
 //!
 //! Run with: `cargo run -p lattice-zk --example folding_ivc`
 
+use zk::encoding::{ring_from_u32, ring_to_u32};
 use zk::protocols::fold::{fold, verify_folded, FoldKey, RelaxedInstance};
 use zk::protocols::z2::constraint_residuals;
-use zk::protocols::z2_ring::{gen_toy_instance, ring_from_u32, ring_to_u32, ToyR1cs, Z2Ring};
+use zk::protocols::z2_ring::{gen_toy_instance, ToyR1cs, Z2Ring};
 
 const N: usize = 8; // commitment width
 const M: usize = 4; // witness variables
