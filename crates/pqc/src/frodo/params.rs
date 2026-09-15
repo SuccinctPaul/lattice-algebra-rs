@@ -6,6 +6,42 @@
 //! default, `Frodo640` / `Frodo976` / `Frodo1344`) and SHAKE128 (the
 //! alternative for platforms without AES, `Frodo640Shake` / …).
 
+/// How the public matrix `A` is expanded from `seed_A` (the submission's
+/// two variants).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatrixAExpansion {
+    /// The submitted default: the index-pair buffer
+    /// `(i ‖ j)` every `STRIPES` coefficients, AES128-ECB encrypted in
+    /// place with `seed_A` as the key.
+    Aes128,
+    /// The portable alternative: row `i` = `SHAKE128(i ‖ seed_A)`.
+    Shake128,
+}
+
+/// The submission's per-set XOF for all KEM hashing and noise sampling
+/// (`#define shake …` in the reference): SHAKE128 for FrodoKEM-640,
+/// SHAKE256 for -976/-1344.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KemXof {
+    /// SHAKE128 (FrodoKEM-640).
+    Shake128,
+    /// SHAKE256 (FrodoKEM-976/-1344).
+    Shake256,
+}
+
+/// Length of `seed_A` in bytes (the reference's `BYTES_SEED_A`; shared by
+/// every parameter set).
+pub const SEED_A_BYTES: usize = 16;
+/// Stride of the AES index-pair buffer (the reference's
+/// `PARAMS_STRIPE_STEP`).
+pub const STRIPE_STEP: usize = 8;
+/// Domain byte prefixed to `seedSE` when sampling the keygen noise
+/// `(S ‖ E)` (reference: `shake_input_seedSE[0] = 0x5F`).
+pub const SEEDSE_KEYGEN_PREFIX: u8 = 0x5F;
+/// Domain byte prefixed to `seedSE` when sampling the encapsulation noise
+/// `(S′ ‖ E′ ‖ E″)` (reference: `shake_input_seedSE[0] = 0x96`).
+pub const SEEDSE_ENCAPS_PREFIX: u8 = 0x96;
+
 /// Per-parameter-set constants (round-3 spec, Table 2 / reference `api.h`).
 pub trait FrodoParams: 'static {
     /// Ring/matrix dimension `n` (the LWE secret has `n·n̄` entries).
@@ -17,22 +53,19 @@ pub trait FrodoParams: 'static {
     /// Bits extracted per key-encode coefficient (2 / 3 / 4).
     const EXTRACTED_BITS: u32;
     /// Discrete-Gaussian-style CDF table of the error distribution
-    /// (spec Table 3: 13 / 7 / 11 entries for χ of σ ≈ 2.4 / 1.5 / 1.2).
+    /// (spec Table 3: 13 / 11 / 7 entries for χ of σ ≈ 2.4 / 1.6 / 1.2).
     const CDF: &'static [u16];
     /// Shared-secret length in bytes (16 / 24 / 32).
     const SS_BYTES: usize;
-    /// Matrix-`A` generation mode: `false` = AES128 (submission default),
-    /// `true` = SHAKE128.
-    const SHAKE_A: bool;
-    /// The submission's per-set XOF for all KEM hashing and noise
-    /// sampling: SHAKE128 for FrodoKEM-640, SHAKE256 for -976/-1344
-    /// (`#define shake …` in the reference).
-    const SHAKE256: bool;
+    /// Matrix-`A` generation variant.
+    const A_MODE: MatrixAExpansion;
+    /// The KEM XOF (`#define shake …` in the reference).
+    const XOF: KemXof;
 
     /// `μ` length in bytes: `EXTRACTED_BITS·n̄²/8` (16 / 24 / 32).
     const MU_BYTES: usize = Self::EXTRACTED_BITS as usize * Self::NBAR * Self::NBAR / 8;
-    /// Encoded public-key length: `16 + LOGQ·N·N̄/8`.
-    const EK_BYTES: usize = 16 + Self::LOGQ as usize * Self::N * Self::NBAR / 8;
+    /// Encoded public-key length: `SEED_A_BYTES + LOGQ·N·N̄/8`.
+    const EK_BYTES: usize = SEED_A_BYTES + Self::LOGQ as usize * Self::N * Self::NBAR / 8;
     /// Encoded secret-key length:
     /// `SS + EK + 2·N·N̄ + SS` (the `s`, `pk`, raw `S` matrix and `pkh`).
     const DK_BYTES: usize =
@@ -54,8 +87,8 @@ impl FrodoParams for Frodo640 {
         4643, 13363, 20579, 25843, 29227, 31145, 32103, 32525, 32689, 32745, 32762, 32766, 32767,
     ];
     const SS_BYTES: usize = 16;
-    const SHAKE_A: bool = false;
-    const SHAKE256: bool = false;
+    const A_MODE: MatrixAExpansion = MatrixAExpansion::Aes128;
+    const XOF: KemXof = KemXof::Shake128;
 }
 
 /// FrodoKEM-976 (NIST security category 3), matrix `A` via AES128.
@@ -70,8 +103,8 @@ impl FrodoParams for Frodo976 {
         5638, 15915, 23689, 28571, 31116, 32217, 32613, 32731, 32760, 32766, 32767,
     ];
     const SS_BYTES: usize = 24;
-    const SHAKE_A: bool = false;
-    const SHAKE256: bool = true;
+    const A_MODE: MatrixAExpansion = MatrixAExpansion::Aes128;
+    const XOF: KemXof = KemXof::Shake256;
 }
 
 /// FrodoKEM-1344 (NIST security category 5), matrix `A` via AES128.
@@ -84,8 +117,8 @@ impl FrodoParams for Frodo1344 {
     const EXTRACTED_BITS: u32 = 4;
     const CDF: &'static [u16] = &[9142, 23462, 30338, 32361, 32725, 32765, 32767];
     const SS_BYTES: usize = 32;
-    const SHAKE_A: bool = false;
-    const SHAKE256: bool = true;
+    const A_MODE: MatrixAExpansion = MatrixAExpansion::Aes128;
+    const XOF: KemXof = KemXof::Shake256;
 }
 
 /// FrodoKEM-640 with the SHAKE128 matrix-`A` generation (submission
@@ -101,8 +134,8 @@ impl FrodoParams for Frodo640Shake {
         4643, 13363, 20579, 25843, 29227, 31145, 32103, 32525, 32689, 32745, 32762, 32766, 32767,
     ];
     const SS_BYTES: usize = 16;
-    const SHAKE_A: bool = true;
-    const SHAKE256: bool = false;
+    const A_MODE: MatrixAExpansion = MatrixAExpansion::Shake128;
+    const XOF: KemXof = KemXof::Shake128;
 }
 
 /// FrodoKEM-976 with the SHAKE128 matrix-`A` generation.
@@ -117,8 +150,8 @@ impl FrodoParams for Frodo976Shake {
         5638, 15915, 23689, 28571, 31116, 32217, 32613, 32731, 32760, 32766, 32767,
     ];
     const SS_BYTES: usize = 24;
-    const SHAKE_A: bool = true;
-    const SHAKE256: bool = true;
+    const A_MODE: MatrixAExpansion = MatrixAExpansion::Shake128;
+    const XOF: KemXof = KemXof::Shake256;
 }
 
 /// FrodoKEM-1344 with the SHAKE128 matrix-`A` generation.
@@ -131,6 +164,6 @@ impl FrodoParams for Frodo1344Shake {
     const EXTRACTED_BITS: u32 = 4;
     const CDF: &'static [u16] = &[9142, 23462, 30338, 32361, 32725, 32765, 32767];
     const SS_BYTES: usize = 32;
-    const SHAKE_A: bool = true;
-    const SHAKE256: bool = true;
+    const A_MODE: MatrixAExpansion = MatrixAExpansion::Shake128;
+    const XOF: KemXof = KemXof::Shake256;
 }

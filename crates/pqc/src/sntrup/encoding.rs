@@ -6,6 +6,16 @@
 use super::params::SntrupParams;
 use super::poly::{self, mod_uint14, q12, Fq, Small};
 
+/// Byte-emit threshold of the mixed-radix `Encode`/`Decode` pair: while the
+/// pending radix is at least `2^14`, a whole byte can be flushed.
+pub const ENCODE_RADIX_THRESHOLD: u32 = 1 << 14;
+/// Two-byte lookahead base for `Decode` (`256·16383`, just under
+/// [`ENCODE_RADIX_THRESHOLD`·256]).
+pub const ENCODE_LOOKAHEAD_LIMIT: u32 = 256 * 16383;
+/// `⌊2^15 / 3⌋` — multiplier implementing divide-by-3-rounding in
+/// `Rounded_encode`.
+pub const ROUNDING_SCALE: i32 = 10923;
+
 // ===========================================================================
 // crypto_sort_uint32 (uint32.c)
 // ===========================================================================
@@ -106,7 +116,7 @@ pub fn encode(out: &mut Vec<u8>, r: &[u16], m: &[u16]) {
         let m0 = m[i] as u32;
         let mut rr = r[i] as u32 + r[i + 1] as u32 * m0;
         let mut mm = m[i + 1] as u32 * m0;
-        while mm >= 16384 {
+        while mm >= ENCODE_RADIX_THRESHOLD {
             out.push((rr & 0xff) as u8);
             rr >>= 8;
             mm = (mm + 255) >> 8;
@@ -146,7 +156,7 @@ pub fn decode(out: &mut Vec<u16>, s: &[u8], m: &[u16]) {
     let mut i = 0usize;
     while i < len - 1 {
         let mm = m[i] as u32 * m[i + 1] as u32;
-        if mm > 256 * 16383 {
+        if mm > ENCODE_LOOKAHEAD_LIMIT {
             bottomt[i / 2] = 256 * 256;
             bottomr[i / 2] = (s[sp] as u16).wrapping_add(256u16.wrapping_mul(s[sp + 1] as u16));
             sp += 2;
@@ -250,7 +260,9 @@ pub fn rounded_encode<P: SntrupParams>(r: &[Fq]) -> Vec<u8> {
     let p = P::P;
     let rr: Vec<u16> = r
         .iter()
-        .map(|&v| (((v + q12::<P>()) as i32 * 10923) >> 15) as u16)
+        // (r + ⌈q/2⌉) / 3 with round-to-nearest, via the 2^15-scaled
+        // multiplier (identical to the reference's `*10923 >> 15`).
+        .map(|&v| (((v + q12::<P>()) as i32 * ROUNDING_SCALE) >> 15) as u16)
         .collect();
     let m = vec![P::Q.div_ceil(3); p];
     let mut out = Vec::with_capacity(P::ROUNDED_BYTES);

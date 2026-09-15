@@ -11,15 +11,17 @@ pub trait NtruParams: 'static {
     const N: usize;
     /// `log2(q)`: 11 / 12 / 13.
     const LOGQ: u32;
+    /// The plaintext modulus `p = 3` (the message-space multiplier).
+    const PLAINTEXT_MODULUS: u16 = 3;
     /// `true` for the HPS family (ntruhps…), `false` for HRSS (ntruhrss701).
     const HPS: bool;
 
     /// Fixed Hamming weight of `g`/`m` (HPS): `q/8 − 2`.
     const WEIGHT: usize = (1 << Self::LOGQ) / 8 - 2;
 
-    /// Bytes consumed to sample `(f, g)`: HPS draws `(n−1)` iid bytes
-    /// plus `ceil(30·(n−1)/8)` for the fixed-type poly; HRSS draws
-    /// `2·(n−1)` iid bytes.
+    /// Bytes consumed to sample `(f, g)`: HPS draws `(n−1)` iid bytes plus
+    /// `ceil(30·(n−1)/8)` for the fixed-type poly; HRSS draws `2·(n−1)`
+    /// iid bytes.
     const SAMPLE_FG_BYTES: usize = Self::N - 1
         + if Self::HPS {
             (30 * (Self::N - 1)).div_ceil(8)

@@ -176,12 +176,16 @@ pub fn kpke_encrypt<P: MlKemParams, const K: usize>(
     m: &[u8; 32],
     r: &[u8; 32],
 ) -> Vec<u8> {
-    assert_eq!(ek.len(), 384 * K + 32, "K-PKE encapsulation-key length");
+    assert_eq!(
+        ek.len(),
+        P::ROW_BYTES * K + 32,
+        "K-PKE encapsulation-key length"
+    );
     let t_hat: Vec<[u64; N]> = (0..K)
-        .map(|i| encoding::byte_decode(&ek[i * 384..(i + 1) * 384], 12))
+        .map(|i| encoding::byte_decode(&ek[i * P::ROW_BYTES..(i + 1) * P::ROW_BYTES], 12))
         .collect();
     let mut rho = [0u8; 32];
-    rho.copy_from_slice(&ek[384 * K..]);
+    rho.copy_from_slice(&ek[P::ROW_BYTES * K..]);
     let a_hat = ntt::expand_a::<Shake128Xof, K>(&rho);
 
     let y_hat: Vec<[u64; N]> = (0..K)
@@ -234,16 +238,16 @@ pub fn kpke_encrypt<P: MlKemParams, const K: usize>(
 }
 
 /// FIPS 203 `K-PKE.Decrypt(dk_PKE, c)` (Algorithm 15): recovers the 32-byte
-/// message. `dk` is `ŝ`, `384k` bytes in the `ByteEncode12` encoding.
+/// message. `dk` is `ŝ`, `ROW_BYTES·k` bytes in the `ByteEncode12` encoding.
 pub fn kpke_decrypt<P: MlKemParams, const K: usize>(dk: &[u8], c: &[u8]) -> [u8; 32] {
-    assert_eq!(dk.len(), 384 * K, "K-PKE decapsulation-key length");
+    assert_eq!(dk.len(), P::ROW_BYTES * K, "K-PKE decapsulation-key length");
     assert_eq!(
         c.len(),
         32 * K * P::DU + 32 * P::DV,
         "K-PKE ciphertext length"
     );
     let s_hat: Vec<[u64; N]> = (0..K)
-        .map(|i| encoding::byte_decode(&dk[i * 384..(i + 1) * 384], 12))
+        .map(|i| encoding::byte_decode(&dk[i * P::ROW_BYTES..(i + 1) * P::ROW_BYTES], 12))
         .collect();
     decrypt_with_s_hat::<P, K>(&s_hat, c)
 }
@@ -299,7 +303,7 @@ impl Drop for SharedSecret {
     }
 }
 
-/// Encapsulation key (FIPS 203 `ek`, `384k + 32` bytes encoded).
+/// Encapsulation key (FIPS 203 `ek`, `EK_BYTES` bytes encoded).
 pub struct EncapsulationKey<P: MlKemParams> {
     t_hat: Vec<[u64; N]>,
     rho: [u8; 32],
@@ -344,14 +348,14 @@ impl<P: MlKemParams> EncapsulationKey<P> {
         }
         let mut t_hat = Vec::with_capacity(P::K);
         for i in 0..P::K {
-            let row = encoding::byte_decode(&bytes[i * 384..(i + 1) * 384], 12);
+            let row = encoding::byte_decode(&bytes[i * P::ROW_BYTES..(i + 1) * P::ROW_BYTES], 12);
             if row.iter().any(|&v| v >= Q) {
                 return None;
             }
             t_hat.push(row);
         }
         let mut rho = [0u8; 32];
-        rho.copy_from_slice(&bytes[384 * P::K..]);
+        rho.copy_from_slice(&bytes[P::ROW_BYTES * P::K..]);
         Some(Self {
             t_hat,
             rho,
@@ -367,7 +371,7 @@ impl<P: MlKemParams> std::fmt::Debug for EncapsulationKey<P> {
 }
 
 /// Decapsulation key in the FIPS 203 augmented format:
-/// `dk = dk_PKE ‖ ek ‖ H(ek) ‖ z` (`768k + 96` bytes encoded).
+/// `dk = dk_PKE ‖ ek ‖ H(ek) ‖ z` (`DK_BYTES` bytes encoded).
 pub struct DecapsulationKey<P: MlKemParams> {
     s_hat: Vec<[u64; N]>,
     ek: EncapsulationKey<P>,
@@ -397,25 +401,30 @@ impl<P: MlKemParams> DecapsulationKey<P> {
         if bytes.len() != P::DK_BYTES {
             return None;
         }
+        // Section offsets of the augmented format, in bytes:
+        // `ŝ` rows ‖ encoded ek (rows + ρ) ‖ h ‖ z.
+        let row = P::ROW_BYTES;
+        let s_end = row * P::K;
+        let ek_end = s_end + P::EK_BYTES;
+        let h_end = ek_end + 32;
+
         let mut s_hat = Vec::with_capacity(P::K);
         for i in 0..P::K {
-            let row = encoding::byte_decode(&bytes[i * 384..(i + 1) * 384], 12);
-            if row.iter().any(|&v| v >= Q) {
+            let coeffs = encoding::byte_decode(&bytes[i * row..(i + 1) * row], 12);
+            if coeffs.iter().any(|&v| v >= Q) {
                 return None;
             }
-            s_hat.push(row);
+            s_hat.push(coeffs);
         }
-        let ek = EncapsulationKey::<P>::from_bytes(&bytes[384 * P::K..768 * P::K + 32])?;
+        let ek = EncapsulationKey::<P>::from_bytes(&bytes[s_end..ek_end])?;
         // Hash check: the stored h must equal H(ek), the ek section itself.
-        if sha3_256(&[&bytes[384 * P::K..768 * P::K + 32]])
-            != bytes[768 * P::K + 32..768 * P::K + 64]
-        {
+        if sha3_256(&[&bytes[s_end..ek_end]]) != bytes[ek_end..h_end] {
             return None;
         }
         let mut h = [0u8; 32];
-        h.copy_from_slice(&bytes[768 * P::K + 32..768 * P::K + 64]);
+        h.copy_from_slice(&bytes[ek_end..h_end]);
         let mut z = [0u8; 32];
-        z.copy_from_slice(&bytes[768 * P::K + 64..]);
+        z.copy_from_slice(&bytes[h_end..]);
         Some(Self {
             s_hat,
             ek,

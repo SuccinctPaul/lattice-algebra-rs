@@ -16,6 +16,9 @@ pub const T_ZETA: u64 = 17;
 pub trait MlKemParams: 'static {
     /// Number of rows/columns of `Â` (module rank).
     const K: usize;
+    /// Byte length of one `ByteEncode₁₂` row (`384 = 12·256/8` — fixed by
+    /// the FIPS 203 parameter family).
+    const ROW_BYTES: usize = 384;
     /// Noise rate of the secret (and of `y` in encryption).
     const ETA1: usize;
     /// Noise rate of the encryption error `e1, e2`.
@@ -25,10 +28,12 @@ pub trait MlKemParams: 'static {
     /// Compression factor of `v` (ciphertext part 2).
     const DV: usize;
 
-    /// Encapsulation-key length in bytes (`384k + 32`).
-    const EK_BYTES: usize = 384 * Self::K + 32;
+    /// Encapsulation-key length in bytes (`ROW_BYTES·k + 32`).
+    const EK_BYTES: usize = Self::ROW_BYTES * Self::K + 32;
     /// Decapsulation-key length in bytes (`768k + 96`, FIPS 203 augmented format).
-    const DK_BYTES: usize = 768 * Self::K + 96;
+    /// Decapsulation-key length in bytes
+    /// (`ROW_BYTES·k + (ROW_BYTES·k + 32) + 32 + 32` — augmented format).
+    const DK_BYTES: usize = 2 * Self::ROW_BYTES * Self::K + 96;
     /// Ciphertext length in bytes (`32·du·k + 32·dv`).
     const CT_BYTES: usize = 32 * Self::K * Self::DU + 32 * Self::DV;
 }
