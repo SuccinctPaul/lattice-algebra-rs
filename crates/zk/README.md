@@ -10,6 +10,9 @@ modulus) and `Z_{2^32}[X]/(X^64+1)` (raw 32-bit coefficients for folding).
 
 | Module | Milestone | What it provides |
 | --- | --- | --- |
+| `sampling` | utils | Protocol-level samplers, generic over the ring: uniform expansion (masked rejection; raw at `q = 2^32`), centered-bounded / CBD masks, `SampleInBall` sparse challenges, non-unit linear challenges `C = X − a` (a odd), seed-driven vectors & matrices — all XOF-driven |
+| `fs` | utils | Fiat–Shamir derivation: transcript absorption of ring vectors, domain-separated seed re-expansion |
+| `encoding` | utils | Canonical ring ↔ little-endian `u32`/bytes wire encoding shared by transcripts and proof serialization |
 | `commitment` | Z1 | Ajtai/SIS commitments `C = A·s` with short `s` (binding from Module-SIS), `LatticeCommitment` trait, `ExpandA` commitment keys |
 | `sigma` | Z1 | Lyubashevsky approximate-knowledge Σ-protocol: FS-NIZK with rejection-sampled responses, forking extractor, HVZK |
 | `z2_ring` | Z2 | The `Z_{2^32}` ring instance: raw-coefficient expansion, power-of-two Barrett fast path, toy-R1CS generator (squaring gates, ring Newton inverse) |

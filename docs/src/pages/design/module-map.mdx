@@ -15,7 +15,7 @@ that share one dependency direction:
 | `lattice-algebra` (`algebra`) | `crates/algebra` | `ring`, `ntt`, `poly`, `module`, `crypto`, `matrix`, `security`, `utils` (L0–L4 + security) |
 | `lattice-zk` / `lattice-pqc` | per-crate `parallel` feature (rayon): Z2/Z3/Z4 gate loops fan out above a 256-gate threshold; ML-DSA XOF streams are deliberately sequential (dispatch overhead > stream work, measured) | ✅ |
 | `lattice-pqc` (`pqc`) | `crates/pqc` | `mldsa`, `mlkem` (L6 PQC, incl. the FIPS-exact NTTs `mldsa::ntt` / `mlkem::ntt`) + `falcon`, `frodo`, `ntru`, `sntrup` (round-3 reference ports) |
-| `lattice-zk` (`zk`) | `crates/zk` | `protocols` (L5–L6 ZK line) |
+| `lattice-zk` (`zk`) | `crates/zk` | `sampling`, `fs`, `encoding` (L5 utilities) + `protocols` (L5–L6 ZK line) |
 
 ```mermaid
 flowchart TB

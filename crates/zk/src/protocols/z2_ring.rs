@@ -7,8 +7,13 @@
 //!
 //! Key expansion uses **raw 32-bit coefficients** (four squeezed bytes per
 //! coefficient, no rejection): every 32-bit value is a valid coefficient of
-//! this ring.
+//! this ring. The expansion lives in [`crate::sampling`]
+//! ([`uniform_matrix_from_seed`](crate::sampling::uniform_matrix_from_seed)),
+//! the coefficient wire conversion in [`crate::encoding`].
 
+use crate::encoding::{ring_from_u32, ring_to_u32};
+use crate::sampling::uniform_poly;
+use algebra::crypto::sampling::BitStream;
 use algebra::crypto::xof::{Shake128Xof, Xof};
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::traits::MatrixElement;
@@ -22,42 +27,8 @@ pub type Z2Ring = PolyRing<Zq<4294967296>, 64>;
 pub type Z2Coeff = Zq<4294967296>;
 
 /// Number of coefficients of a ring element.
+/// Ring dimension of the Z2 polynomial ring `Z_{2^32}[X]/(X^D + 1)`.
 pub const D: usize = 64;
-
-/// Builds a ring element from raw 32-bit coefficients.
-pub fn ring_from_u32(coeffs: &[u32; D]) -> Z2Ring {
-    PolyRing::from_coefficients(coeffs.iter().map(|&c| Z2Coeff::new(c as u64)).collect())
-}
-
-/// Raw 32-bit coefficients of a ring element (ascending powers).
-pub fn ring_to_u32(r: &Z2Ring) -> [u32; D] {
-    let mut out = [0u32; D];
-    for (dst, src) in out.iter_mut().zip(r.coefficients()) {
-        *dst = src.to_u128() as u32;
-    }
-    out
-}
-
-/// Derives a uniform ring element from a seed (raw 32-bit coefficients —
-/// no rejection needed on the power-of-two modulus).
-pub fn ring_from_seed(xof: &mut Shake128Xof) -> Z2Ring {
-    let mut coeffs = [0u32; D];
-    let mut buf = [0u8; 4];
-    for c in &mut coeffs {
-        xof.squeeze(&mut buf);
-        *c = u32::from_le_bytes(buf);
-    }
-    ring_from_u32(&coeffs)
-}
-
-/// Derives a uniform `R^{rows×cols}` matrix from a seed.
-pub fn matrix_from_seed(seed: &[u8; 32], rows: usize, cols: usize) -> Vec<Vec<Z2Ring>> {
-    let mut xof = Shake128Xof::new(&[]);
-    xof.absorb(seed);
-    (0..rows)
-        .map(|_| (0..cols).map(|_| ring_from_seed(&mut xof)).collect())
-        .collect()
-}
 
 /// Gate-count threshold above which the `parallel` feature engages. Below
 /// it, per-task dispatch overhead outweighs the per-gate ring work.
@@ -103,9 +74,10 @@ where
     (0..r1cs.a.len()).all(|k| pred(k, &r1cs.a[k]))
 }
 
-/// Sparse ring row: `(variable index, coefficient)` pairs.
+/// A sparse row of a toy-R1CS constraint: `(column, coefficient)` terms.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SparseRow {
+    /// The non-zero `(column index, coefficient)` terms.
     pub terms: Vec<(usize, Z2Ring)>,
 }
 
@@ -160,6 +132,7 @@ pub fn gen_toy_instance(
     assert!(num_vars >= 2);
     let mut xof = Shake128Xof::new(&[]);
     xof.absorb(seed);
+    let mut stream = BitStream::new(&mut xof);
 
     // random unit witness: elements ≡ 1 (mod 2) — odd constant term, all
     // other coefficients even — so `a − 1 ∈ 2R` and Newton's iteration for
@@ -168,10 +141,10 @@ pub fn gen_toy_instance(
     for _ in 0..num_vars {
         let mut coeffs = [0u32; D];
         let mut buf = [0u8; 4];
-        xof.squeeze(&mut buf);
+        stream.read_bytes(&mut buf);
         coeffs[0] = u32::from_le_bytes(buf) | 1; // odd constant term
         for c in &mut coeffs[1..] {
-            xof.squeeze(&mut buf);
+            stream.read_bytes(&mut buf);
             *c = u32::from_le_bytes(buf) & 0xFFFF_FFFE; // even
         }
         witness.push(ring_from_u32(&coeffs));
@@ -185,7 +158,7 @@ pub fn gen_toy_instance(
         let mut terms = Vec::with_capacity(3);
         for t in 0..3 {
             let var = (k * 7 + t * 13) % num_vars;
-            let coeff = ring_from_seed(&mut xof);
+            let coeff = uniform_poly::<Z2Coeff, _, D>(&mut stream);
             terms.push((var, coeff));
         }
         let sel_var = (k * 5 + 1) % num_vars;
@@ -254,10 +227,10 @@ mod tests {
         // (X^63)·(X) = X^64 ≡ −1 (mod X^64+1), q = 2^32 → −1 = 2^32−1
         let mut c = [0u32; D];
         c[63] = 1;
-        let x63 = ring_from_u32(&c);
+        let x63: Z2Ring = ring_from_u32(&c);
         let mut c1 = [0u32; D];
         c1[1] = 1;
-        let x = ring_from_u32(&c1);
+        let x: Z2Ring = ring_from_u32(&c1);
         let prod = x63 * x;
         let coeffs = ring_to_u32(&prod);
         assert_eq!(coeffs[0], u32::MAX);

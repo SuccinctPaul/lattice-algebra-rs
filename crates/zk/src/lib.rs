@@ -1,6 +1,22 @@
 #![allow(clippy::module_inception)]
+#![deny(missing_docs)]
 //! Lattice-based zero-knowledge proof building blocks on the [`algebra`]
 //! foundation.
+//!
+//! The crate splits into a shared-utility layer and the protocol layer:
+//!
+//! # Utilities (protocol-agnostic, shared by all proofs)
+//!
+//! - [`sampling`]: protocol-level samplers — uniform expansion, centered
+//!   bounded / CBD masks, sparse in-ball challenges and the soundness-
+//!   critical non-unit linear challenges, all XOF-driven and generic over
+//!   the coefficient ring.
+//! - [`fs`]: Fiat–Shamir derivation — transcript absorption of ring vectors
+//!   and domain-separated seed re-expansion.
+//! - [`encoding`]: the canonical ring ↔ little-endian wire encoding shared
+//!   by transcripts and proof serialization.
+//!
+//! # Protocols ([`protocols`])
 //!
 //! - [`protocols::commitment`]: Ajtai/SIS lattice commitments.
 //! - [`protocols::sigma`]: Lyubashevsky-style approximate-knowledge
@@ -14,4 +30,7 @@
 //!
 //! [`algebra`]: algebra
 
+pub mod encoding;
+pub mod fs;
 pub mod protocols;
+pub mod sampling;
