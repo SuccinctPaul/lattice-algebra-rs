@@ -3,7 +3,7 @@ name = "lattice-pqc"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "NIST PQC schemes on the lattice-algebra foundation: ML-DSA (FIPS 204), ML-KEM (FIPS 203), Falcon (round-3 FN-DSA candidate)"
+description = "NIST PQC schemes on the lattice-algebra foundation: ML-DSA (FIPS 204), ML-KEM (FIPS 203), Falcon (round-3 FN-DSA candidate), FrodoKEM, NTRU and Streamlined NTRU Prime (round-3 candidates)"
 readme = "README.md"
 license.workspace = true
 repository.workspace = true
@@ -16,6 +16,7 @@ name = "pqc"
 [dependencies]
 lattice-algebra.workspace = true
 zeroize.workspace = true
+sha2.workspace = true
 sha3.workspace = true
 
 [dev-dependencies]

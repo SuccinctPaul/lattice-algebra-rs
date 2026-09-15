@@ -1,4 +1,4 @@
-# KAT fixtures (ML-DSA / FIPS 204, ML-KEM / FIPS 203, Falcon round-3)
+# KAT fixtures (ML-DSA / FIPS 204, ML-KEM / FIPS 203, Falcon, FrodoKEM, NTRU and Streamlined NTRU Prime round-3)
 
 These JSON files hold byte-exact known-answer tests extracted from the
 **official NIST ACVP-Server sample vectors**:
@@ -27,6 +27,9 @@ that consume them live in `crates/pqc/tests/acvp_kat.rs` (ML-DSA) and
 | `acvp-sigver-prehash.json` | 24 | external preHash sigVer (OID-separated M') accept/reject cases |
 | `acvp-mlkem.json` | 183 | ML-KEM: keyGen 75 (all sets), encaps 24, decaps 24 (incl. implicit rejection), keyCheck 60 (accept + reject) |
 | `falcon-kat.json` | 10 | Falcon round-3 submission KAT: falcon512 × 5, falcon1024 × 5 — full keygen/sign/verify bundles (the official `.rsp` files have 100 tests per set) |
+| `frodo-kat.json` | 18 | FrodoKEM round-3 submission KAT: 640/976/1344 × {AES, SHAKE} matrix-A variants × 3 — full keygen/encaps/decaps bundles (the official `.rsp` files have 100 tests per set/variant) |
+| `ntru-kat.json` | 9 | NTRU round-3 submission KAT: ntruhps2048677, ntruhps4096821, ntruhrss701 × 3 — full keygen/encaps/decaps bundles (the official `.rsp` files have 100 tests per set; the round-2 leftover ntruhps2048509 set is not extracted) |
+| `sntrup-kat.json` | 12 | Streamlined NTRU Prime round-3 submission KAT: sntrup761, sntrup857, sntrup953, sntrup1277 × 3 — full keygen/encaps/decaps bundles (the official `kat_kem.rsp` files have 100 tests per set; the package carries no official KAT for the 653/1013 sizes) |
 
 ML-DSA scope: pure mode (the `ML-DSA.Sign/Verify(message, context)` API)
 **plus the internal interfaces** — external-μ signing/verification
@@ -64,3 +67,17 @@ python3 extract_mlkem_acvp.py /tmp/acvp-mlkem .
 The extractors keep the committed payload small by capping per-group
 selections (ML-KEM: keyGen all 25/set, encaps + decaps first 8/set,
 keyCheck all); edit the filters to embed more (or all) vectors.
+
+# FrodoKEM: from the round-3 submission package (FrodoKEM-Round3.zip), place
+# the six .rsp files in /tmp/pqc-kat/rsp:
+#   PQCkemKAT_{19888,31296,43088}.rsp  PQCkemKAT_{19888,31296,43088}_shake.rsp
+python3 extract_frodokem_kat.py /tmp/pqc-kat/rsp .
+
+# NTRU: from the round-3 submission package (NTRU-Round3.zip), point at the
+# KAT directory (param-set subdirectories):
+python3 extract_ntru_kat.py /tmp/ntru-kat .
+
+# Streamlined NTRU Prime: from the round-3 submission package
+# (NTRU-Prime-Round3.zip), point at the KAT/kem directory (param-set
+# subdirectories):
+python3 extract_sntrup_kat.py /tmp/ntruprime-kat .

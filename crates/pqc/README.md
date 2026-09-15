@@ -5,7 +5,11 @@ foundation — ML-KEM and ML-DSA flow through the foundation's rings, norms,
 codecs and streaming-XOF/sampling layer, each with its spec-exact NTT
 convention in its own sub-module (`mlkem::ntt`, `mldsa::ntt`), while Falcon
 ships as a verbatim port of the round-3 reference implementation
-(self-contained `falcon` sub-modules).
+(self-contained `falcon` sub-modules). The round-3 lattice alternates —
+FrodoKEM, NTRU and Streamlined NTRU Prime — are likewise verbatim ports of
+their submissions' reference implementations (self-contained `frodo`,
+`ntru` and `sntrup` sub-modules), each byte-exact with the official
+round-3 submission KAT vectors.
 
 ## Implemented
 
@@ -48,6 +52,51 @@ ships as a verbatim port of the round-3 reference implementation
   - canonical key serialization (`to_bytes` / `from_bytes` with
     length/modulus checks);
   - byte-exact with the official round-3 submission KAT vectors.
+
+- **FrodoKEM (round-3 specification, 2020-09-30)** — `frodo` module:
+  - all three parameter sets (FrodoKEM-640/976/1344), each in the two
+    variants defined by the submission for generating the public matrix
+    `A` — AES128 (the submitted default, `frodo640`/`frodo976`/`frodo1344`)
+    and SHAKE128 (`frodo640_shake`/…);
+  - `keygen(s, seedSE, z)`, `encapsulate(ek, mu)`, `decapsulate(dk, ct)`
+    with implicit rejection;
+  - a minimal AES-128 block cipher (FIPS-197, validated against the
+    appendix vectors) for the `A` expansion — no external crypto deps;
+  - the submission's per-set XOF (`SHAKE128` for 640, `SHAKE256` for
+    976/1344) and CDF tables, `u16`-wrapping matrix arithmetic with the
+    reference's transposed sampling layout;
+  - byte-exact with the official round-3 submission KAT vectors (both
+    variants).
+- **NTRU (round-3 specification, 2020-10-16)** — `ntru` module:
+  - all five round-3 parameter sets: ntruhps2048677, ntruhps2048821,
+    ntruhps4096821, ntruhps40961229 and ntruhrss701, bound through
+    zero-cost per-set APIs;
+  - `keygen(seed, prf_key)`, `encapsulate(pk, rm_seed)`,
+    `decapsulate(sk, ct)` with implicit rejection through the 32-byte PRF
+    key (`SHA3-256(PRF ‖ ct)`);
+  - the almost-inverse `R2`/`S3`/`Rq` polynomial inversions, the HRSS
+    `x−1` lift, fixed-weight sampling via the supercop
+    `crypto_sort_int32` network, and the submission's ternary/mod-q packers;
+  - byte-exact with the official round-3 submission KAT vectors for
+    ntruhps2048677 / ntruhps4096821 / ntruhrss701 (the official KAT
+    directory covers those three sets; hps2048821 and hps40961229 share
+    the same code path and are covered by round-trip tests).
+- **Streamlined NTRU Prime (round-3 submission, ntruprime-20201007)** —
+  `sntrup` module:
+  - all six sizes (sntrup653/761/857/953/1013/1277 — sntrup761 is the
+    instance deployed in OpenSSH), bound through zero-cost per-set APIs;
+  - `keygen(g_random, f_random, rho)`, `encapsulate(pk, r_random)`,
+    `decapsulate(sk, ct)` with implicit rejection via the stored `rho`
+    and the `HashSession(1 + mask)` domain split;
+  - the mixed-radix `Encode`/`Decode` ciphertext/key compressor, the
+    branchless `crypto_sort_uint32`-driven `Short_fromlist` sampler, the
+    constant-time `R3_recip`/`Rq_recip3` extended GCDs, and SHA-512-based
+    `HashConfirm`/`HashSession`;
+  - byte-exact with the official round-3 submission KAT vectors for
+    sntrup761 / sntrup857 / sntrup953 / sntrup1277 (the submission ships
+    no official KAT files for the 653 and 1013 sizes; those share the
+    same code path and are covered by round-trip tests). The companion
+    NTRU-LPRime (`ntrulpr`) variant is not implemented.
 
 ## Status: FIPS 206 (FN-DSA) tracking
 
@@ -107,6 +156,20 @@ let (ciphertext, ss) = mlkem_768::encapsulate(&ek, &m);
 assert_eq!(mlkem_768::decapsulate(&dk, &ciphertext).as_bytes(), ss.as_bytes());
 ```
 
+```rust,ignore
+// FrodoKEM, NTRU and Streamlined NTRU Prime follow the same pattern —
+// explicit randomness exactly as the submissions' reference
+// implementations draw it (see each module's docs for the shapes):
+use pqc::frodo::frodo976;
+let (sk, ek) = frodo976::keygen(&s, &seed_se, &z);      // s/seedSE: 24B, z: 16B
+let (ct, ss) = frodo976::encapsulate(&ek, &mu);          // mu: 24B fresh uniform
+assert_eq!(frodo976::decapsulate(&sk, &ct).as_bytes(), ss.as_bytes());
+
+use pqc::ntru::ntruhrss701;
+let (sk, pk) = ntruhrss701::keygen(&seed, &prf_key);     // seed: 1400B, prf_key: 32B
+let (ct, ss) = ntruhrss701::encapsulate(&pk, &rm_seed);  // rm_seed: 1400B
+```
+
 Keys serialize canonically: `SigningKey::to_bytes` / `from_bytes`,
 `VerifyingKey::to_bytes` / `from_bytes` (FIPS 204 `skEncode` / `pkEncode`),
 and `DecapsulationKey::to_bytes` / `from_bytes`,
@@ -124,6 +187,9 @@ parameter sets (ML-DSA, Falcon) and the KEM line.
 cargo test -p lattice-pqc               # unit tests (roundtrips, tamper, sizes)
 cargo test -p lattice-pqc --test scheme_contract
 cargo test -p lattice-pqc --test falcon_kat
+cargo test -p lattice-pqc --test frodo_kat
+cargo test -p lattice-pqc --test ntru_kat
+cargo test -p lattice-pqc --test sntrup_kat
 cargo run  -p lattice-pqc --example sign_verify
 cargo run  -p lattice-pqc --example sign_falcon
 cargo run  -p lattice-pqc --example kem
@@ -133,5 +199,10 @@ cargo bench -p lattice-pqc              # criterion: keygen / sign / verify / en
 KAT/ACVP vector alignment: ML-DSA (279 vectors across pure, internal-mu
 and preHash modes) and ML-KEM
 (183 vectors) match the official NIST ACVP sample vectors byte-for-byte,
-and Falcon matches the official round-3 submission KAT vectors (10
-keygen/sign/verify bundles) — see `tests/data/README.md` for provenance.
+Falcon matches the official round-3 submission KAT vectors (10
+keygen/sign/verify bundles), FrodoKEM matches the official round-3
+submission KAT vectors (18 bundles across 640/976/1344 × AES/SHAKE), NTRU
+matches the official round-3 submission KAT vectors (9 bundles across
+hps2048677/4096821/hrss701), and Streamlined NTRU Prime matches the
+official round-3 submission KAT vectors (12 bundles across
+761/857/953/1277) — see `tests/data/README.md` for provenance.
