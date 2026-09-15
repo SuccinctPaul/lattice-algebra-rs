@@ -36,9 +36,11 @@ pub fn root_hermite(mu: f64) -> f64 {
     ((pi * mu).powf(1.0 / mu) * mu / (2.0 * pi * e)).powf(1.0 / (2.0 * (mu - 1.0)))
 }
 
-/// Cost exponents for a single SVP call in dimension `µ` (Dilithium r3.1,
-/// Appendix C.1): classical sieve `log2√(3/2)`, quantum sieve `log2√(13/9)`.
+/// Cost exponent for a single **classical** SVP call in dimension `µ`
+/// (Dilithium r3.1, Appendix C.1): the sieve cost `log2√(3/2)`.
 pub const CLASSICAL_SVP_EXPONENT: f64 = 0.292;
+/// Cost exponent for a single **quantum** SVP call in dimension `µ`
+/// (Dilithium r3.1, Appendix C.1): the sieve cost `log2√(13/9)`.
 pub const QUANTUM_SVP_EXPONENT: f64 = 0.265;
 
 /// An LWE instance `A·s + e` over `Z_q` with `n_secret`-dimensional secret

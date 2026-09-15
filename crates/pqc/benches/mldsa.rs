@@ -1,3 +1,4 @@
+#![allow(missing_docs)] // benchmark harness: criterion groups need no API docs
 //! Criterion benchmarks for ML-DSA key generation, signing and verification
 //! across all three parameter sets.
 //!

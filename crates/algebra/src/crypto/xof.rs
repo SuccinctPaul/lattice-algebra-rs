@@ -149,11 +149,32 @@ pub mod shortcuts {
         x.absorb(&[b1, b2]);
         x.squeeze_vec(n)
     }
+
+    /// One-shot `SHAKE128` over concatenated input parts into `out` — the
+    /// plain absorb-then-squeeze idiom the verbatim reference ports spell
+    /// as `shake128(out, outLen, in, inLen)`.
+    pub fn shake128_parts(parts: &[&[u8]], out: &mut [u8]) {
+        let mut x = Shake128Xof::new(&[]);
+        for part in parts {
+            x.absorb(part);
+        }
+        x.squeeze(out);
+    }
+
+    /// One-shot `SHAKE256` over concatenated input parts into `out`
+    /// (see [`shake128_parts`]).
+    pub fn shake256_parts(parts: &[&[u8]], out: &mut [u8]) {
+        let mut x = Shake256Xof::new(&[]);
+        for part in parts {
+            x.absorb(part);
+        }
+        x.squeeze(out);
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::shortcuts::{g64, h256, prf, xof128_2};
+    use super::shortcuts::{g64, h256, prf, shake128_parts, shake256_parts, xof128_2};
     use super::*;
 
     #[test]
@@ -231,5 +252,27 @@ mod tests {
         w.absorb(b"rho");
         w.absorb(&[1, 2]);
         assert_eq!(s, w.squeeze_vec(9));
+    }
+
+    #[test]
+    fn parts_helpers_match_explicit_construction() {
+        // Multi-part one-shot squeezes must equal a single absorb of the
+        // concatenation.
+        let mut z = Shake256Xof::new(&[]);
+        z.absorb(b"pk");
+        z.absorb(b"mu");
+        let expected = z.squeeze_vec(24);
+
+        let mut out = [0u8; 24];
+        shake256_parts(&[b"pk", b"mu"], &mut out);
+        assert_eq!(out.as_slice(), expected.as_slice());
+
+        let mut h = Shake128Xof::new(&[]);
+        h.absorb(b"seed");
+        h.absorb(b"ij");
+        let expected128 = h.squeeze_vec(40);
+        let mut out128 = [0u8; 40];
+        shake128_parts(&[b"seed", b"ij"], &mut out128);
+        assert_eq!(out128.as_slice(), &expected128[..]);
     }
 }

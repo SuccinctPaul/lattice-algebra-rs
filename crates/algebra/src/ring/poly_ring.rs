@@ -49,6 +49,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 /// ```
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PolyRing<R: Ring, const DEGREE_BOUND: usize> {
+    /// The underlying coefficient polynomial (degree < `DEGREE_BOUND`).
     #[serde(bound(serialize = "R: Serialize", deserialize = "R: Deserialize<'de>"))]
     pub inner: UniPolynomial<R>,
 }

@@ -5,9 +5,12 @@
 //! parameter set appears in the type of every key.
 
 /// Global constants shared by all ML-DSA parameter sets.
-pub const Q: i64 = 8_380_417; // 2^23 − 2^13 + 1
-pub const N: usize = 256; // ring dimension
-pub const D: u32 = 13; // dropped bits of t
+/// Modulus `q` = 2²³ − 2¹³ + 1.
+pub const Q: i64 = 8_380_417;
+/// Ring dimension `n`.
+pub const N: usize = 256;
+/// Dropped bits of `t` in the compressed public key.
+pub const D: u32 = 13;
 
 /// Per-parameter-set constants (FIPS 204, Table 1).
 pub trait MlDsaParams: 'static {

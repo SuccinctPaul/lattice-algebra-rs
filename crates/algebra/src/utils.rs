@@ -1,5 +1,6 @@
-// Example:
-// (11)10 -> (1101 0000)2
+/// Expands bytes into bits in little-endian bit order per byte.
+///
+/// Example: `11 = 0b0000_1011` expands to `[1,1,0,1, 0,0,0,0]`.
 pub fn bytes_to_le_bits(bytes: &[u8]) -> Vec<bool> {
     let mut bits = Vec::new();
     for &byte in bytes {
@@ -10,8 +11,9 @@ pub fn bytes_to_le_bits(bytes: &[u8]) -> Vec<bool> {
     bits
 }
 
-// Example:
-// (11)10 -> (1101)2 -> (1101 0000)2
+/// Pads the bit vector with trailing zeros up to a whole byte boundary.
+///
+/// Example: `[1,1,0,1]` formalizes to `[1,1,0,1, 0,0,0,0]`.
 pub fn bits_formalize(bits: &[bool]) -> Vec<bool> {
     let mut bits = bits.to_vec();
     while bits.len() % 8 != 0 {
@@ -20,8 +22,9 @@ pub fn bits_formalize(bits: &[bool]) -> Vec<bool> {
     bits
 }
 
-// Example:
-// (11)10 -> (1101 0000)2 -> (1101)2
+/// Strips trailing zero bits (the inverse of [`bits_formalize`]).
+///
+/// Example: `[1,1,0,1, 0,0,0,0]` normalizes back to `[1,1,0,1]`.
 pub fn bits_normalize(bits: &[bool]) -> Vec<bool> {
     let mut bits = bits.to_vec();
     while !bits.last().unwrap_or(&false) {
@@ -30,8 +33,10 @@ pub fn bits_normalize(bits: &[bool]) -> Vec<bool> {
     bits
 }
 
-// Example:
-//  (1011 0000)2 -> (11)10
+/// Packs little-endian bit-order bits back into bytes (the inverse of
+/// [`bytes_to_le_bits`]).
+///
+/// Example: `[1,1,0,1, 0,0,0,0]` packs to `11`.
 pub fn le_bits_to_bytes(bits: &[bool]) -> Vec<u8> {
     let mut bytes = Vec::new();
     for chunk in bits.chunks(8) {
