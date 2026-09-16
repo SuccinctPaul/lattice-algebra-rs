@@ -503,3 +503,69 @@ mod edge_cases {
         assert_eq!(x2, expected, "x * x should equal x^2");
     }
 }
+
+mod batch_ntt_tests {
+    use super::*;
+    use crate::ntt::NttOperatorOptimized;
+
+    #[test]
+    fn batch_matches_per_polynomial_transform() {
+        let ntt = NttOperatorOptimized::<Zq257, 16>::new();
+        let slab: Vec<Zq257> = (0..100 * 16)
+            .map(|i| Zq257::new((i * 37 % 257) as u64))
+            .collect();
+
+        let mut batched = slab.clone();
+        ntt.forward_batch(&mut batched);
+        let mut one_by_one = slab.clone();
+        for chunk in one_by_one.chunks_mut(16) {
+            ntt.forward(chunk);
+        }
+        assert_eq!(
+            batched, one_by_one,
+            "forward_batch must match per-poly forward"
+        );
+
+        ntt.inverse_batch(&mut batched);
+        for chunk in one_by_one.chunks_mut(16) {
+            ntt.inverse(chunk);
+        }
+        assert_eq!(
+            batched, one_by_one,
+            "inverse_batch must match per-poly inverse"
+        );
+    }
+
+    #[test]
+    fn negacyclic_batch_matches_per_polynomial_transform() {
+        let ntt = NttOperatorOptimized::<Zq257, 16>::new();
+        let slab: Vec<Zq257> = (0..70 * 16)
+            .map(|i| Zq257::new((i * 11 % 257) as u64))
+            .collect();
+
+        let mut batched = slab.clone();
+        ntt.forward_negacyclic_batch(&mut batched);
+        let mut one_by_one = slab.clone();
+        for chunk in one_by_one.chunks_mut(16) {
+            ntt.forward_negacyclic(chunk);
+        }
+        assert_eq!(
+            batched, one_by_one,
+            "forward_negacyclic_batch must match per-poly transform"
+        );
+
+        ntt.inverse_negacyclic_batch(&mut batched);
+        for chunk in one_by_one.chunks_mut(16) {
+            ntt.inverse_negacyclic(chunk);
+        }
+        assert_eq!(batched, slab, "inverse ∘ forward must be identity");
+    }
+
+    #[test]
+    #[should_panic(expected = "multiple of N")]
+    fn batch_rejects_non_multiple_slab() {
+        let ntt = NttOperatorOptimized::<Zq257, 16>::new();
+        let mut slab = vec![Zq257::new(1); 16 * 2 + 1];
+        ntt.forward_batch(&mut slab);
+    }
+}

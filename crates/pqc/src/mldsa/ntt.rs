@@ -21,7 +21,14 @@
 //! - `Â` entries from `ExpandA` are stored as raw `RejNTTPoly` values,
 //!   which are NTT-domain coefficients under precisely this convention.
 //!
-//! All arithmetic is branch-free modular arithmetic over `u64`.
+//! All arithmetic is exact modular arithmetic over `u64`; every
+//! multiply-reduce goes through a Barrett-mulhi reduction. The butterflies
+//! deliberately stay scalar: with 23-bit `q` the 46-bit products cannot live
+//! in 32-bit lanes, so only the pair updates would vectorize — and the lane
+//! bookkeeping measured slower than those updates saved (unlike ML-KEM,
+//! whose 12-bit modulus multiplies fully in-lane). The [`algebra::simd`]
+//! modular kernels remain the shared substrate for lane arithmetic
+//! (ML-KEM, FrodoKEM).
 
 use super::params::{N, Q};
 use super::ZqD;
@@ -34,15 +41,30 @@ const ZETA: u64 = 1753;
 
 const Q_U64: u64 = Q as u64;
 
+/// `⌊2^64 / q⌋`, the Barrett multiplier for 46-bit products.
+const BARRETT_MU: u128 = (1u128 << 64) / (Q as u128);
+
 #[inline]
 pub(crate) fn mul_mod(a: u64, b: u64) -> u64 {
-    ((a as u128 * b as u128) % Q_U64 as u128) as u64
+    // Both operands are NTT-domain values < q ≈ 2^23, so the product fits
+    // comfortably in 64 bits. `t = ⌊product·μ / 2^64⌋` estimates
+    // `⌊product / q⌋` to within 1 (the x/2^64 slack is < 2⁻¹⁸ for 46-bit
+    // products), so one conditional subtract normalizes exactly.
+    let product = a.wrapping_mul(b);
+    let t = ((product as u128 * BARRETT_MU) >> 64) as u64;
+    let r = product - t * Q_U64;
+    if r >= Q_U64 {
+        r - Q_U64
+    } else {
+        r
+    }
 }
 
 /// NTT-domain inner-product step: `acc[j] += a[j]·b[j] (mod q)`.
 pub fn pointwise_mul_add(acc: &mut [u64; N], a: &[u64; N], b: &[u64; N]) {
     for j in 0..N {
-        acc[j] = (acc[j] + mul_mod(a[j], b[j])) % Q_U64;
+        let s = acc[j] + mul_mod(a[j], b[j]);
+        acc[j] = if s >= Q_U64 { s - Q_U64 } else { s };
     }
 }
 

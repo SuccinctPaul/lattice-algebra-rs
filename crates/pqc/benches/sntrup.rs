@@ -5,10 +5,8 @@
 //! Run with: `cargo bench -p lattice-pqc -- sntrup`
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pqc::sntrup::{
-    sntrup1013, sntrup1277, sntrup653, sntrup761, sntrup857, sntrup953,
-};
 use pqc::sntrup::params::SntrupParams;
+use pqc::sntrup::{sntrup1013, sntrup1277, sntrup653, sntrup761, sntrup857, sntrup953};
 
 fn bench_sntrup(c: &mut Criterion) {
     let mut group = c.benchmark_group("sntrup");
@@ -45,9 +43,11 @@ fn bench_sntrup(c: &mut Criterion) {
                     let f_random = fresh_bytes(2, 4 * p);
                     let rho = fresh_bytes(3, small);
                     loop {
-                        if let Ok(keys) =
-                            $api::keygen(black_box(&g_random), black_box(&f_random), black_box(&rho))
-                        {
+                        if let Ok(keys) = $api::keygen(
+                            black_box(&g_random),
+                            black_box(&f_random),
+                            black_box(&rho),
+                        ) {
                             break keys;
                         }
                     }

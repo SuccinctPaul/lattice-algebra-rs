@@ -17,15 +17,39 @@
 //!   are NTT-domain coefficients under precisely this convention.
 //!
 //! All arithmetic is modular over `u64` representatives in `[0, q)`.
+//!
+//! Under the `simd-mlkem` feature the transform butterflies run on 8×32-bit
+//! lanes with an in-lane Montgomery reduction (`R = 2^16`, twiddles
+//! pre-scaled into Montgomery form); that entire lane path lives in the
+//! dedicated `simd_ntt` sibling module. The scalar path here — and the
+//! innermost scalar layers of the lane path — use a Barrett-mulhi
+//! multiply-reduce instead. Both are exact integer arithmetic and
+//! bit-identical — asserted by a drift test and the ACVP KATs.
 
 use super::params::{N, Q, T_ZETA};
+#[cfg(feature = "simd-mlkem")]
+use super::simd_ntt;
 use algebra::crypto::xof::Xof;
 
-const Q_U64: u64 = Q;
+pub(super) const Q_U64: u64 = Q;
+
+/// `⌊2^64 / q⌋`, the Barrett multiplier for sub-24-bit products.
+const BARRETT_MU: u128 = (1u128 << 64) / Q_U64 as u128;
 
 #[inline]
 pub(crate) fn mul_mod(a: u64, b: u64) -> u64 {
-    ((a as u128 * b as u128) % Q_U64 as u128) as u64
+    // Both operands are NTT-domain values < q = 3329, so the product is
+    // below 2^24. `t = ⌊product·μ / 2^64⌋` matches `⌊product / q⌋` to
+    // within 1 for products this small, so one conditional subtract
+    // normalizes exactly.
+    let product = a.wrapping_mul(b);
+    let t = ((product as u128 * BARRETT_MU) >> 64) as u64;
+    let r = product - t * Q_U64;
+    if r >= Q_U64 {
+        r - Q_U64
+    } else {
+        r
+    }
 }
 
 /// `base^exp mod q` by square-and-multiply (const-evaluable; the exponents
@@ -58,7 +82,7 @@ const fn bit_rev7(i: usize) -> u64 {
 }
 
 /// Forward twiddles: `ZETAS[i] = ζ^brv7(i)` for `i ∈ [0, 128)`.
-const ZETAS: [u64; 128] = {
+pub(super) const ZETAS: [u64; 128] = {
     let mut table = [0u64; 128];
     let mut i = 0;
     while i < 128 {
@@ -81,11 +105,24 @@ const MUL_ZETAS: [u64; 128] = {
 };
 
 /// `128⁻¹ mod q` (the inverse NTT of FIPS 203 has seven layers).
-const HALF_N_INV: u64 = pow_mod((N / 2) as u64, Q - 2);
+pub(super) const HALF_N_INV: u64 = pow_mod((N / 2) as u64, Q - 2);
 
 /// FIPS 203 NTT (forward): coefficients in `[0, q)` → NTT-domain values in
 /// seven butterfly layers; the output is 128 pairs in the spec's layout.
 pub fn ntt(a: &mut [u64; N]) {
+    #[cfg(feature = "simd-mlkem")]
+    {
+        simd_ntt::ntt_lane(a);
+    }
+    #[cfg(not(feature = "simd-mlkem"))]
+    {
+        ntt_scalar(a);
+    }
+}
+
+/// Scalar reference transform (also the `simd-mlkem`-off implementation).
+#[cfg(any(not(feature = "simd-mlkem"), test))]
+pub(super) fn ntt_scalar(a: &mut [u64; N]) {
     let mut i = 1usize;
     let mut len = N / 2;
     while len >= 2 {
@@ -110,6 +147,20 @@ pub fn ntt(a: &mut [u64; N]) {
 /// The result is finally scaled by `128⁻¹ = 3303`, not `256⁻¹` (seven
 /// layers, see below).
 pub fn intt(a: &mut [u64; N]) {
+    #[cfg(feature = "simd-mlkem")]
+    {
+        simd_ntt::intt_lane(a);
+    }
+    #[cfg(not(feature = "simd-mlkem"))]
+    {
+        intt_scalar(a);
+    }
+}
+
+/// Scalar reference inverse transform (also the `simd-mlkem`-off
+/// implementation).
+#[cfg(any(not(feature = "simd-mlkem"), test))]
+pub(super) fn intt_scalar(a: &mut [u64; N]) {
     let mut i = 127usize;
     let mut len = 2;
     while len <= N / 2 {
@@ -316,6 +367,30 @@ mod tests {
                 }
             }
             assert_eq!(prod, want.map(|c| c.rem_euclid(Q as i64)));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "simd-mlkem")]
+    fn lane_transforms_match_scalar_reference() {
+        // The lane kernels are exact integer arithmetic, so both paths must
+        // agree coefficient-for-coefficient on arbitrary [0, q) inputs.
+        assert_eq!(
+            simd_ntt::QINV16,
+            3327,
+            "QINV16 must be minus q_inv mod 2^16 (q_inv = 62209)"
+        );
+        for seed in 0..8u64 {
+            let f = sample_coeffs(seed);
+            let mut via_lane = f.map(|c| c.rem_euclid(Q as i64) as u64);
+            let mut via_scalar = via_lane;
+            simd_ntt::ntt_lane(&mut via_lane);
+            ntt_scalar(&mut via_scalar);
+            assert_eq!(via_lane, via_scalar, "forward lanes diverged (seed {seed})");
+
+            simd_ntt::intt_lane(&mut via_lane);
+            intt_scalar(&mut via_scalar);
+            assert_eq!(via_lane, via_scalar, "inverse lanes diverged (seed {seed})");
         }
     }
 }

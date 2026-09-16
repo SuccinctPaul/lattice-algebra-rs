@@ -36,7 +36,11 @@ fn run_case<P: NtruParams>(
     let mut rm_seed = vec![0u8; P::SAMPLE_RM_BYTES];
     drbg.fill(&mut rm_seed);
     let (ct, ss) = ntru::encapsulate::<P>(&pk, &rm_seed).expect("DRBG-sized inputs");
-    assert_eq!(ct.as_bytes(), expected.2.as_slice(), "{set} count {count}: ct");
+    assert_eq!(
+        ct.as_bytes(),
+        expected.2.as_slice(),
+        "{set} count {count}: ct"
+    );
     assert_eq!(
         ss.as_bytes(),
         expected.3.as_slice(),

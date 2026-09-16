@@ -71,7 +71,11 @@ fn run_case<P: SntrupParams>(
         r_random.extend_from_slice(&word);
     }
     let (ct, ss) = sntrup::encapsulate::<P>(&pk, &r_random).expect("DRBG-sized inputs");
-    assert_eq!(ct.as_bytes(), expected.2.as_slice(), "{set} count {count}: ct");
+    assert_eq!(
+        ct.as_bytes(),
+        expected.2.as_slice(),
+        "{set} count {count}: ct"
+    );
     assert_eq!(
         ss.as_bytes(),
         expected.3.as_slice(),

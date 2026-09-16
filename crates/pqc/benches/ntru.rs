@@ -5,10 +5,8 @@
 //! Run with: `cargo bench -p lattice-pqc -- ntru`
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pqc::ntru::{
-    ntruhps2048677, ntruhps2048821, ntruhps4096821, ntruhps40961229, ntruhrss701,
-};
 use pqc::ntru::params::NtruParams;
+use pqc::ntru::{ntruhps2048677, ntruhps2048821, ntruhps40961229, ntruhps4096821, ntruhrss701};
 
 fn bench_ntru(c: &mut Criterion) {
     let mut group = c.benchmark_group("ntru");
@@ -43,10 +41,26 @@ fn bench_ntru(c: &mut Criterion) {
         }};
     }
 
-    bench_set!("ntruhps2048677", pqc::ntru::params::NtruHps2048677, ntruhps2048677);
-    bench_set!("ntruhps2048821", pqc::ntru::params::NtruHps2048821, ntruhps2048821);
-    bench_set!("ntruhps4096821", pqc::ntru::params::NtruHps4096821, ntruhps4096821);
-    bench_set!("ntruhps40961229", pqc::ntru::params::NtruHps40961229, ntruhps40961229);
+    bench_set!(
+        "ntruhps2048677",
+        pqc::ntru::params::NtruHps2048677,
+        ntruhps2048677
+    );
+    bench_set!(
+        "ntruhps2048821",
+        pqc::ntru::params::NtruHps2048821,
+        ntruhps2048821
+    );
+    bench_set!(
+        "ntruhps4096821",
+        pqc::ntru::params::NtruHps4096821,
+        ntruhps4096821
+    );
+    bench_set!(
+        "ntruhps40961229",
+        pqc::ntru::params::NtruHps40961229,
+        ntruhps40961229
+    );
     bench_set!("ntruhrss701", pqc::ntru::params::NtruHrss701, ntruhrss701);
 
     group.finish();

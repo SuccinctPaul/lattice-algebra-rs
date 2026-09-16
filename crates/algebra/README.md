@@ -47,6 +47,33 @@ let _noise = sample_cbd::<ZqD>(&mut stream, 2);
 More in [`examples/`](examples): ring & NTT basics, module-lattice arithmetic,
 and a sampler tour with histograms.
 
+## Performance features
+
+Two opt-in feature flags speed up the heavy arithmetic without changing any
+result (every kernel is bit-exact by construction and covered by scalar-vs-lane
+tests):
+
+- **`parallel`** (rayon): `GenericMatrix`/`GenericVector` operations dispatch
+  to the rayon pool above size thresholds, and `NttOperatorOptimized` gains
+  `forward_batch` / `inverse_batch` / `forward_negacyclic_batch` /
+  `inverse_negacyclic_batch` — slab transforms (polynomials stored
+  back-to-back) that fan out across threads once the slab holds ≥ 64
+  polynomials.
+- **`simd`** (`algebra::simd`): safe lane kernels on [`wide`](https://crates.io/crates/wide)
+  fixed-width types — no `unsafe` in this workspace. On x86_64 the lane types
+  lower to AVX2 under `target-feature=+avx2` and otherwise decompose into two
+  SSE2 halves; aarch64 uses NEON; other targets compile the scalar fallback.
+  Kernels: `wrapping_dot_u16` / `wrapping_axpy_u16` (power-of-two-modulus
+  inner products — exact because wrapping arithmetic truncates homomorphically)
+  and `mod_add_u32` / `mod_sub_u32` (± assign variants) for moduli below 2³¹.
+  Scheme-side consumers live in `lattice-pqc` (ML-KEM butterflies, FrodoKEM
+  matrix products).
+
+```sh
+cargo test -p lattice-algebra --all-features
+cargo bench -p lattice-algebra --features simd -- simd
+```
+
 ## Development
 
 ```sh

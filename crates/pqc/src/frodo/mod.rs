@@ -24,6 +24,8 @@ pub mod aes;
 pub mod encoding;
 pub mod params;
 
+mod simd;
+
 pub use params::{
     Frodo1344, Frodo1344Shake, Frodo640, Frodo640Shake, Frodo976, Frodo976Shake, FrodoParams,
     KemXof, MatrixAExpansion, SEEDSE_ENCAPS_PREFIX, SEEDSE_KEYGEN_PREFIX, SEED_A_BYTES,
@@ -33,6 +35,8 @@ pub use params::{
 use crate::error::{InvalidInput, SchemeResult};
 use algebra::crypto::xof::shortcuts::{shake128_parts, shake256_parts};
 use std::marker::PhantomData;
+
+use self::simd::{axpy16, dot16};
 
 // ===========================================================================
 // Hash/XOF wrappers (the reference's `shake128` over FIPS-202)
@@ -50,6 +54,50 @@ fn shake_xof<P: FrodoParams>(input: &[&[u8]], out: &mut [u8]) {
 // ===========================================================================
 // Samplers and matrix arithmetic (u16 wrapping, as the C reference)
 // ===========================================================================
+
+/// Output dimension above which independent matrix-product rows are handed
+/// to the rayon pool (`parallel` feature); every real FrodoKEM parameter set
+/// clears this by a wide margin.
+#[cfg(feature = "parallel")]
+const PAR_MIN_DIM: usize = 256;
+
+/// Runs `f(row_index, row)` over the `len / row_len` disjoint output rows of
+/// `target`, across the rayon pool when the multiplying dimension is large
+/// enough to amortize task hand-off (`parallel` feature).
+#[cfg(feature = "parallel")]
+fn row_parallel(
+    target: &mut [u16],
+    row_len: usize,
+    work_hint: usize,
+    f: impl Fn(usize, &mut [u16]) + Sync,
+) {
+    if work_hint >= PAR_MIN_DIM {
+        use rayon::prelude::*;
+
+        target
+            .par_chunks_exact_mut(row_len)
+            .enumerate()
+            .for_each(|(i, row)| f(i, row));
+    } else {
+        for (i, row) in target.chunks_exact_mut(row_len).enumerate() {
+            f(i, row);
+        }
+    }
+}
+
+/// Sequential variant of [`row_parallel`] for builds without the
+/// `parallel` feature.
+#[cfg(not(feature = "parallel"))]
+fn row_parallel(
+    target: &mut [u16],
+    row_len: usize,
+    _work_hint: usize,
+    mut f: impl FnMut(usize, &mut [u16]),
+) {
+    for (i, row) in target.chunks_exact_mut(row_len).enumerate() {
+        f(i, row);
+    }
+}
 
 /// `frodo_sample_n`: fill `s` with samples from the noise distribution
 /// described by `cdf`, consuming the raw 16-bit input in place. Each
@@ -73,15 +121,42 @@ fn sample_n(s: &mut [u16], cdf: &[u16]) {
 
 /// Expand the public matrix `A` (`n × n`, full 16-bit entries):
 /// AES mode packs the index pairs into a buffer and encrypts it with
-/// AES128-ECB; SHAKE mode derives each row from `SHAKE128(i ‖ seed_A)`.
+/// AES128-ECB (blocks — and SHAKE-mode rows — are independent, so the
+/// `parallel` feature distributes them across threads); SHAKE mode derives
+/// each row from `SHAKE128(i ‖ seed_A)`.
 fn expand_a<P: FrodoParams>(seed_a: &[u8; SEED_A_BYTES]) -> Vec<u16> {
     let n = P::N;
     match P::A_MODE {
         MatrixAExpansion::Shake128 => {
             let mut out = vec![0u16; n * n];
-            let mut row_bytes = vec![0u8; 2 * n];
             let mut input = [0u8; 2 + SEED_A_BYTES];
             input[2..].copy_from_slice(seed_a);
+            #[cfg(feature = "parallel")]
+            {
+                use rayon::prelude::*;
+
+                if n >= PAR_MIN_DIM {
+                    let row_bytes: Vec<u8> = (0..n)
+                        .into_par_iter()
+                        .flat_map_iter(|i| {
+                            let mut row_input = input;
+                            row_input[0] = i as u8;
+                            row_input[1] = (i >> 8) as u8;
+                            let mut row_bytes = vec![0u8; 2 * n];
+                            // The SHAKE-A variant generates rows with fips202
+                            // SHAKE128 directly (independent of the per-set
+                            // KEM XOF).
+                            shake128_parts(&[&row_input], &mut row_bytes);
+                            row_bytes
+                        })
+                        .collect();
+                    return row_bytes
+                        .chunks_exact(2)
+                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                        .collect();
+                }
+            }
+            let mut row_bytes = vec![0u8; 2 * n];
             for (i, row) in out.chunks_mut(n).enumerate() {
                 input[0] = i as u8;
                 input[1] = (i >> 8) as u8;
@@ -106,9 +181,26 @@ fn expand_a<P: FrodoParams>(seed_a: &[u8; SEED_A_BYTES]) -> Vec<u16> {
                     buf[2 * (i * n + j + 1) + 1] = (j >> 8) as u8;
                 }
             }
-            for block in buf.chunks_exact_mut(16) {
-                let pt: [u8; 16] = block.try_into().expect("16-byte block");
-                block.copy_from_slice(&aes::encrypt_block(seed_a, &pt));
+            {
+                #[cfg(feature = "parallel")]
+                {
+                    use rayon::prelude::*;
+
+                    if n >= PAR_MIN_DIM {
+                        buf.par_chunks_exact_mut(16).for_each(|block| {
+                            let pt: [u8; 16] = block.try_into().expect("16-byte block");
+                            block.copy_from_slice(&aes::encrypt_block(seed_a, &pt));
+                        });
+                        return buf
+                            .chunks_exact(2)
+                            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                            .collect();
+                    }
+                }
+                for block in buf.chunks_exact_mut(16) {
+                    let pt: [u8; 16] = block.try_into().expect("16-byte block");
+                    block.copy_from_slice(&aes::encrypt_block(seed_a, &pt));
+                }
             }
             buf.chunks_exact(2)
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
@@ -120,51 +212,53 @@ fn expand_a<P: FrodoParams>(seed_a: &[u8; SEED_A_BYTES]) -> Vec<u16> {
 /// `frodo_mul_add_as_plus_e`: `B = A·s + e` where `A` is row-indexed
 /// `A[i·n + j]`, `s` is read transposed as `s[k·n + j]` (`n̄ × n`), and
 /// `e`/`B` are `n × n̄` row-major. All sums wrap mod 2¹⁶.
+///
+/// Output rows are independent (`parallel`) and each is `n̄` dot products
+/// with 16-lane accumulation (`simd`).
 fn mul_add_as_plus_e(b: &mut [u16], a: &[u16], s: &[u16], e: &[u16], nbar: usize, n: usize) {
     b.copy_from_slice(e);
-    for i in 0..n {
-        for k in 0..nbar {
-            let mut sum = 0u16;
-            for j in 0..n {
-                sum = sum.wrapping_add(a[i * n + j].wrapping_mul(s[k * n + j]));
-            }
-            b[i * nbar + k] = b[i * nbar + k].wrapping_add(sum);
+    row_parallel(b, nbar, n, |i, row| {
+        let a_row = &a[i * n..(i + 1) * n];
+        for (k, slot) in row.iter_mut().enumerate() {
+            *slot = slot.wrapping_add(dot16(a_row, &s[k * n..(k + 1) * n]));
         }
-    }
+    });
 }
 
 /// `frodo_mul_add_sa_plus_e`: `B' = s'·A + e'` with `s'`/`e'`/`B'` as
 /// `n̄ × n` row-major and `A` indexed column-wise (`A[j·n + i]`).
+///
+/// Reformulated as `n̄` independent row updates: row `k` accumulates
+/// `s'[k, j]·A[j, ·]` over ascending `j` (an axpy chain) — the same
+/// addition order as the reference triple loop, so the wrapped low bits
+/// match byte-for-byte.
 fn mul_add_sa_plus_e(out: &mut [u16], a: &[u16], s: &[u16], e: &[u16], nbar: usize, n: usize) {
+    debug_assert_eq!(out.len(), nbar * n);
     out.copy_from_slice(e);
-    for i in 0..n {
-        for k in 0..nbar {
-            let mut sum = 0u16;
-            for j in 0..n {
-                sum = sum.wrapping_add(a[j * n + i].wrapping_mul(s[k * n + j]));
-            }
-            out[k * n + i] = out[k * n + i].wrapping_add(sum);
+    row_parallel(out, n, n, |k, row| {
+        for j in 0..n {
+            axpy16(row, &a[j * n..(j + 1) * n], s[k * n + j]);
         }
-    }
+    });
 }
 
 /// `frodo_mul_bs`: `W = b·s` with `b` as `n̄ × n` and `s` transposed
 /// (`s[j·n + k]`), result `n̄ × n̄` reduced mod q.
 fn mul_bs(out: &mut [u16], b: &[u16], s: &[u16], nbar: usize, n: usize, logq: u32) {
     let mask = ((1u32 << logq) - 1) as u16;
-    for i in 0..nbar {
-        for j in 0..nbar {
-            let mut sum = 0u16;
-            for k in 0..n {
-                sum = sum.wrapping_add(b[i * n + k].wrapping_mul(s[j * n + k]));
-            }
-            out[i * nbar + j] = sum & mask;
+    row_parallel(out, nbar, n, |i, row| {
+        let b_row = &b[i * n..(i + 1) * n];
+        for (j, slot) in row.iter_mut().enumerate() {
+            *slot = dot16(b_row, &s[j * n..(j + 1) * n]) & mask;
         }
-    }
+    });
 }
 
 /// `frodo_mul_add_sb_plus_e`: `V = s·b + e` with `s` transposed
 /// (`s[k·n + j]`), `b` as `n × n̄`, result mod q.
+///
+/// Row `k` accumulates `s[k, j]·b[j, ·]` over ascending `j` (axpy chain,
+/// exact as [`mul_add_sa_plus_e`]) and is masked at the end.
 fn mul_add_sb_plus_e(
     out: &mut [u16],
     b: &[u16],
@@ -174,16 +268,16 @@ fn mul_add_sb_plus_e(
     n: usize,
     logq: u32,
 ) {
+    out.copy_from_slice(e);
     let mask = ((1u32 << logq) - 1) as u16;
-    for k in 0..nbar {
-        for i in 0..nbar {
-            let mut sum = 0u16;
-            for j in 0..n {
-                sum = sum.wrapping_add(s[k * n + j].wrapping_mul(b[j * nbar + i]));
-            }
-            out[k * nbar + i] = e[k * nbar + i].wrapping_add(sum) & mask;
+    row_parallel(out, nbar, n, |k, row| {
+        for j in 0..n {
+            axpy16(row, &b[j * nbar..(j + 1) * nbar], s[k * n + j]);
         }
-    }
+        for v in row.iter_mut() {
+            *v &= mask;
+        }
+    });
 }
 
 /// Generate the `(S ‖ E)`-style randomness block: the per-set `shake`
@@ -357,7 +451,6 @@ impl<P: FrodoParams> Ciphertext<P> {
         })
     }
 }
-
 
 impl<P: FrodoParams> AsRef<[u8]> for Ciphertext<P> {
     fn as_ref(&self) -> &[u8] {
@@ -649,6 +742,60 @@ macro_rules! instantiate_frodo {
                 ct: &Ciphertext<super::params::$params>,
             ) -> SharedSecret {
                 super::decapsulate::<super::params::$params>(dk, ct)
+            }
+            /// Batch keygen across the rayon pool (`parallel` feature):
+            /// `s[i]`, `seed_se[i]` and `z[i]` drive key `i`; per-item
+            /// length errors are reported positionally.
+            ///
+            /// # Panics
+            /// If the randomness slices do not pair up.
+            #[cfg(feature = "parallel")]
+            pub fn keygen_batch(
+                s: &[&[u8]],
+                seed_se: &[&[u8]],
+                z: &[[u8; 16]],
+            ) -> Vec<
+                super::SchemeResult<(
+                    SecretKey<super::params::$params>,
+                    PublicKey<super::params::$params>,
+                )>,
+            > {
+                assert_eq!(s.len(), seed_se.len(), "s and seed_se must pair up");
+                assert_eq!(s.len(), z.len(), "s and z must pair up");
+                use rayon::prelude::*;
+
+                s.par_iter()
+                    .enumerate()
+                    .map(|(i, s)| super::keygen::<super::params::$params>(s, seed_se[i], &z[i]))
+                    .collect()
+            }
+
+            /// Batch encapsulation across the rayon pool (`parallel`
+            /// feature); `mu[i]` must be fresh per-ciphertext randomness.
+            #[cfg(feature = "parallel")]
+            pub fn encapsulate_batch(
+                ek: &PublicKey<super::params::$params>,
+                mu: &[&[u8]],
+            ) -> Vec<super::SchemeResult<(Ciphertext<super::params::$params>, SharedSecret)>> {
+                use rayon::prelude::*;
+
+                mu.par_iter()
+                    .map(|mu| super::encapsulate::<super::params::$params>(ek, mu))
+                    .collect()
+            }
+
+            /// Batch decapsulation across the rayon pool (`parallel`
+            /// feature), order-preserving.
+            #[cfg(feature = "parallel")]
+            pub fn decapsulate_batch(
+                dk: &SecretKey<super::params::$params>,
+                cts: &[Ciphertext<super::params::$params>],
+            ) -> Vec<SharedSecret> {
+                use rayon::prelude::*;
+
+                cts.par_iter()
+                    .map(|ct| super::decapsulate::<super::params::$params>(dk, ct))
+                    .collect()
             }
         }
     };

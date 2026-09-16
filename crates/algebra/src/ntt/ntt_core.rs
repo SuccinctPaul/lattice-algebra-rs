@@ -521,3 +521,149 @@ impl<R: Ring, const N: usize> Default for NttOperatorOptimized<R, N> {
         Self::new()
     }
 }
+
+// ============================================================================
+// Batch transforms (polynomials stored back-to-back in one slab)
+// ============================================================================
+
+/// Polynomials per slab below which [`NttOperatorOptimized`] batch methods
+/// skip the rayon dispatch (thread hand-off would dominate the transform
+/// itself).
+#[cfg(feature = "parallel")]
+const BATCH_PARALLEL_MIN_POLYS: usize = 64;
+
+#[cfg(not(feature = "parallel"))]
+impl<R: Ring, const N: usize> NttOperatorOptimized<R, N> {
+    /// Forward-transforms `polys.len() / N` polynomials stored back-to-back.
+    ///
+    /// # Panics
+    /// If `polys.len()` is not a positive multiple of `N`.
+    pub fn forward_batch(&self, polys: &mut [R]) {
+        assert!(
+            N > 0 && polys.len() % N == 0,
+            "slab length must be a multiple of N"
+        );
+        for chunk in polys.chunks_exact_mut(N) {
+            self.forward(chunk);
+        }
+    }
+
+    /// Inverse-transforms `polys.len() / N` polynomials stored back-to-back.
+    ///
+    /// # Panics
+    /// If `polys.len()` is not a positive multiple of `N`.
+    pub fn inverse_batch(&self, polys: &mut [R]) {
+        assert!(
+            N > 0 && polys.len() % N == 0,
+            "slab length must be a multiple of N"
+        );
+        for chunk in polys.chunks_exact_mut(N) {
+            self.inverse(chunk);
+        }
+    }
+
+    /// Forward negacyclic-transforms a slab of back-to-back polynomials.
+    ///
+    /// # Panics
+    /// If `polys.len()` is not a positive multiple of `N`.
+    pub fn forward_negacyclic_batch(&self, polys: &mut [R]) {
+        assert!(
+            N > 0 && polys.len() % N == 0,
+            "slab length must be a multiple of N"
+        );
+        for chunk in polys.chunks_exact_mut(N) {
+            self.forward_negacyclic(chunk);
+        }
+    }
+
+    /// Inverse negacyclic-transforms a slab of back-to-back polynomials.
+    ///
+    /// # Panics
+    /// If `polys.len()` is not a positive multiple of `N`.
+    pub fn inverse_negacyclic_batch(&self, polys: &mut [R]) {
+        assert!(
+            N > 0 && polys.len() % N == 0,
+            "slab length must be a multiple of N"
+        );
+        for chunk in polys.chunks_exact_mut(N) {
+            self.inverse_negacyclic(chunk);
+        }
+    }
+}
+
+#[cfg(feature = "parallel")]
+impl<R: Ring + Send + Sync, const N: usize> NttOperatorOptimized<R, N> {
+    /// Forward-transforms `polys.len() / N` polynomials stored back-to-back.
+    ///
+    /// Slabs of at least 64 polynomials are distributed across the rayon
+    /// thread pool; smaller slabs transform on the calling thread.
+    ///
+    /// # Panics
+    /// If `polys.len()` is not a positive multiple of `N`.
+    pub fn forward_batch(&self, polys: &mut [R]) {
+        assert!(
+            N > 0 && polys.len() % N == 0,
+            "slab length must be a multiple of N"
+        );
+        self.batch_dispatch(polys, Self::forward);
+    }
+
+    /// Inverse-transforms `polys.len() / N` polynomials stored back-to-back.
+    ///
+    /// Slabs of at least 64 polynomials are distributed across the rayon
+    /// thread pool; smaller slabs transform on the calling thread.
+    ///
+    /// # Panics
+    /// If `polys.len()` is not a positive multiple of `N`.
+    pub fn inverse_batch(&self, polys: &mut [R]) {
+        assert!(
+            N > 0 && polys.len() % N == 0,
+            "slab length must be a multiple of N"
+        );
+        self.batch_dispatch(polys, Self::inverse);
+    }
+
+    /// Forward negacyclic-transforms a slab of back-to-back polynomials.
+    ///
+    /// Parallel dispatch policy as [`forward_batch`](Self::forward_batch).
+    ///
+    /// # Panics
+    /// If `polys.len()` is not a positive multiple of `N`.
+    pub fn forward_negacyclic_batch(&self, polys: &mut [R]) {
+        assert!(
+            N > 0 && polys.len() % N == 0,
+            "slab length must be a multiple of N"
+        );
+        self.batch_dispatch(polys, Self::forward_negacyclic);
+    }
+
+    /// Inverse negacyclic-transforms a slab of back-to-back polynomials.
+    ///
+    /// Parallel dispatch policy as [`forward_batch`](Self::forward_batch).
+    ///
+    /// # Panics
+    /// If `polys.len()` is not a positive multiple of `N`.
+    pub fn inverse_negacyclic_batch(&self, polys: &mut [R]) {
+        assert!(
+            N > 0 && polys.len() % N == 0,
+            "slab length must be a multiple of N"
+        );
+        self.batch_dispatch(polys, Self::inverse_negacyclic);
+    }
+
+    /// Runs `transform` over every `N`-wide chunk, crossing into the rayon
+    /// pool only when the slab is large enough to amortize task hand-off.
+    fn batch_dispatch(&self, polys: &mut [R], transform: fn(&Self, &mut [R])) {
+        use rayon::prelude::*;
+
+        if polys.len() >= N * BATCH_PARALLEL_MIN_POLYS {
+            polys
+                .par_chunks_exact_mut(N)
+                .for_each(|chunk| transform(self, chunk));
+        } else {
+            for chunk in polys.chunks_exact_mut(N) {
+                transform(self, chunk);
+            }
+        }
+    }
+}

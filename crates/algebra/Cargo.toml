@@ -16,13 +16,18 @@ name = "algebra"
 [features]
 default = []
 parallel = ["dep:rayon"]
+# Safe explicit SIMD (via the `wide` crate; no `unsafe` in this workspace).
+# On x86_64 the 256-bit paths are gated at runtime on AVX2; aarch64 uses the
+# baseline NEON mapping. Scalar fallbacks always exist and are always tested.
+simd = ["dep:wide"]
 
 [dependencies]
 rand.workspace = true
 rustfft.workspace = true
 serde.workspace = true
 sha3.workspace = true
-rayon = { version = "1.10", optional = true }
+rayon = { workspace = true, optional = true }
+wide = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -31,3 +36,10 @@ serde_json.workspace = true
 [[bench]]
 name = "foundation"
 harness = false
+
+# SIMD-kernel benchmarks require the `simd` feature; cargo skips the target
+# (instead of failing) on feature sets that exclude it.
+[[bench]]
+name = "simd"
+harness = false
+required-features = ["simd"]

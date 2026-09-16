@@ -6,8 +6,8 @@
 //! Run with: `cargo bench -p lattice-pqc -- frodo`
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pqc::frodo::{frodo1344, frodo640, frodo976};
 use pqc::frodo::params::FrodoParams;
+use pqc::frodo::{frodo1344, frodo640, frodo976};
 
 fn bench_frodo(c: &mut Criterion) {
     let mut group = c.benchmark_group("frodo");
