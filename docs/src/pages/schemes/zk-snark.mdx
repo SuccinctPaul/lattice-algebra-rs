@@ -53,7 +53,7 @@ The L2/L3 design (representation freedom, planned `Embed`/`ModSwitch` traits, NT
 
 ## How a LaBRADOR-style protocol maps to the base
 
-LaBRADOR (Beullens–Seiler, 2023) proves R1CS knowledge over `R = Z_{2^32}[X]/(X^64+1)` with few-KB transparent proofs. Its three key moves map to base APIs:
+LaBRADOR (Beullens–Seiler, 2023, eprint 2022/1341) proves R1CS knowledge over `Z_q[X]/(X^64+1)` (prime `q ≡ 5 mod 8`, R1CS arithmetic mod `2^64+1`) with few-KB transparent proofs; this crate's Z2 line implements the 2-adic `Z_{2^32}` variant of the same design. A primitive-level survey of the scheme landscape lives in `crates/zk/docs/survey-lattice-zksnarks.zh.md`. Its three key moves map to base APIs:
 
 ```mermaid
 sequenceDiagram

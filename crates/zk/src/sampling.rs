@@ -22,6 +22,10 @@
 //!   `C = X − a` with `a` odd — a guaranteed **non-unit** of
 //!   `Z_{2^k}[X]/(X^N + 1)`; a unit challenge would make the batched-opening
 //!   verifier equation vacuous (see the Z2 module notes).
+//! - [`hyperball_vec`]: LaBRADOR's challenge distribution — a whole vector
+//!   of ring elements drawn from the restricted ball `‖β‖∞ ≤ b,
+//!   ‖β‖₁ ≤ B`; the small-norm property is what keeps the norm accounting
+//!   of batched openings and splitting queries provable.
 //! - [`uniform_ring_from_seed`] / [`uniform_vec_from_seed`] /
 //!   [`uniform_matrix_from_seed`]: seed-driven expansion with domain
 //!   separation, for commitment keys and masks.
@@ -194,6 +198,51 @@ pub fn nonunit_linear_poly<R: Ring, X: Xof, const N: usize>(xof: &mut X) -> Poly
     PolyRing::from_coefficients(coeffs)
 }
 
+/// Draws a `k`-element challenge vector from the restricted ball
+///
+/// ```text
+/// { β ∈ R^k : ‖β‖∞ ≤ b  and  ‖β‖₁ ≤ B }
+/// ```
+///
+/// (LaBRADOR's *HyperBall* distribution: every coefficient uniform on
+/// `[-b, b]`, the whole vector rejected until its total `l1` norm fits the
+/// budget `B`.) The small-norm property is the soundness workhorse of the
+/// batched-opening line: linear combinations `Σ βᵢ·wᵢ` inherit the norm
+/// bound `‖Σ βᵢ·wᵢ‖∞ ≤ ‖β‖₁·max‖wᵢ‖∞`, which is exactly what makes the
+/// norm accounting of LaBRADOR recursion and LatticeFold splitting queries
+/// provable rather than heuristic.
+///
+/// Returns `None` if `max_attempts` draws all exceed the `l1` budget — for
+/// sound parameter choices (`B` a reasonable fraction of `k·N·b`) the
+/// acceptance probability is bounded away from zero and this is
+/// statistically unreachable. Randomness continues from the same stream
+/// across attempts (masked-rejection convention, like `RejBounded`).
+pub fn hyperball_vec<R: Ring, X: Xof, const N: usize>(
+    stream: &mut BitStream<'_, X>,
+    k: usize,
+    coeff_bound: u32,
+    l1_bound: u64,
+    max_attempts: usize,
+) -> Option<Vec<PolyRing<R, N>>> {
+    for _ in 0..max_attempts {
+        let mut beta = Vec::with_capacity(k);
+        let mut l1: u64 = 0;
+        for _ in 0..k {
+            let mut coeffs = Vec::with_capacity(N);
+            for _ in 0..N {
+                let c = sample_rej_bounded::<R>(stream, coeff_bound);
+                l1 += c.unsigned_abs() as u64;
+                coeffs.push(from_centered::<R>(c));
+            }
+            beta.push(PolyRing::from_coefficients(coeffs));
+        }
+        if l1 <= l1_bound {
+            return Some(beta);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,6 +393,56 @@ mod tests {
             nonunit_linear_poly::<R32, _, 64>(&mut x)
         };
         assert_eq!(draw(), draw());
+    }
+
+    #[test]
+    fn hyperball_respects_both_bounds() {
+        let mut x = Shake128Xof::new(&[]);
+        x.absorb(b"hyperball");
+        let mut s = BitStream::new(&mut x);
+        let beta = hyperball_vec::<R32, _, 64>(&mut s, 8, 1, 340, 1024)
+            .expect("dense-enough ball must sample");
+
+        assert_eq!(beta.len(), 8);
+        for b in &beta {
+            for c in b.coefficients() {
+                assert!((-1..=1).contains(&c.centered()), "‖β‖∞ must be ≤ 1");
+            }
+        }
+        let l1: u64 = beta
+            .iter()
+            .flat_map(|b| b.coefficients())
+            .map(|c| c.centered().unsigned_abs())
+            .sum();
+        assert!(l1 <= 340, "‖β‖₁ = {l1} must respect the budget");
+    }
+
+    #[test]
+    fn hyperball_is_deterministic() {
+        let draw = || {
+            let mut x = Shake128Xof::new(&[]);
+            x.absorb(b"hyperball-det");
+            let mut s = BitStream::new(&mut x);
+            hyperball_vec::<R32, _, 64>(&mut s, 4, 2, 512, 1024)
+        };
+        assert_eq!(draw(), draw());
+    }
+
+    #[test]
+    fn hyperball_rejection_loop_terminates_on_tight_budget() {
+        // A tight budget with a small allowance still succeeds given enough
+        // attempts (the rejection loop keeps drawing from the stream).
+        let mut x = Shake128Xof::new(&[]);
+        x.absorb(b"hyperball-tight");
+        let mut s = BitStream::new(&mut x);
+        let beta = hyperball_vec::<R32, _, 4>(&mut s, 2, 3, 8, 100_000);
+        let beta = beta.expect("small ball with slack must sample");
+        let l1: u64 = beta
+            .iter()
+            .flat_map(|b| b.coefficients())
+            .map(|c| c.centered().unsigned_abs())
+            .sum();
+        assert!(l1 <= 8);
     }
 
     #[test]
