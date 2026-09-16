@@ -39,6 +39,10 @@ jobs:
             flags: --features lattice-pqc/simd
           - rust: stable
             flags: --features lattice-pqc/parallel
+          - rust: stable
+            flags: --features lattice-zk/simd
+          - rust: stable
+            flags: --features lattice-zk/parallel
     steps:
       - uses: actions/checkout@v4
 

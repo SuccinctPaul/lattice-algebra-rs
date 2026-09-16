@@ -52,6 +52,7 @@ use crate::commitment::key::AjtaiKey;
 use crate::foundation::fs::absorb_rings;
 use crate::foundation::sampling::hyperball_ring_from_seed;
 use crate::instance::ring::{infinity_norm, pow2_const, Z2Coeff, Z2Ring, D};
+use crate::instance::simd::z2_mul;
 use crate::shortness::balanced::split_balanced;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
@@ -94,9 +95,9 @@ pub fn recompose<const M: usize>(digits: &[Vec<Z2Ring>]) -> Vec<Z2Ring> {
     debug_assert_eq!(digits.len(), NUM_DIGITS);
     let mut acc: Vec<Z2Ring> = vec![Z2Ring::zero(); M];
     for (i, d) in digits.iter().enumerate() {
-        let w = pow2_digit(i);
+        let shift = DIGIT_BITS * i as u32;
         for (a, dj) in acc.iter_mut().zip(d) {
-            *a += w.clone() * dj.clone();
+            *a += crate::instance::ring::scale_pow2(dj, shift);
         }
     }
     acc
@@ -200,13 +201,13 @@ pub fn prove_fold_decompose<const N: usize, const M: usize>(
     let c_prime: Vec<Z2Ring> = c1
         .iter()
         .zip(&c2)
-        .map(|(a, b)| a.clone() + r.clone() * b.clone())
+        .map(|(a, b)| a.clone() + z2_mul(&r, b))
         .collect();
 
     let w_prime: Vec<Z2Ring> = w1
         .iter()
         .zip(w2)
-        .map(|(a, b)| a.clone() + r.clone() * b.clone())
+        .map(|(a, b)| a.clone() + z2_mul(&r, b))
         .collect();
     let digits = decompose_balanced::<M>(&w_prime);
     debug_assert_eq!(
@@ -214,7 +215,19 @@ pub fn prove_fold_decompose<const N: usize, const M: usize>(
         w_prime,
         "decomposition must be exact"
     );
-    let digit_comms: Vec<Vec<Z2Ring>> = digits.iter().map(|d| key.mul_vec(d)).collect();
+    // Digit commitments are independent; with the `parallel` feature they
+    // fan out across the rayon pool (order-preserving).
+    let digit_comms: Vec<Vec<Z2Ring>> = {
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+
+            digits.par_iter().map(|d| key.mul_vec(d)).collect()
+        }
+
+        #[cfg(not(feature = "parallel"))]
+        digits.iter().map(|d| key.mul_vec(d)).collect()
+    };
 
     // splitting query, bound to the folded commitment and all digit commitments
     let zeta = splitting_challenge(&c1, &c2, &c_prime, &digit_comms, l1_zeta);
@@ -223,7 +236,7 @@ pub fn prove_fold_decompose<const N: usize, const M: usize>(
     let mut d_tilde: Vec<Z2Ring> = vec![Z2Ring::zero(); M];
     for d in digits.iter().rev() {
         for (a, dj) in d_tilde.iter_mut().zip(d) {
-            *a = a.clone() * zeta.clone() + dj.clone();
+            *a = z2_mul(a, &zeta) + dj.clone();
         }
     }
 
@@ -277,7 +290,7 @@ pub fn verify_fold_decompose<const N: usize, const M: usize>(
     let c_prime: Vec<Z2Ring> = c1
         .iter()
         .zip(c2)
-        .map(|(a, b)| a.clone() + r.clone() * b.clone())
+        .map(|(a, b)| a.clone() + z2_mul(&r, b))
         .collect();
     if c_prime != proof.c_prime {
         return false;
@@ -288,7 +301,7 @@ pub fn verify_fold_decompose<const N: usize, const M: usize>(
     for (i, ci) in proof.digit_comms.iter().enumerate() {
         let w = pow2_digit(i);
         for (a, cij) in combined.iter_mut().zip(ci) {
-            *a += w.clone() * cij.clone();
+            *a += z2_mul(&w, cij);
         }
     }
     if combined != proof.c_prime {
@@ -301,7 +314,7 @@ pub fn verify_fold_decompose<const N: usize, const M: usize>(
     let mut lhs: Vec<Z2Ring> = vec![Z2Ring::zero(); N];
     for ci in proof.digit_comms.iter().rev() {
         for (a, cij) in lhs.iter_mut().zip(ci) {
-            *a = a.clone() * zeta.clone() + cij.clone();
+            *a = z2_mul(a, &zeta) + cij.clone();
         }
     }
     if lhs != key.mul_vec(&proof.d_tilde) {
@@ -457,7 +470,7 @@ mod tests {
         let w_prime: Vec<Z2Ring> = w1
             .iter()
             .zip(&w2)
-            .map(|(a, b)| a.clone() + r.clone() * b.clone())
+            .map(|(a, b)| a.clone() + z2_mul(&r, b))
             .collect();
         assert!(infinity_norm(&w_prime) <= fold_norm_bound(b_w, l1_r));
         assert!(infinity_norm(&proof.d_tilde) <= splitting_norm_bound(48));

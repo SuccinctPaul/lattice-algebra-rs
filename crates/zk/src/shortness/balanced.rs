@@ -57,6 +57,7 @@ use crate::foundation::encoding::{ring_from_u32, ring_to_u32};
 use crate::foundation::fs::absorb_rings;
 use crate::foundation::sampling::{from_centered, hyperball_ring_from_seed};
 use crate::instance::ring::{infinity_norm, pow2_const, Z2Coeff, Z2Ring, D};
+use crate::instance::simd::z2_mul;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::traits::CenteredRing;
@@ -160,7 +161,7 @@ pub fn prove_projection<const N: usize, const M: usize>(
 ) -> ProjectionProof<M> {
     debug_assert_eq!(w.len(), M);
     debug_assert_eq!(t.len(), M);
-    let zeta_t: Vec<Z2Ring> = t.iter().map(|ti| zeta.clone() * ti.clone()).collect();
+    let zeta_t: Vec<Z2Ring> = t.iter().map(|ti| z2_mul(zeta, ti)).collect();
     let v: Vec<Z2Ring> = w
         .iter()
         .zip(&zeta_t)
@@ -185,6 +186,11 @@ pub fn verify_projection<const N: usize, const M: usize>(
     if proof.high.len() != M || proof.low.len() != M || c.len() != N || t.len() != M {
         return false;
     }
+    // parameter validation at the trust boundary (a bad shift must reject,
+    // not panic on attacker-chosen input)
+    if gamma == 0 || gamma >= 32 {
+        return false;
+    }
     // digit gates
     if infinity_norm(&proof.low) > 1u64 << (gamma - 1) {
         return false;
@@ -198,14 +204,14 @@ pub fn verify_projection<const N: usize, const M: usize>(
         .high
         .iter()
         .zip(&proof.low)
-        .map(|(h, l)| s.clone() * h.clone() + l.clone())
+        .map(|(h, l)| z2_mul(&s, h) + l.clone())
         .collect();
     let lhs = key.mul_vec(&recon);
     let at = key.mul_vec(t);
     let rhs: Vec<Z2Ring> = c
         .iter()
         .zip(&at)
-        .map(|(ci, ati)| ci.clone() - zeta.clone() * ati.clone())
+        .map(|(ci, ati)| ci.clone() - z2_mul(zeta, ati))
         .collect();
     lhs == rhs
 }
@@ -276,7 +282,7 @@ mod tests {
         // Pick B_h as the honest high norm; the certified bound must cover
         // the true ‖v‖∞ (it is a provable over-approximation).
         let v_norm = infinity_norm(&{
-            let zt: Vec<Z2Ring> = t.iter().map(|ti| zeta.clone() * ti.clone()).collect();
+            let zt: Vec<Z2Ring> = t.iter().map(|ti| z2_mul(&zeta, ti)).collect();
             w.iter()
                 .zip(&zt)
                 .map(|(a, b)| a.clone() - b.clone())

@@ -15,10 +15,15 @@ name = "zk"
 
 [dependencies]
 lattice-algebra.workspace = true
+rand.workspace = true
 rayon = { version = "1.10", optional = true }
 
 [features]
 parallel = ["dep:rayon"]
+# Lane kernels for the Z2 ring (see `instance::simd`), built on
+# `algebra::simd`'s wrapping 32-bit dots — safe on every supported CPU
+# (baseline ISA decomposition), scalar fallback without the feature.
+simd = ["lattice-algebra/simd"]
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

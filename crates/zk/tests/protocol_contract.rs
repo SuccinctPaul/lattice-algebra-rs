@@ -20,6 +20,7 @@ use zk::shortness::balanced::{
 };
 use zk::sigma::{fs_prove, fs_verify};
 use zk::sumcheck;
+use zk::sumcheck::RoundChallenger;
 
 type Z1Ring = Zq<8380417>;
 const K: usize = 4;
@@ -126,26 +127,31 @@ fn sumcheck_verifier_accepts_honest_claim_and_rejects_bad_rounds() {
         .collect();
     let claimed: Z1Ring = table.iter().cloned().sum();
 
-    let mut round = 0u64;
-    let proof = sumcheck::prove::<Z1Ring, G>(&table, &mut || {
-        round += 1;
-        Z1Ring::new(round * 977)
-    });
+    // Deterministic counter challenger: round `g` yields `977·g`, derived
+    // identically by the (honest) prover and verifier.
+    struct CounterChallenger {
+        round: u64,
+    }
+    impl RoundChallenger<Z1Ring> for CounterChallenger {
+        fn round_challenge(&mut self, _h0: &Z1Ring, _h1: &Z1Ring) -> Z1Ring {
+            self.round += 1;
+            Z1Ring::new(self.round * 977)
+        }
+    }
 
-    let mut round = 0u64;
-    let (challenges, final_eval) = sumcheck::verify(&proof, claimed, &mut || {
-        round += 1;
-        Z1Ring::new(round * 977)
-    })
-    .expect("honest sumcheck must verify");
+    let proof = sumcheck::prove::<Z1Ring, G>(&table, &mut CounterChallenger { round: 0 });
+
+    let (challenges, final_eval) =
+        sumcheck::verify(&proof, claimed, &mut CounterChallenger { round: 0 })
+            .expect("honest sumcheck must verify");
     assert_eq!(challenges.len(), G);
 
     // A wrong claimed sum must be caught at the first round.
-    let mut round = 0u64;
-    assert!(sumcheck::verify(&proof, claimed + Z1Ring::ONE, &mut || {
-        round += 1;
-        Z1Ring::new(round * 977)
-    })
+    assert!(sumcheck::verify(
+        &proof,
+        claimed + Z1Ring::ONE,
+        &mut CounterChallenger { round: 0 }
+    )
     .is_none());
 
     // The final evaluation is the table at the derived point — recompute it.

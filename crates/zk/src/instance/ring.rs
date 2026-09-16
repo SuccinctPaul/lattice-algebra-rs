@@ -36,6 +36,24 @@ pub fn infinity_norm(v: &[Z2Ring]) -> u64 {
         .unwrap_or(0)
 }
 
+/// Multiplies a ring element by the constant `2^k` (`k < 32`).
+///
+/// A constant whose only non-zero coefficient sits at position 0 scales
+/// each coefficient independently, so this is a linear coefficient shift —
+/// exact in `Z_{2^32}` (overflow drops, matching the wrapping ring) — and
+/// avoids the quadratic schoolbook product entirely.
+///
+/// # Panics
+/// If `k >= 32`.
+pub fn scale_pow2(v: &Z2Ring, k: u32) -> Z2Ring {
+    assert!(k < 32, "scale_pow2 requires k < 32");
+    let shifted: Vec<u32> = crate::foundation::encoding::ring_to_u32(v)
+        .iter()
+        .map(|&c| c << k)
+        .collect();
+    crate::foundation::encoding::ring_from_u32(shifted.as_slice().try_into().expect("D coeffs"))
+}
+
 /// The constant ring element `2^k` (scalar shifts in the ring domain).
 ///
 /// # Panics
@@ -106,6 +124,33 @@ mod tests {
         for a in [1u32, 3, 5, 0xDEAD_BEEF, 0xFFFF_FFFF] {
             assert_eq!(a.wrapping_mul(inv_odd(a)), 1, "a = {a}");
         }
+    }
+
+    #[test]
+    fn scale_pow2_matches_constant_product() {
+        let mut rng_state = 0x5EED_1234u64;
+        let mut coeffs = [0u32; D];
+        for c in &mut coeffs {
+            rng_state ^= rng_state << 13;
+            rng_state ^= rng_state >> 7;
+            rng_state ^= rng_state << 17;
+            *c = rng_state as u32;
+        }
+        let v = ring_from_u32(&coeffs);
+        for k in [0u32, 1, 8, 16, 24, 31] {
+            assert_eq!(
+                scale_pow2(&v, k),
+                pow2_const(k) * v.clone(),
+                "scale by 2^{k}"
+            );
+        }
+        // Overflow drops (exact mod 2^32): scaling 2^31 by 2 → 0.
+        let two31 = ring_from_u32(&{
+            let mut c = [0u32; D];
+            c[3] = 1 << 31;
+            c
+        });
+        assert!(ring_to_u32(&scale_pow2(&two31, 1)).iter().all(|&c| c == 0));
     }
 
     #[test]

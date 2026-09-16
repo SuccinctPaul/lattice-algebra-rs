@@ -61,6 +61,45 @@ assert!(verify(&key, &key_seed, &seed32(b"r1cs-domain"), &r1cs, &c, &proof));
 
 More in [`examples/`](examples): a Σ-protocol NIZK and a folding/IVC chain.
 
+## Performance features
+
+Two opt-in feature flags — bit-exact by construction, so every protocol
+test (extractors, tamper rejection, contract suite) passes unchanged under
+every combination:
+
+- **`parallel`** (rayon)
+  - `AjtaiKey::mul_vec` (every Z2 commitment) distributes its independent
+    output rows across the rayon pool for large keys; the R1CS gate
+    traversal (`map_over_gates`) that drives the opening/folding constraint
+    math was already parallel.
+  - `sumcheck::prove` computes per-round partial sums and folds on the pool
+    for large tables — exact because the protocol is stated over a
+    commutative ring, so reordered additions give identical round messages.
+  - LatticeFold digit commitments fan out per digit vector.
+- **`simd`** (`instance::simd`, built on `algebra::simd`'s wrapping 32-bit
+  dots; no `unsafe`)
+  - The Z2 ring `Z_{2^32}[X]/(X^64+1)` multiplies with pure wrapping `u32`
+    arithmetic, so its negacyclic product factors into contiguous 8×32-bit
+    dot windows (`instance::simd::z2_mul`). Every protocol routes ring
+    products through it: Ajtai commitments, the opening prover/verifier,
+    Nova and LatticeFold folding, the shortness projections, the IPA inner
+    product. Lane types execute safely on every supported CPU (baseline
+    ISA decomposition; scalar fallback without the feature).
+
+Measured on an 8-core Apple M-series host (criterion medians):
+
+| benchmark | default | `simd` + `parallel` |
+| --- | --- | --- |
+| z2 batched opening, prove (512 gates) | 27.0 ms | **5.87 ms (4.6×)** |
+| z2 batched opening, verify | 12.8 ms | **3.83 ms (3.3×)** |
+| nova fold (64 gates) | 7.22 ms | **2.20 ms (3.3×)** |
+| folded verification | 3.82 ms | **1.02 ms (3.8×)** |
+
+```sh
+cargo test  -p lattice-zk --all-features
+cargo bench -p lattice-zk --features "simd parallel" -- "z2|fold"
+```
+
 ## Development
 
 ```sh

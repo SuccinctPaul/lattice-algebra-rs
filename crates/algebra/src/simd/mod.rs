@@ -129,6 +129,62 @@ fn lane_dot_u16(a: &[u16], b: &[u16]) -> u16 {
     acc
 }
 
+/// Wrapping 32-bit dot product: `Σ a[i]·b[i] (mod 2^32)`.
+///
+/// Exact for power-of-two moduli up to `2^32` — the ring arithmetic of
+/// `Z/2^32` (raw `u32` coefficients) is exactly wrapping lane math, so this
+/// is the inner-product step of the ZK crate's Z2 ring
+/// `Z_{2^32}[X]/(X^64+1)` and of any FrodoKEM-style `q = 2^32` product.
+///
+/// # Panics
+/// If `a.len() != b.len()`.
+#[must_use]
+pub fn wrapping_dot_u32(a: &[u32], b: &[u32]) -> u32 {
+    assert_eq!(
+        a.len(),
+        b.len(),
+        "dot product operands must have equal length"
+    );
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    if a.len() >= MIN_LANE_LEN {
+        return lane_dot_u32(a, b);
+    }
+    scalar_dot_u32(a, b)
+}
+
+/// Scalar reference for [`wrapping_dot_u32`].
+fn scalar_dot_u32(a: &[u32], b: &[u32]) -> u32 {
+    let mut acc = 0u32;
+    for (&x, &y) in a.iter().zip(b.iter()) {
+        acc = acc.wrapping_add(x.wrapping_mul(y));
+    }
+    acc
+}
+
+/// 8-lane path for [`wrapping_dot_u32`].
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+fn lane_dot_u32(a: &[u32], b: &[u32]) -> u32 {
+    use wide::u32x8;
+
+    let mut lanes = u32x8::new([0u32; U32_LANES]);
+    let mut it_a = a.chunks_exact(U32_LANES);
+    let mut it_b = b.chunks_exact(U32_LANES);
+    for (ca, cb) in it_a.by_ref().zip(it_b.by_ref()) {
+        let va = load_u32x8(ca);
+        let vb = load_u32x8(cb);
+        lanes += va * vb;
+    }
+    let mut acc = 0u32;
+    for &lane in &lanes.to_array() {
+        acc = acc.wrapping_add(lane);
+    }
+    for (&x, &y) in it_a.remainder().iter().zip(it_b.remainder()) {
+        acc = acc.wrapping_add(x.wrapping_mul(y));
+    }
+    acc
+}
+
 // ===========================================================================
 // Modular 32-bit slice arithmetic (moduli below 2^31)
 // ===========================================================================
@@ -417,6 +473,46 @@ mod tests {
                 "len {len}"
             );
         }
+    }
+
+    #[test]
+    fn dot_u32_matches_scalar_reference_across_lengths() {
+        let mut rng = Rng(0x5EED_9E37);
+        for len in [0usize, 1, 3, 7, 8, 9, 31, 32, 33, 64, 100, 701] {
+            let a: Vec<u32> = (0..len).map(|_| rng.next() as u32).collect();
+            let b: Vec<u32> = (0..len).map(|_| rng.next() as u32).collect();
+            assert_eq!(
+                wrapping_dot_u32(&a, &b),
+                scalar_dot_u32(&a, &b),
+                "len {len}"
+            );
+        }
+    }
+
+    #[test]
+    fn dot_u32_is_exact_modulo_power_of_two() {
+        // The low 32 bits must equal the wide integer sum; the low 16 must
+        // agree with the u16 kernel's view of the same operands.
+        let mut rng = Rng(0x0F1E_2D3C);
+        let a: Vec<u32> = (0..256).map(|_| rng.next() as u32).collect();
+        let b: Vec<u32> = (0..256).map(|_| rng.next() as u32).collect();
+        let wide: u64 = a
+            .iter()
+            .zip(&b)
+            .fold(0, |acc, (&x, &y)| acc.wrapping_add(x as u64 * y as u64));
+        assert_eq!(wrapping_dot_u32(&a, &b) as u64, wide & 0xFFFF_FFFF);
+        let a16: Vec<u16> = a.iter().map(|&v| v as u16).collect();
+        let b16: Vec<u16> = b.iter().map(|&v| v as u16).collect();
+        assert_eq!(
+            (wrapping_dot_u32(&a, &b) & 0xFFFF) as u16,
+            wrapping_dot_u16(&a16, &b16),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "equal length")]
+    fn dot_u32_rejects_mismatched_lengths() {
+        let _ = wrapping_dot_u32(&[1, 2], &[1]);
     }
 
     #[test]
