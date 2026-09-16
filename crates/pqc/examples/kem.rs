@@ -34,7 +34,7 @@ fn main() {
             let (ciphertext, ss) = $api::encapsulate(&ek, &m);
             println!(
                 "ct = {} B, ss = {:02X?}",
-                ciphertext.len(),
+                ciphertext.as_bytes().len(),
                 &ss.as_bytes()[..8]
             );
 
@@ -45,7 +45,7 @@ fn main() {
             // A flipped ciphertext bit triggers implicit rejection: a
             // deterministic, unrelated secret — never an error.
             let mut bad = ciphertext.clone();
-            bad[0] ^= 0x01;
+            bad.as_mut()[0] ^= 0x01;
             let rejected = $api::decapsulate(&dk, &bad);
             assert_ne!(rejected.as_bytes(), ss.as_bytes());
             assert_eq!(rejected.as_bytes(), $api::decapsulate(&dk, &bad).as_bytes());

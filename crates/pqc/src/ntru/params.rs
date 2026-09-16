@@ -32,8 +32,11 @@ pub trait NtruParams: 'static {
     const SAMPLE_RM_BYTES: usize = Self::SAMPLE_FG_BYTES;
     /// Packed ternary polynomial size: `ceil((n−1)/5)`.
     const PACK_TRINARY_BYTES: usize = (Self::N - 1).div_ceil(5);
-    /// Public-key / ciphertext length: `ceil(logq·(n−1)/8)`.
+    /// Public-key length: `ceil(logq·(n−1)/8)`.
     const PUBLICKEY_BYTES: usize = (Self::LOGQ as usize * (Self::N - 1)).div_ceil(8);
+    /// Ciphertext length (the packed `c = r·h + lift(m)` uses the same
+    /// sum-zero `logq·(n−1)`-bit packing as the public key).
+    const CIPHERTEXT_BYTES: usize = Self::PUBLICKEY_BYTES;
     /// Secret key: `f ‖ f⁻¹ ‖ f⁻¹h ‖ PRF key`.
     const SECRETKEY_BYTES: usize = 2 * Self::PACK_TRINARY_BYTES + Self::PUBLICKEY_BYTES + 32;
 }

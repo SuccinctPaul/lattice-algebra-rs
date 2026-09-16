@@ -30,6 +30,7 @@ pub use params::{
     STRIPE_STEP,
 };
 
+use crate::error::{InvalidInput, SchemeResult};
 use algebra::crypto::xof::shortcuts::{shake128_parts, shake256_parts};
 use std::marker::PhantomData;
 
@@ -332,25 +333,44 @@ impl<P: FrodoParams> SecretKey<P> {
 }
 
 /// FrodoKEM ciphertext: the packed `B'` block followed by the packed
-/// `C` block.
+/// `C` block. A constructed ciphertext is always well-formed (length
+/// checked in [`Ciphertext::from_bytes`]).
 #[derive(Clone, PartialEq, Eq)]
-pub struct Ciphertext(Vec<u8>);
+pub struct Ciphertext<P: FrodoParams> {
+    bytes: Vec<u8>,
+    _p: PhantomData<P>,
+}
 
-impl Ciphertext {
+impl<P: FrodoParams> Ciphertext<P> {
     /// The raw ciphertext bytes (`c1 ‖ c2`).
     pub fn as_bytes(&self) -> &[u8] {
-        &self.0
+        &self.bytes
     }
 
-    /// Wrap raw bytes without validation (decapsulation treats any
-    /// content as valid input; a wrong length fails the re-encryption
-    /// check implicitly).
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        Ciphertext(bytes)
+    /// Parse with a length check; `None` when `bytes` is not
+    /// `CT_BYTES` long. (Decapsulation itself never fails — the
+    /// re-encryption check inside catches any tampering.)
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        (bytes.len() == P::CT_BYTES).then(|| Self {
+            bytes: bytes.to_vec(),
+            _p: PhantomData,
+        })
     }
 }
 
-impl std::fmt::Debug for Ciphertext {
+
+impl<P: FrodoParams> AsRef<[u8]> for Ciphertext<P> {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl<P: FrodoParams> AsMut<[u8]> for Ciphertext<P> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.bytes
+    }
+}
+impl<P: FrodoParams> std::fmt::Debug for Ciphertext<P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ciphertext").finish_non_exhaustive()
     }
@@ -386,15 +406,19 @@ impl Drop for SharedSecret {
 /// FrodoKEM key generation. The inputs are the reference's single
 /// `randombytes(2·SS + 16)` draw split as `(s ‖ seedSE ‖ z)` — `s` is the
 /// SS-byte recovery secret, `seedSE`/`z` are 16 bytes each.
+///
+/// # Errors
+/// [`InvalidInput::InvalidLength`] when `s` or `seed_se` is not
+/// `SS_BYTES` long.
 pub fn keygen<P: FrodoParams>(
     s: &[u8],
     seed_se: &[u8],
     z: &[u8; 16],
-) -> (SecretKey<P>, PublicKey<P>) {
+) -> SchemeResult<(SecretKey<P>, PublicKey<P>)> {
     // All three sections follow the reference's CRYPTO_BYTES sizing: `s`
     // and `seedSE` are SS bytes each, `z` is the 16-byte seed_A entropy.
-    assert_eq!(s.len(), P::SS_BYTES, "recovery-secret length");
-    assert_eq!(seed_se.len(), P::SS_BYTES, "seedSE length");
+    InvalidInput::check_len(P::SS_BYTES, s.len())?;
+    InvalidInput::check_len(P::SS_BYTES, seed_se.len())?;
     // seed_A = shake(z).
     let mut seed_a = [0u8; SEED_A_BYTES];
     shake_xof::<P>(&[z], &mut seed_a);
@@ -431,13 +455,19 @@ pub fn keygen<P: FrodoParams>(
         s_mat,
         pkh,
     };
-    (sk, pk)
+    Ok((sk, pk))
 }
 
 /// FrodoKEM encapsulation with fresh encapsulation randomness `mu`
 /// (`EXTRACTED_BITS·n̄²/8` bytes — the reference's `randombytes(mu)`).
-pub fn encapsulate<P: FrodoParams>(ek: &PublicKey<P>, mu: &[u8]) -> (Ciphertext, SharedSecret) {
-    assert_eq!(mu.len(), P::MU_BYTES, "mu length");
+///
+/// # Errors
+/// [`InvalidInput::InvalidLength`] when `mu` is not `MU_BYTES` long.
+pub fn encapsulate<P: FrodoParams>(
+    ek: &PublicKey<P>,
+    mu: &[u8],
+) -> SchemeResult<(Ciphertext<P>, SharedSecret)> {
+    InvalidInput::check_len(P::MU_BYTES, mu.len())?;
     let nbar = P::NBAR;
     let pk_bytes = ek.to_bytes();
 
@@ -483,30 +513,30 @@ pub fn encapsulate<P: FrodoParams>(ek: &PublicKey<P>, mu: &[u8]) -> (Ciphertext,
     ct.extend_from_slice(&c2);
     let mut ss = vec![0u8; P::SS_BYTES];
     shake_xof::<P>(&[&ct, &k], &mut ss);
-    (Ciphertext(ct), SharedSecret(ss))
+    Ok((
+        Ciphertext {
+            bytes: ct,
+            _p: PhantomData,
+        },
+        SharedSecret(ss),
+    ))
 }
 
 /// FrodoKEM decapsulation. A ciphertext that fails the re-encryption
-/// check (including any wrong-length input) yields
-/// `SHAKE128(ct ‖ s)` instead of `SHAKE128(ct ‖ k')` — implicit
-/// rejection, selected without branching on the secret comparison.
-pub fn decapsulate<P: FrodoParams>(dk: &SecretKey<P>, ct: &Ciphertext) -> SharedSecret {
+/// check yields `SHAKE128(ct ‖ s)` instead of `SHAKE128(ct ‖ k')` —
+/// implicit rejection, selected without branching on the secret
+/// comparison. (Wrong-length ciphertexts cannot be constructed:
+/// [`Ciphertext::from_bytes`] validates the length.)
+pub fn decapsulate<P: FrodoParams>(dk: &SecretKey<P>, ct: &Ciphertext<P>) -> SharedSecret {
     let nbar = P::NBAR;
     let se_len = P::N * nbar;
     let mask = ((1u32 << P::LOGQ) - 1) as u16;
 
-    // Reject wrong-length ciphertexts up front; the reference compares
-    // the unpacked blocks, so only a full-length input can match.
-    if ct.0.len() != P::CT_BYTES {
-        let mut ss = vec![0u8; P::SS_BYTES];
-        shake_xof::<P>(&[&ct.0, &dk.s], &mut ss);
-        return SharedSecret(ss);
-    }
     let c1_len = P::LOGQ as usize * se_len / 8;
     let mut bp = vec![0u16; se_len];
-    encoding::unpack(&mut bp, &ct.0[..c1_len], P::LOGQ);
+    encoding::unpack(&mut bp, &ct.bytes[..c1_len], P::LOGQ);
     let mut c = vec![0u16; nbar * nbar];
-    encoding::unpack(&mut c, &ct.0[c1_len..], P::LOGQ);
+    encoding::unpack(&mut c, &ct.bytes[c1_len..], P::LOGQ);
 
     // W = C − Bp·S (mod q); mu' ← key_decode(W).
     let mut w = vec![0u16; nbar * nbar];
@@ -558,7 +588,7 @@ pub fn decapsulate<P: FrodoParams>(dk: &SecretKey<P>, ct: &Ciphertext) -> Shared
         .map(|(&k, &s)| if ok { k } else { s })
         .collect();
     let mut ss = vec![0u8; P::SS_BYTES];
-    shake_xof::<P>(&[&ct.0, &fin_k], &mut ss);
+    shake_xof::<P>(&[&ct.bytes, &fin_k], &mut ss);
     SharedSecret(ss)
 }
 
@@ -587,29 +617,36 @@ macro_rules! instantiate_frodo {
             /// randomness split as `(s ‖ seedSE ‖ z)` — `s`/`seedSE` are
             /// SS bytes each (the reference's `CRYPTO_BYTES`), `z` is 16
             /// bytes.
+            ///
+            /// # Errors
+            /// [`InvalidInput::InvalidLength`](crate::InvalidInput::InvalidLength) on wrong-length `s` /
+            /// `seed_se`.
             pub fn keygen(
                 s: &[u8],
                 seed_se: &[u8],
                 z: &[u8; 16],
-            ) -> (
+            ) -> super::SchemeResult<(
                 SecretKey<super::params::$params>,
                 PublicKey<super::params::$params>,
-            ) {
+            )> {
                 super::keygen::<super::params::$params>(s, seed_se, z)
             }
 
             /// FrodoKEM encapsulation with fresh randomness `mu`.
+            ///
+            /// # Errors
+            /// [`InvalidInput::InvalidLength`](crate::InvalidInput::InvalidLength) on wrong-length `mu`.
             pub fn encapsulate(
                 ek: &PublicKey<super::params::$params>,
                 mu: &[u8],
-            ) -> (Ciphertext, SharedSecret) {
+            ) -> super::SchemeResult<(Ciphertext<super::params::$params>, SharedSecret)> {
                 super::encapsulate::<super::params::$params>(ek, mu)
             }
 
             /// FrodoKEM decapsulation with implicit rejection.
             pub fn decapsulate(
                 dk: &SecretKey<super::params::$params>,
-                ct: &Ciphertext,
+                ct: &Ciphertext<super::params::$params>,
             ) -> SharedSecret {
                 super::decapsulate::<super::params::$params>(dk, ct)
             }

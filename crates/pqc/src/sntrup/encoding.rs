@@ -10,7 +10,7 @@ use super::poly::{self, mod_uint14, q12, Fq, Small};
 /// pending radix is at least `2^14`, a whole byte can be flushed.
 pub const ENCODE_RADIX_THRESHOLD: u32 = 1 << 14;
 /// Two-byte lookahead base for `Decode` (`256·16383`, just under
-/// [`ENCODE_RADIX_THRESHOLD`·256]).
+/// `ENCODE_RADIX_THRESHOLD`·256).
 pub const ENCODE_LOOKAHEAD_LIMIT: u32 = 256 * 16383;
 /// `⌊2^15 / 3⌋` — multiplier implementing divide-by-3-rounding in
 /// `Rounded_encode`.

@@ -18,10 +18,30 @@
 //!   decapsulation (implicit rejection) for p = 653/761/857/953/1013/1277.
 //! - [`mldsa`]: ML-DSA (FIPS 204) digital signatures — keygen, deterministic
 //!   and randomized signing, verification, for all three parameter sets.
+//! - [`error`]: the typed error surface shared by the scheme APIs.
+//!
+//! # API conventions
+//!
+//! - Randomness is always an explicit parameter (deterministic, KAT-driven
+//!   design); no function draws from an ambient RNG.
+//! - Runtime-sized inputs are validated and reported as
+//!   [`InvalidInput`]; compile-time-sized inputs
+//!   (`&[u8; 32]` seeds) rule the same errors out at type level.
+//!   `from_bytes` constructors return `Option`; decapsulation never fails
+//!   (implicit rejection).
+//! - Each scheme names keys as its specification does: ML-KEM speaks of
+//!   encapsulation/decapsulation keys, the round-3 submissions of
+//!   public/secret keys. Per-set module names follow the same rule:
+//!   `mlkem_512`/`mldsa_44` for the hyphenated FIPS names, `falcon512`/
+//!   `frodo640`/`ntruhps2048677`/`sntrup761` for the concatenated
+//!   submission names.
 
+pub mod error;
 pub mod falcon;
 pub mod frodo;
 pub mod mldsa;
 pub mod mlkem;
 pub mod ntru;
 pub mod sntrup;
+
+pub use error::{InvalidInput, SchemeResult};

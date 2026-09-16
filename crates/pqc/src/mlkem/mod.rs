@@ -280,6 +280,65 @@ fn decrypt_with_s_hat<P: MlKemParams, const K: usize>(s_hat: &[[u64; N]], c: &[u
 // ML-KEM (FIPS 203, §6): the FO-transformed KEM
 // ===========================================================================
 
+/// A ciphertext (`CT_BYTES` bytes encoded). A constructed ciphertext is
+/// always well-formed (length checked in [`Ciphertext::from_bytes`]).
+pub struct Ciphertext<P: MlKemParams> {
+    bytes: Vec<u8>,
+    _p: PhantomData<P>,
+}
+
+impl<P: MlKemParams> Ciphertext<P> {
+    /// The encoded ciphertext bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Parse with a length check; `None` when `bytes` is not `CT_BYTES`
+    /// long. (Decapsulation itself never fails — the re-encryption check
+    /// inside catches any tampering.)
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        (bytes.len() == P::CT_BYTES).then(|| Self {
+            bytes: bytes.to_vec(),
+            _p: PhantomData,
+        })
+    }
+}
+
+impl<P: MlKemParams> Clone for Ciphertext<P> {
+    fn clone(&self) -> Self {
+        Self {
+            bytes: self.bytes.clone(),
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<P: MlKemParams> PartialEq for Ciphertext<P> {
+    fn eq(&self, other: &Self) -> bool {
+        self.bytes == other.bytes
+    }
+}
+
+impl<P: MlKemParams> Eq for Ciphertext<P> {}
+
+
+impl<P: MlKemParams> AsRef<[u8]> for Ciphertext<P> {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl<P: MlKemParams> AsMut<[u8]> for Ciphertext<P> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.bytes
+    }
+}
+impl<P: MlKemParams> std::fmt::Debug for Ciphertext<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ciphertext").finish_non_exhaustive()
+    }
+}
+
 /// A shared secret; redacted `Debug` and zeroized on drop.
 pub struct SharedSecret([u8; 32]);
 
@@ -484,7 +543,7 @@ pub fn keygen_internal<P: MlKemParams, const K: usize>(
 pub fn encapsulate_internal<P: MlKemParams, const K: usize>(
     ek: &EncapsulationKey<P>,
     m: &[u8; 32],
-) -> (Vec<u8>, SharedSecret) {
+) -> (Ciphertext<P>, SharedSecret) {
     let ek_bytes = ek.to_bytes();
     let h = sha3_256(&[&ek_bytes]);
     // (K̄, r) ← G(m ‖ H(ek)): hashing the encoded encapsulation key (not
@@ -492,28 +551,31 @@ pub fn encapsulate_internal<P: MlKemParams, const K: usize>(
     // final-standard change relative to round-3 Kyber, which hashed only m.
     let (k_bar, r) = hash_g(&[m, &h]);
     let c = kpke_encrypt::<P, K>(&ek_bytes, m, &r);
-    (c, SharedSecret(k_bar))
+    (
+        Ciphertext {
+            bytes: c,
+            _p: PhantomData,
+        },
+        SharedSecret(k_bar),
+    )
 }
 
 /// FIPS 203 `ML-KEM.Decaps(dk, c)` (Algorithm 18) with implicit rejection:
-/// on re-encryption mismatch (or a wrong-length ciphertext) the returned
-/// key is `J(z ‖ c)` — never an error, never a validity signal.
+/// on re-encryption mismatch the returned key is `J(z ‖ c)` — never an
+/// error, never a validity signal. (Wrong-length ciphertexts cannot be
+/// constructed: [`Ciphertext::from_bytes`] validates the length.)
 pub fn decapsulate<P: MlKemParams, const K: usize>(
     dk: &DecapsulationKey<P>,
-    c: &[u8],
+    c: &Ciphertext<P>,
 ) -> SharedSecret {
-    // k_bar = J(z ‖ c) is computed up front so every rejection cause
-    // (re-encryption mismatch, wrong length) returns the same way — no
-    // validity oracle.
-    let k_bar = j_hash(&[&dk.z, c]);
-    let m_prime = if c.len() == P::CT_BYTES {
-        decrypt_with_s_hat::<P, K>(&dk.s_hat, c)
-    } else {
-        [0u8; 32]
-    };
+    // k_bar = J(z ‖ c) is computed up front so the rejection cause (a
+    // failed re-encryption check) returns the same way — no validity
+    // oracle.
+    let k_bar = j_hash(&[&dk.z, &c.bytes]);
+    let m_prime = decrypt_with_s_hat::<P, K>(&dk.s_hat, &c.bytes);
     let (k_prime, r_prime) = hash_g(&[&m_prime, &dk.h]);
     let c_prime = kpke_encrypt::<P, K>(&dk.ek.to_bytes(), &m_prime, &r_prime);
-    if c.len() == P::CT_BYTES && ct_eq(c, &c_prime) {
+    if ct_eq(&c.bytes, &c_prime) {
         SharedSecret(k_prime)
     } else {
         SharedSecret(k_bar)
@@ -525,7 +587,7 @@ macro_rules! instantiate_mlkem {
     ($mod_name:ident, $params:ident, $k:literal) => {
         #[doc = concat!("ML-KEM API bound to [`", stringify!($params), "`].")]
         pub mod $mod_name {
-            pub use super::{DecapsulationKey, EncapsulationKey, SharedSecret};
+            pub use super::{Ciphertext, DecapsulationKey, EncapsulationKey, SharedSecret};
 
             /// FIPS 203 `ML-KEM.KeyGen(d, z)`.
             pub fn keygen(
@@ -543,14 +605,14 @@ macro_rules! instantiate_mlkem {
             pub fn encapsulate(
                 ek: &EncapsulationKey<super::params::$params>,
                 m: &[u8; 32],
-            ) -> (Vec<u8>, SharedSecret) {
+            ) -> (Ciphertext<super::params::$params>, SharedSecret) {
                 super::encapsulate_internal::<super::params::$params, $k>(ek, m)
             }
 
             /// FIPS 203 `ML-KEM.Decaps(dk, c)` with implicit rejection.
             pub fn decapsulate(
                 dk: &DecapsulationKey<super::params::$params>,
-                c: &[u8],
+                c: &Ciphertext<super::params::$params>,
             ) -> SharedSecret {
                 super::decapsulate::<super::params::$params, $k>(dk, c)
             }

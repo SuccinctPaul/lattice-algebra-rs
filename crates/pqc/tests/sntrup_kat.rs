@@ -48,7 +48,7 @@ fn run_case<P: SntrupParams>(
         // successful g; probe the attempt with a placeholder.
         let placeholder = vec![0u8; P::SMALL_BYTES];
         match sntrup::keygen::<P>(g, f, &placeholder) {
-            Some((mut sk, pk)) => {
+            Ok((mut sk, pk)) => {
                 let mut real_rho = vec![0u8; P::SMALL_BYTES];
                 drbg.fill(&mut real_rho);
                 let mut skb = sk.to_bytes();
@@ -57,7 +57,7 @@ fn run_case<P: SntrupParams>(
                 sk = SecretKey::<P>::from_bytes(&skb).unwrap();
                 break (sk, pk);
             }
-            None => attempt_start += 4 * p,
+            Err(_) => attempt_start += 4 * p,
         }
     };
     assert_eq!(pk.to_bytes(), expected.0, "{set} count {count}: pk");
@@ -70,8 +70,8 @@ fn run_case<P: SntrupParams>(
         drbg.fill(&mut word);
         r_random.extend_from_slice(&word);
     }
-    let (ct, ss) = sntrup::encapsulate::<P>(&pk, &r_random);
-    assert_eq!(ct, expected.2.as_slice(), "{set} count {count}: ct");
+    let (ct, ss) = sntrup::encapsulate::<P>(&pk, &r_random).expect("DRBG-sized inputs");
+    assert_eq!(ct.as_bytes(), expected.2.as_slice(), "{set} count {count}: ct");
     assert_eq!(
         ss.as_bytes(),
         expected.3.as_slice(),

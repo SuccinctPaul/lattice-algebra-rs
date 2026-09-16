@@ -25,14 +25,14 @@ fn quickstart_mlkem_snippet() {
 
     let m = [9u8; 32];
     let (ciphertext, ss) = mlkem::encapsulate(&ek, &m);
-    assert_eq!(ciphertext.len(), 1088);
+    assert_eq!(ciphertext.as_bytes().len(), 1088);
     assert_eq!(
         mlkem::decapsulate(&dk, &ciphertext).as_bytes(),
         ss.as_bytes()
     );
 
     let mut bad = ciphertext.clone();
-    bad[0] ^= 0x01;
+    bad.as_mut()[0] ^= 0x01;
     assert_ne!(mlkem::decapsulate(&dk, &bad).as_bytes(), ss.as_bytes());
     assert_eq!(ek.to_bytes().len(), 1184);
 }

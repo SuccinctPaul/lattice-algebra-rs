@@ -20,7 +20,7 @@ macro_rules! ntru_roundtrip_tests {
                 let seed_len = <$params as NtruParams>::SAMPLE_FG_BYTES;
                 let seed = fresh_bytes(tag, seed_len);
                 let prf_key = fresh_bytes(tag.wrapping_add(0x40), 32).try_into().unwrap();
-                keygen(&seed, &prf_key)
+                keygen(&seed, &prf_key).expect("well-sized inputs")
             }
 
             #[test]
@@ -29,8 +29,12 @@ macro_rules! ntru_roundtrip_tests {
                 assert_eq!(pk.to_bytes().len(), $pk_len);
                 assert_eq!(sk.to_bytes().len(), $sk_len);
                 let rm = fresh_bytes(9, <$params as NtruParams>::SAMPLE_RM_BYTES);
-                let (ct, ss) = encapsulate(&pk, &rm);
-                assert_eq!(ct.len(), $pk_len, "ciphertext length equals pk length");
+                let (ct, ss) = encapsulate(&pk, &rm).expect("well-sized rm");
+                assert_eq!(
+                    ct.as_bytes().len(),
+                    $pk_len,
+                    "ciphertext length equals pk length"
+                );
                 assert_eq!(decapsulate(&sk, &ct).as_bytes(), ss.as_bytes());
             }
 
@@ -41,7 +45,7 @@ macro_rules! ntru_roundtrip_tests {
                 assert_eq!(pk, pk2);
                 let sk2 = SecretKey::<$params>::from_bytes(&sk.to_bytes()).unwrap();
                 let rm = fresh_bytes(8, <$params as NtruParams>::SAMPLE_RM_BYTES);
-                let (ct, ss) = encapsulate(&pk2, &rm);
+                let (ct, ss) = encapsulate(&pk2, &rm).expect("well-sized rm");
                 assert_eq!(decapsulate(&sk2, &ct).as_bytes(), ss.as_bytes());
                 let mut too_long = pk.to_bytes();
                 too_long.push(0);
@@ -53,16 +57,15 @@ macro_rules! ntru_roundtrip_tests {
             fn implicit_rejection_on_tampered_ciphertext() {
                 let (sk, pk) = keygen_pair(3);
                 let rm = fresh_bytes(7, <$params as NtruParams>::SAMPLE_RM_BYTES);
-                let (mut ct, ss) = encapsulate(&pk, &rm);
-                ct[0] ^= 0x01;
+                let (mut ct, ss) = encapsulate(&pk, &rm).expect("well-sized rm");
+                ct.as_mut()[0] ^= 0x01;
                 let bad = decapsulate(&sk, &ct);
                 assert_ne!(bad.as_bytes(), ss.as_bytes());
                 // Implicit rejection is deterministic.
                 let again = decapsulate(&sk, &ct);
                 assert_eq!(bad.as_bytes(), again.as_bytes());
-                // A wrong-length ciphertext is rejected the same way.
-                let short = decapsulate(&sk, &ct[..ct.len() - 1]);
-                assert_ne!(short.as_bytes(), ss.as_bytes());
+                // A wrong-length ciphertext cannot be constructed at all.
+                assert!(Ciphertext::<$params>::from_bytes(&ct.as_bytes()[..$pk_len - 1]).is_none());
             }
         }
     };

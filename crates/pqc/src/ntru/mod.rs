@@ -22,6 +22,7 @@ pub use params::{
     NtruHps2048677, NtruHps2048821, NtruHps40961229, NtruHps4096821, NtruHrss701, NtruParams,
 };
 
+use crate::error::{InvalidInput, SchemeResult};
 use sha3::digest::Digest;
 use sha3::Sha3_256;
 use std::marker::PhantomData;
@@ -136,6 +137,50 @@ impl std::fmt::Debug for SharedSecret {
 impl Drop for SharedSecret {
     fn drop(&mut self) {
         self.0.zeroize();
+    }
+}
+
+/// NTRU ciphertext: the packed `c = r·h + lift(m)` (sum-zero `logq·(n−1)`
+/// bits). A constructed ciphertext is always well-formed (length checked
+/// in [`Ciphertext::from_bytes`]).
+#[derive(Clone, PartialEq, Eq)]
+pub struct Ciphertext<P: NtruParams> {
+    bytes: Vec<u8>,
+    _p: PhantomData<P>,
+}
+
+impl<P: NtruParams> Ciphertext<P> {
+    /// The raw ciphertext bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Parse with a length check; `None` when `bytes` is not
+    /// `CIPHERTEXT_BYTES` long. (Decapsulation itself never fails — the
+    /// message-space validation inside catches any tampering.)
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        (bytes.len() == P::CIPHERTEXT_BYTES).then(|| Self {
+            bytes: bytes.to_vec(),
+            _p: PhantomData,
+        })
+    }
+}
+
+
+impl<P: NtruParams> AsRef<[u8]> for Ciphertext<P> {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl<P: NtruParams> AsMut<[u8]> for Ciphertext<P> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.bytes
+    }
+}
+impl<P: NtruParams> std::fmt::Debug for Ciphertext<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ciphertext").finish_non_exhaustive()
     }
 }
 
@@ -308,11 +353,15 @@ fn owcpa_dec<P: NtruParams>(ct: &[u8], sk: &[u8]) -> (Vec<u8>, bool) {
 /// NTRU key generation: `seed` is the reference's `randombytes(
 /// SAMPLE_FG_BYTES)` draw and `prf_key` the trailing 32 secret bytes of
 /// the decapsulation key.
-pub fn keygen<P: NtruParams>(seed: &[u8], prf_key: &[u8; 32]) -> (SecretKey<P>, PublicKey<P>) {
+pub fn keygen<P: NtruParams>(
+    seed: &[u8],
+    prf_key: &[u8; 32],
+) -> SchemeResult<(SecretKey<P>, PublicKey<P>)> {
+    InvalidInput::check_len(P::SAMPLE_FG_BYTES, seed.len())?;
     let (owcpa_sk, pk_bytes) = owcpa_keypair::<P>(seed);
     let mut sk = owcpa_sk;
     sk.extend_from_slice(prf_key);
-    (
+    Ok((
         SecretKey {
             bytes: sk,
             _p: PhantomData,
@@ -321,18 +370,17 @@ pub fn keygen<P: NtruParams>(seed: &[u8], prf_key: &[u8; 32]) -> (SecretKey<P>, 
             bytes: pk_bytes,
             _p: PhantomData,
         },
-    )
+    ))
 }
 
 /// NTRU encapsulation: `rm_seed` is the reference's `randombytes(
 /// SAMPLE_RM_BYTES)` draw for `(r, m)`.
-pub fn encapsulate<P: NtruParams>(ek: &PublicKey<P>, rm_seed: &[u8]) -> (Vec<u8>, SharedSecret) {
+pub fn encapsulate<P: NtruParams>(
+    ek: &PublicKey<P>,
+    rm_seed: &[u8],
+) -> SchemeResult<(Ciphertext<P>, SharedSecret)> {
     let n = P::N;
-    assert_eq!(
-        rm_seed.len(),
-        P::SAMPLE_RM_BYTES,
-        "encapsulation seed length"
-    );
+    InvalidInput::check_len(P::SAMPLE_RM_BYTES, rm_seed.len())?;
 
     let (r, m) = if P::HPS {
         (
@@ -355,20 +403,22 @@ pub fn encapsulate<P: NtruParams>(ek: &PublicKey<P>, rm_seed: &[u8]) -> (Vec<u8>
     let mut r_q = r;
     poly::z3_to_zq::<P>(&mut r_q);
     let ct = owcpa_enc::<P>(&ek.bytes, &r_q, &m);
-    (ct, SharedSecret(k.into()))
+    Ok((
+        Ciphertext {
+            bytes: ct,
+            _p: PhantomData,
+        },
+        SharedSecret(k.into()),
+    ))
 }
 
 /// NTRU decapsulation with implicit rejection: a ciphertext outside the
 /// valid space yields `SHA3-256(PRF key ‖ ct)`.
-pub fn decapsulate<P: NtruParams>(dk: &SecretKey<P>, ct: &[u8]) -> SharedSecret {
-    // Wrong-length input: same path as a rejected ciphertext (the
-    // reference assumes well-formed ciphertexts; we fold length errors
-    // into the rejection branch without leaking).
-    let (rm, fail) = if ct.len() == P::PUBLICKEY_BYTES {
-        owcpa_dec::<P>(ct, &dk.bytes)
-    } else {
-        (vec![0u8; 2 * P::PACK_TRINARY_BYTES], true)
-    };
+pub fn decapsulate<P: NtruParams>(dk: &SecretKey<P>, ct: &Ciphertext<P>) -> SharedSecret {
+    // A constructed ciphertext is length-validated (`Ciphertext::
+    // from_bytes`); message-space violations still fold into implicit
+    // rejection inside `owcpa_dec`.
+    let (rm, fail) = owcpa_dec::<P>(&ct.bytes, &dk.bytes);
     let mut hasher = Sha3_256::new();
     hasher.update(&rm);
     let k_prime: [u8; 32] = hasher.finalize().into();
@@ -377,7 +427,7 @@ pub fn decapsulate<P: NtruParams>(dk: &SecretKey<P>, ct: &[u8]) -> SharedSecret 
     let prf_key = &dk.bytes[dk.bytes.len() - 32..];
     let mut hasher = Sha3_256::new();
     hasher.update(prf_key);
-    hasher.update(ct);
+    hasher.update(&ct.bytes);
     let k_reject: [u8; 32] = hasher.finalize().into();
 
     SharedSecret(if fail { k_reject } else { k_prime })
@@ -388,30 +438,39 @@ macro_rules! instantiate_ntru {
     ($mod_name:ident, $params:ident, $doc:expr) => {
         #[doc = $doc]
         pub mod $mod_name {
-            pub use super::{PublicKey, SecretKey, SharedSecret};
+            pub use super::{Ciphertext, PublicKey, SecretKey, SharedSecret};
 
             /// NTRU key generation from the reference's keygen randomness
             /// plus the PRF key.
+            ///
+            /// # Errors
+            /// [`InvalidInput::InvalidLength`](crate::InvalidInput::InvalidLength) on wrong-length `seed`.
             pub fn keygen(
                 seed: &[u8],
                 prf_key: &[u8; 32],
-            ) -> (
+            ) -> super::SchemeResult<(
                 SecretKey<super::params::$params>,
                 PublicKey<super::params::$params>,
-            ) {
+            )> {
                 super::keygen::<super::params::$params>(seed, prf_key)
             }
 
             /// NTRU encapsulation with the reference's `(r, m)` randomness.
+            ///
+            /// # Errors
+            /// [`InvalidInput::InvalidLength`](crate::InvalidInput::InvalidLength) on wrong-length `rm_seed`.
             pub fn encapsulate(
                 ek: &PublicKey<super::params::$params>,
                 rm_seed: &[u8],
-            ) -> (Vec<u8>, SharedSecret) {
+            ) -> super::SchemeResult<(Ciphertext<super::params::$params>, SharedSecret)> {
                 super::encapsulate::<super::params::$params>(ek, rm_seed)
             }
 
             /// NTRU decapsulation with implicit rejection.
-            pub fn decapsulate(dk: &SecretKey<super::params::$params>, ct: &[u8]) -> SharedSecret {
+            pub fn decapsulate(
+                dk: &SecretKey<super::params::$params>,
+                ct: &Ciphertext<super::params::$params>,
+            ) -> SharedSecret {
                 super::decapsulate::<super::params::$params>(dk, ct)
             }
         }

@@ -24,6 +24,7 @@ pub use params::{
     Sntrup1013, Sntrup1277, Sntrup653, Sntrup761, Sntrup857, Sntrup953, SntrupParams,
 };
 
+use crate::error::{InvalidInput, SchemeResult};
 use encoding::small_encode;
 use poly::{r3_from_rq, r3_mult, r3_recip, round3, rq_mult3, rq_mult_small, rq_recip3};
 use sha2::Digest;
@@ -115,6 +116,17 @@ impl<P: SntrupParams> SecretKey<P> {
             _p: PhantomData,
         })
     }
+
+    /// The embedded public key (`f ‖ ginv ‖ pk ‖ …` — third section).
+    ///
+    /// # Panics
+    /// Never in practice: the embedded section was produced by this
+    /// crate's own encoder and always decodes.
+    pub fn public_key(&self) -> PublicKey<P> {
+        let pk_start = 2 * P::SMALL_BYTES;
+        PublicKey::from_bytes(&self.bytes[pk_start..pk_start + P::RQ_BYTES])
+            .expect("secret key embeds a well-formed public key")
+    }
 }
 
 /// A shared secret; redacted `Debug` and zeroized on drop.
@@ -136,6 +148,50 @@ impl std::fmt::Debug for SharedSecret {
 impl Drop for SharedSecret {
     fn drop(&mut self) {
         self.0.zeroize();
+    }
+}
+
+/// Ciphertext: the rounded core plus the 32-byte confirmation
+/// (`Round-encoded C ‖ confirm`). A constructed ciphertext is always
+/// well-formed (length checked in [`Ciphertext::from_bytes`]).
+#[derive(Clone, PartialEq, Eq)]
+pub struct Ciphertext<P: SntrupParams> {
+    bytes: Vec<u8>,
+    _p: PhantomData<P>,
+}
+
+impl<P: SntrupParams> Ciphertext<P> {
+    /// The raw ciphertext bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Parse with a length check; `None` when `bytes` is not
+    /// `CIPHERTEXT_BYTES` long. (Decapsulation itself never fails — the
+    /// weight check inside catches any tampering.)
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        (bytes.len() == P::CIPHERTEXT_BYTES).then(|| Self {
+            bytes: bytes.to_vec(),
+            _p: PhantomData,
+        })
+    }
+}
+
+
+impl<P: SntrupParams> AsRef<[u8]> for Ciphertext<P> {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl<P: SntrupParams> AsMut<[u8]> for Ciphertext<P> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.bytes
+    }
+}
+impl<P: SntrupParams> std::fmt::Debug for Ciphertext<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ciphertext").finish_non_exhaustive()
     }
 }
 
@@ -259,12 +315,15 @@ pub fn keygen<P: SntrupParams>(
     g_random: &[u8],
     f_random: &[u8],
     rho: &[u8],
-) -> Option<(SecretKey<P>, PublicKey<P>)> {
-    assert_eq!(rho.len(), P::SMALL_BYTES, "rho length");
+) -> SchemeResult<(SecretKey<P>, PublicKey<P>)> {
+    let word_stream = URANDOM32_BYTES * P::P;
+    InvalidInput::check_len(word_stream, g_random.len())?;
+    InvalidInput::check_len(word_stream, f_random.len())?;
+    InvalidInput::check_len(P::SMALL_BYTES, rho.len())?;
     let ZKeygen {
         pk: pk_bytes,
         sk_core,
-    } = zkeygen::<P>(g_random, f_random)?;
+    } = zkeygen::<P>(g_random, f_random).ok_or(InvalidInput::KeygenRetry)?;
 
     let mut sk = sk_core;
     sk.extend_from_slice(&pk_bytes);
@@ -272,7 +331,7 @@ pub fn keygen<P: SntrupParams>(
     let cache = hash_prefix(4, &[&pk_bytes]);
     sk.extend_from_slice(&cache);
 
-    Some((
+    Ok((
         SecretKey {
             bytes: sk,
             _p: PhantomData,
@@ -301,18 +360,34 @@ fn hash_session(b: u8, r_enc: &[u8], ct_and_confirm: &[u8]) -> SharedSecret {
 
 /// SNTRU encapsulation. `r_random` is the reference's `urandom32` stream
 /// (`4·p` bytes) driving `Short_random(r)`.
-pub fn encapsulate<P: SntrupParams>(ek: &PublicKey<P>, r_random: &[u8]) -> (Vec<u8>, SharedSecret) {
+///
+/// # Errors
+/// [`InvalidInput::InvalidLength`] when `r_random` is not `4·p` bytes.
+pub fn encapsulate<P: SntrupParams>(
+    ek: &PublicKey<P>,
+    r_random: &[u8],
+) -> SchemeResult<(Ciphertext<P>, SharedSecret)> {
+    InvalidInput::check_len(URANDOM32_BYTES * P::P, r_random.len())?;
     let r = short_from_bytes::<P>(r_random);
     let pk_bytes = ek.to_bytes();
     let cache = hash_prefix(4, &[&pk_bytes]);
     let (ct, r_enc) = hide::<P>(&r, &pk_bytes, &cache);
     let k = hash_session(1, &r_enc, &ct);
-    (ct, k)
+    Ok((
+        Ciphertext {
+            bytes: ct,
+            _p: PhantomData,
+        },
+        k,
+    ))
 }
 
 /// SNTRU decapsulation with implicit rejection: re-encryption mismatch
 /// yields `HashSession(2, rho, ct)` instead of the session key.
-pub fn decapsulate<P: SntrupParams>(dk: &SecretKey<P>, ct: &[u8]) -> SharedSecret {
+/// (Wrong-length ciphertexts cannot be constructed:
+/// [`Ciphertext::from_bytes`] validates the length.)
+pub fn decapsulate<P: SntrupParams>(dk: &SecretKey<P>, ct: &Ciphertext<P>) -> SharedSecret {
+    let ct = &ct.bytes;
     let sk = &dk.bytes;
     let pk = &sk[2 * P::SMALL_BYTES..2 * P::SMALL_BYTES + P::RQ_BYTES];
     let rho =
@@ -354,15 +429,19 @@ macro_rules! instantiate_sntrup {
     ($mod_name:ident, $params:ident, $doc:expr) => {
         #[doc = $doc]
         pub mod $mod_name {
-            pub use super::{PublicKey, SecretKey, SharedSecret};
+            pub use super::{Ciphertext, PublicKey, SecretKey, SharedSecret};
 
-            /// SNTRU key generation (returns `None` if `g` is not
-            /// invertible — resample with fresh randomness).
+            /// SNTRU key generation.
+            ///
+            /// # Errors
+            /// [`InvalidInput::InvalidLength`](crate::InvalidInput::InvalidLength) on wrong-length randomness;
+            /// [`InvalidInput::KeygenRetry`](crate::InvalidInput::KeygenRetry) when `g` is not invertible
+            /// (probability ≈ 1/q — resample with fresh randomness).
             pub fn keygen(
                 g_random: &[u8],
                 f_random: &[u8],
                 rho: &[u8],
-            ) -> Option<(
+            ) -> super::SchemeResult<(
                 SecretKey<super::params::$params>,
                 PublicKey<super::params::$params>,
             )> {
@@ -370,15 +449,21 @@ macro_rules! instantiate_sntrup {
             }
 
             /// SNTRU encapsulation.
+            ///
+            /// # Errors
+            /// [`InvalidInput::InvalidLength`](crate::InvalidInput::InvalidLength) on wrong-length `r_random`.
             pub fn encapsulate(
                 ek: &PublicKey<super::params::$params>,
                 r_random: &[u8],
-            ) -> (Vec<u8>, SharedSecret) {
+            ) -> super::SchemeResult<(Ciphertext<super::params::$params>, SharedSecret)> {
                 super::encapsulate::<super::params::$params>(ek, r_random)
             }
 
             /// SNTRU decapsulation with implicit rejection.
-            pub fn decapsulate(dk: &SecretKey<super::params::$params>, ct: &[u8]) -> SharedSecret {
+            pub fn decapsulate(
+                dk: &SecretKey<super::params::$params>,
+                ct: &Ciphertext<super::params::$params>,
+            ) -> SharedSecret {
                 super::decapsulate::<super::params::$params>(dk, ct)
             }
         }
