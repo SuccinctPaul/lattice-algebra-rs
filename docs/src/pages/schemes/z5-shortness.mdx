@@ -1,0 +1,44 @@
+# Z5 · Shortness Arguments
+
+**Status: implemented** (`src/shortness`) — three flavors of the
+norm-bound/approximate-shortness primitive that every LaBRADOR-line
+protocol needs, each with a different norm and trust profile.
+
+## Digit-balanced projection argument (`shortness::balanced`)
+
+With `c = A·w` public, prove `‖w − ζ·t‖∞ ≤ 2^γ·B_h + 2^{γ−1}`:
+
+```text
+v = w − ζ·t
+v = 2^γ·h + l        ← balanced split: exact, ‖l‖∞ ≤ 2^{γ−1}
+        ──h, l──▶    verify: A·(2^γ·h + l) == c − ζ·(A·t)  (exact link)
+                     ‖l‖∞ ≤ 2^{γ−1}, ‖h‖∞ ≤ B_h            (norm gates)
+```
+
+- the link is **exact** (no slack): the revealed `h` is forced to be the
+  true high part of `v`, so a forger cannot shrink it;
+- binding pins `(h, l)` to `v` — a second accepting digit pair would give
+  a short kernel vector;
+- literature lineage: LaBRADOR's per-round `z = z₀ + b·z₁` norm control,
+  LNP22 decomposition arguments, LatticeFold quotient/residue checks.
+
+## JL projection argument (`shortness::projection`)
+
+The `l2` flavor (LaBRADOR/GHL21): the verifier draws a ±1 projection
+`Π: Z^{m·D} → Z^k` from a seed; the prover reveals `p = Π·w`. Acceptance
+`‖p‖₂ ≤ √(2k)·B` certifies `‖w‖₂ ≲ 2·B`:
+
+- honest floor: `E‖Πw‖₂² = k·‖w‖₂²` (cross terms vanish), so an honest
+  witness concentrates near `√k·B`;
+- cheating: an inflated witness survives only with probability decreasing
+  exponentially in `k` (Hanson–Wright), independent of prover adaptivity;
+- `k` parameterizes the confidence. LaBRADOR's tuned entry distribution
+  tightens the certified gap to `√(128/30) ≈ 2.07` (tracked refinement).
+
+## Gadget split with provable slack (`shortness::gadget`)
+
+The slack-based flavor used inside batched openings:
+`v = high·2^drop + low` with `low` centered and the remainder tracked as
+slack; `approx_linear_check` accepts openings matching the committed
+value within the operator-norm slack `slack_bound` — the machinery the
+full LaBRADOR recursion layers into complete shortness proofs.

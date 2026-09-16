@@ -7,17 +7,20 @@ keep the docs and the code in lockstep.
 ## Repository layout
 
 ```
-crates/algebra   # L0-L4 foundation: ring / ntt / poly / module / crypto / matrix
-crates/pqc       # NIST schemes: ML-DSA (FIPS 204)
-crates/zk        # ZK line: Ajtai commitments, Sigma, batched opening, sumcheck, IPA, folding
-src/             # facade crate re-exporting everything under historical paths
-examples/        # workspace tour through the facade (runnable)
+crates/algebra   # L0-L4 foundation: ring / ntt / poly / module / crypto / matrix / simd
+crates/pqc       # NIST schemes: ML-KEM & ML-DSA (FIPS 203/204), Falcon, FrodoKEM, NTRU, sntrup
+crates/zk        # ZK line by domain: foundation / instance / commitment / sigma /
+                 #   opening / sumcheck / shortness / folding
 docs/            # the design site (vocs + mermaid) — part of the deliverable, not an afterthought
+scripts/         # maintenance tooling (KAT regeneration, audits)
 ```
 
 Dependency direction is one-way: `pqc` and `zk` depend on `algebra`; nothing
-inside `algebra` depends on a scheme crate. New code lands in the module that
-owns it (see the [module map](./docs/src/pages/design/module-map.mdx)).
+inside `algebra` depends on a scheme crate. Within `zk`, the layering is
+`foundation → instance → commitment → protocol domains` — protocol domains
+may compose with each other but only reference layers below them (see the
+[module map](./docs/src/pages/design/module-map.mdx)). New code lands in the
+domain that owns it.
 
 ## The merge gate
 

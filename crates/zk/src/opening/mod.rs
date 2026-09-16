@@ -164,6 +164,22 @@ pub struct Z2RecursiveProof {
 
 /// Prover side of the recursive mode: identical first message to [`prove`],
 /// plus the recursion commitments of the per-gate masked terms.
+///
+/// # Example
+///
+/// ```rust
+/// use zk::instance::r1cs::gen_toy_instance;
+/// use zk::opening::{prove_recursive, verify_recursive, Z2CommitKey};
+///
+/// let (r1cs, z) = gen_toy_instance(&[1u8; 32], 8, 2);
+/// let key = Z2CommitKey::setup(&[2u8; 32]);
+/// let key_seed = [2u8; 32];
+/// let r1cs_seed = [3u8; 32];
+///
+/// let (c, proof) =
+///     prove_recursive(&key, &key_seed, &r1cs_seed, &r1cs, &z, &[9u8; 32]);
+/// assert!(verify_recursive(&key, &key_seed, &r1cs_seed, &r1cs, &c, &proof));
+/// ```
 pub fn prove_recursive(
     key: &Z2CommitKey,
     key_seed: &[u8; 32],

@@ -1,0 +1,57 @@
+# Z4/Z5 · Folding & IVC
+
+**Status: implemented** (`src/folding::{nova, latticefold}`) — two
+complementary folding lines over the `Z_{2^32}[X]/(X^64+1)` ring: a
+Nova-style relaxed-R1CS layer with homomorphic commitment updates, and a
+LatticeFold-style decomposition folding with a splitting query.
+
+## Nova-style folding (`folding::nova`)
+
+Relaxed gates carry the quadratic product in the witness so the constraint
+check is linear in the committed pair `(z, q)`:
+
+```text
+(A_k·z)∘(A_k·z) = U_k∘z_sel[k] + e_k
+fold:  z' = z₁ + r·z₂
+       e' = e₁ + r·T + r²·(e₂ + U∘z₂_sel)
+       T_k = 2(A_k·z₁)∘(A_k·z₂) − U_k·z₂_sel[k]
+```
+
+- commitments fold homomorphically with the same weights;
+- `verify_folded` is a transparent verifier: it re-derives both commitments
+  and checks the exact residuals, so a folded IVC chain is checkable at
+  every link (the test suite chains 6 folds);
+- the error fold was audited: the degree-2 coefficient is the raw
+  quadratic product of `z₂` (`e₂ + U∘z₂_sel`), not `e₂` — a squaring gate
+  is not linear in `z`.
+
+## LatticeFold-style folding (`folding::latticefold`)
+
+The decomposition-based line: two **committed short witnesses** fold into
+one committed vector whose shortness is re-certified through its balanced
+`b`-bit digits.
+
+```text
+r  ← H(key, c₁, c₂)                  ‖r‖∞ ≤ 1, ‖r‖₁ ≤ B_r (hyperball)
+w' = w₁ + r·w₂,  c' = c₁ + r·c₂      homomorphic fold
+d₀..d₃ ← balanced b=8 decomposition  (L = 32/b, quotient ≡ 0)
+cᵢ = A·dᵢ                            ──c', {cᵢ}──▶
+                                     ζ ← H(c₁,c₂,c',{cᵢ})   splitting query
+d̃ = Σ ζⁱ·dᵢ                          ──d̃──▶
+```
+
+Verifier checks — all linear identities in committed values plus one norm
+gate:
+
+1. `c' == c₁ + r·c₂` (homomorphic fold);
+2. `c' == Σ 2^{bi}·cᵢ` (decomposition consistency — exact; violating it
+   yields a short kernel vector, an MSIS break);
+3. `Σ ζⁱ·cᵢ == A·d̃` (the splitting query: `ζ` is bound *after* the digit
+   commitments);
+4. `‖d̃‖∞ ≤ Σ B_ζⁱ·2^{b−1}` (provable norm gate).
+
+Key fact: with `L·b = 32` the decomposition is **exact and quotient-free**
+in `Z_{2^32}` (`2^{bL} ≡ 0`), which is one of the core reasons the
+LatticeFold line picks 2-adic rings. Gaps vs the paper (tracked):
+multilinear evaluation assertion (carried by the sumcheck) and the full
+SZ extraction argument.

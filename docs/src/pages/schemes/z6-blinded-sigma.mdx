@@ -1,0 +1,47 @@
+# Z6 · Blinded Σ-Protocol & Instance Helpers
+
+**Status: implemented** (`src/sigma::z2`, `src/instance::ring`,
+`src/foundation::sampling`) — the ZK blinding step for the
+committed-opening line, plus the instance-layer helpers the folding
+ecosystem builds on.
+
+## Blinded HVZK Σ-response over the Z2 ring (`sigma::z2`)
+
+Knowledge of a short opening `w` (`‖w‖∞ ≤ B_W`) of the commitment
+`c = A·w`, **without revealing `w`**:
+
+```text
+y ← centered-bounded (‖y‖∞ < B_Y)
+d = A·y                    ──c, d──▶  C ← small non-unit challenge
+z = y + C·w                ──z──▶     1. A·z == d + C·c   (exact)
+                                      2. ‖z‖∞ ≤ B_Z       (HVZK gate)
+```
+
+The challenge resolves the 2-adic dilemma: small challenges in
+`Z_{2^k}[X]/(X^N+1)` are otherwise always units (odd coefficient sum =
+invertible), which breaks extraction — while the large `X − a` challenge
+blows up the response norm (`‖C‖₁ ≈ 2^31`). `nonunit_small_poly` draws
+ternary `{-1, 0, 1}` coefficients conditioned on an **even** sum:
+`‖C‖₁ ≤ N` *and* non-invertible. Soundness is relaxed forking extraction
+(`A·(z1 − z2) = (d1 − d2) + (C1 − C2)·c`); HVZK comes from the
+rejection-sampled response distribution.
+
+## Integer lift (`instance::ring::split_mod_2k`)
+
+The LaZer lift turns the modular statement `A·s ≡ t (mod 2^k)` into the
+exact ring equation `A·s + 2^k·v = t` with a hidden short carry vector
+`v` — no arithmetic mod a non-ring modulus.
+
+## 2-adic ModSwitch (`instance::ring::modswitch_ring`)
+
+Coefficient truncation `Z_{2^32}[X]/(X^D+1) → Z_Q[X]/(X^D+1)` is a ring
+homomorphism: `ms(A·w) == ms(A)·ms(w)` — commitments re-stated over
+smaller rings without re-opening the witness (the switching step the
+Alpine/Shadow line builds on).
+
+## Strong-sampling-set challenges (`foundation::sampling::odd_sum_poly`)
+
+Uniform draws conditioned on an odd coefficient sum — the LatticeFold
+challenge-set notion where differences stay invertible (odd sums are
+units of the 2-adic ring). The small-non-unit counterpart is
+`nonunit_small_poly` (even sum, ternary).
