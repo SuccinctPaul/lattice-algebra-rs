@@ -62,22 +62,22 @@ flowchart LR
 
 ### ✅ M6 · Z1 Σ-protocol primitives
 
-- `protocols::commitment` (Ajtai/SIS) + `protocols::sigma` (Lyubashevsky approximate-knowledge FS-NIZK) on the Z1 instance;
+- `commitment::ajtai` (Ajtai/SIS) + `sigma` (Lyubashevsky approximate-knowledge FS-NIZK) on the Z1 instance;
 - **gate (met)**: extractor test (exact relaxed relation `A·s_ext = v·t`, honest-case `s_ext = v·s`, slack bounds `‖s_ext‖∞ ≤ 2·B_Z`, `‖v‖₁ ≤ 2·TAU`); HVZK via rejection sampling; full slack analysis published on the [Z1 page](/schemes/z1-sigma). Estimator calibration remains an open hardening item.
 
 ### ✅ M7 · Z2 batched openings
 
-- `protocols::z2_ring` (`Z_{2^32}` instance) + `protocols::z2` (batched opening with masked constraint consistency, gadget split with provable slack);
+- `instance::{ring, r1cs}` (`Z_{2^32}` instance) + `opening` (batched opening with masked constraint consistency, gadget split with provable slack);
 - **gate (met)**: 10^4-ring-constraint toy R1CS, transparent proof ≈ 3 KB (budget 10 KB); extractor relation test; tamper/wrong-instance rejection; wire roundtrip. Schwartz–Zippel soundness sketch published on the [Z2 page](/schemes/z2-batched).
 
 ### ✅ M8 · Z3 ring-sumcheck + gadget-IPA
 
-- `protocols::sumcheck` (multilinear sumcheck over any commutative ring) + `protocols::ipa` (inner-product arguments with gadget-based approximate opening);
+- `sumcheck` (multilinear sumcheck over any commutative ring) + `sumcheck::ipa` (inner-product arguments with gadget-based approximate opening);
 - **gate (met)**: cross-checked against Z2 on the same toy R1CS instance — both paths accept the identical instance/witness; sizes asserted (3072 B Z2 / 5376 B Z3) and timings benchmarked (see the [Z3 page](/schemes/z3-sumcheck) table).
 
 ### ✅ M9 · Z4 folding layer
 
-- `protocols::fold`: Nova-style folding over the Z2 ring — relaxed R1CS instances with homomorphic commitment updates, cross-term absorption, folding verifier, IVC chain test (6 folds, all verify);
+- `folding::nova`: Nova-style folding over the Z2 ring — relaxed R1CS instances with homomorphic commitment updates, cross-term absorption, folding verifier, IVC chain test (6 folds, all verify);
 - **gate (met)**: all folded chain instances pass verify_folded; r=0 identity; tampered error rejected. Full compact IVC (non-transparent) deferred to the research layer.
 
 ### ✅ W1 · Multi-crate workspace
@@ -131,9 +131,9 @@ flowchart LR
   landscape mapped to the crate ([`crates/zk/docs/survey-lattice-zksnarks.zh.md`]),
   the LaBRADOR **hyperball challenge sampler** (`sampling::hyperball_vec`),
   the **projection argument** for committed vectors — one level of the
-  LaBRADOR shortness recursion (`protocols::short`) — and **LatticeFold-style
+  LaBRADOR shortness recursion (`shortness::balanced`) — and **LatticeFold-style
   folding**: small-norm fold challenge + exact quotient-free balanced b-bit
-  batch decomposition + splitting query (`protocols::latticefold`);
+  batch decomposition + splitting query (`folding::latticefold`);
 - **Remaining**: ZK blinding; the LaBRADOR recursion for Z2/Z3 (committing the masked terms before the challenges open them — the one-shot masked-term check contributes one bit of soundness, audited and documented). W3 protocol audit landed: non-unit challenge fix for Z2/IPA (a vacuous-check break), corrected Nova cross-term algebra in Z4 with a homomorphic error fold, sumcheck verifier closure, and gate-level parallelism (`parallel` feature: Z2 prove/verify −78% at 512 gates). Estimator calibration and the ML-DSA KAT/ACVP alignment landed in W2.
 
 ## Engineering rules (always on)

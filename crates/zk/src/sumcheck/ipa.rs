@@ -39,42 +39,18 @@
 //! [`approx_slack_bound`] per coefficient — the mechanism full LaBRADOR
 //! recursion uses to keep opened values short.
 
-use crate::encoding::ring_to_u32;
-use crate::fs::absorb_rings;
-use crate::protocols::z2_ring::{Z2Coeff, Z2Ring, D};
-use crate::sampling::{nonunit_linear_poly, uniform_matrix_from_seed, uniform_vec_from_seed};
+use crate::commitment::key::AjtaiKey;
+use crate::foundation::encoding::ring_to_u32;
+use crate::foundation::fs::absorb_rings;
+use crate::foundation::sampling::{nonunit_linear_poly, uniform_vec_from_seed};
+use crate::instance::ring::{Z2Coeff, Z2Ring, D};
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
 
-/// Ajtai key for the IPA (`A_com ∈ R^{N×M}`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IpaKey<const N: usize, const M: usize> {
-    a: Vec<Vec<Z2Ring>>,
-}
-
-impl<const N: usize, const M: usize> IpaKey<N, M> {
-    /// Derives the key from a seed.
-    pub fn setup(seed: &[u8; 32]) -> Self {
-        Self {
-            a: uniform_matrix_from_seed::<Z2Coeff, D>(b"", seed, N, M),
-        }
-    }
-
-    /// `A_com·α`.
-    pub fn commit(&self, alpha: &[Z2Ring]) -> Vec<Z2Ring> {
-        debug_assert_eq!(alpha.len(), M);
-        (0..N)
-            .map(|i| {
-                let mut acc = Z2Ring::zero();
-                for (j, a) in alpha.iter().enumerate() {
-                    acc += self.a[i][j].clone() * a.clone();
-                }
-                acc
-            })
-            .collect()
-    }
-}
+/// Ajtai key for the IPA (`A_com ∈ R^{N×M}`) — the shared
+/// [`AjtaiKey`] under the protocol-historical name.
+pub type IpaKey<const N: usize, const M: usize> = AjtaiKey<N, M>;
 
 /// Ring inner product `Σ α_j·u_j`.
 pub fn ring_inner_product(alpha: &[Z2Ring], u: &[Z2Ring]) -> Z2Ring {
@@ -104,9 +80,10 @@ fn challenges(key_seed: &[u8; 32], c: &[Z2Ring], u: &[Z2Ring], d: &[Z2Ring]) -> 
     absorb_rings(&mut tr, b"d", d);
     let seed = tr.challenge_bytes(64);
     // C = X − a with a odd: a true non-unit (see the module soundness notes).
-    let x =
-        nonunit_linear_poly::<Z2Coeff, Shake128Xof, D>(&mut crate::fs::seed_stream(b"X", &seed));
-    let gamma = crate::sampling::uniform_ring_from_seed::<Z2Coeff, D>(b"gamma", &seed);
+    let x = nonunit_linear_poly::<Z2Coeff, Shake128Xof, D>(
+        &mut crate::foundation::fs::seed_stream(b"X", &seed),
+    );
+    let gamma = crate::foundation::sampling::uniform_ring_from_seed::<Z2Coeff, D>(b"gamma", &seed);
     (x, gamma)
 }
 
@@ -209,8 +186,7 @@ fn mask_ring<const M: usize>(seed: &[u8; 32]) -> Vec<Z2Ring> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::ring_from_u32;
-    use crate::protocols::z2_ring::D;
+    use crate::foundation::encoding::ring_from_u32;
     use algebra::crypto::xof::Xof;
 
     /// Soundness regression mirroring Z2's: a false inner-product claim

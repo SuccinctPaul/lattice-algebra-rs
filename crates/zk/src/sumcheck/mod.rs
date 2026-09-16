@@ -198,3 +198,5 @@ mod tests {
         assert!(verify::<Rq, 5>(&proof, sum, &mut ch_v).is_none());
     }
 }
+
+pub mod ipa;

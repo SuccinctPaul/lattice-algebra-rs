@@ -32,9 +32,11 @@
 //! IVC prover chains folds; every folded instance is checkable by
 //! [`verify_folded`].
 
-use crate::fs::absorb_rings;
-use crate::protocols::z2_ring::{map_over_gates, ToyR1cs, Z2Coeff, Z2Ring, D};
-use crate::sampling::{uniform_matrix_from_seed, uniform_ring_from_seed};
+use crate::commitment::key::AjtaiKey;
+use crate::foundation::fs::absorb_rings;
+use crate::foundation::sampling::uniform_ring_from_seed;
+use crate::instance::r1cs::{map_over_gates, ToyR1cs};
+use crate::instance::ring::{Z2Coeff, Z2Ring, D};
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
@@ -44,46 +46,28 @@ use algebra::ring::MatrixElement;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoldKey<const N: usize, const M: usize, const GATES: usize> {
     /// Witness commitment matrix `A_z ∈ R^{N×M}`.
-    pub a_z: Vec<Vec<Z2Ring>>,
+    pub a_z: AjtaiKey<N, M>,
     /// Error commitment matrix `A_e ∈ R^{N×GATES}`.
-    pub a_e: Vec<Vec<Z2Ring>>,
+    pub a_e: AjtaiKey<N, GATES>,
 }
 
 impl<const N: usize, const M: usize, const GATES: usize> FoldKey<N, M, GATES> {
     /// Derives both matrices from one seed (independent domain labels).
     pub fn setup(seed: &[u8; 32]) -> Self {
         Self {
-            a_z: uniform_matrix_from_seed::<Z2Coeff, D>(b"fold-az", seed, N, M),
-            a_e: uniform_matrix_from_seed::<Z2Coeff, D>(b"fold-ae", seed, N, GATES),
+            a_z: AjtaiKey::setup_labeled(b"fold-az", seed),
+            a_e: AjtaiKey::setup_labeled(b"fold-ae", seed),
         }
     }
 
     /// Commits the witness vector: `A_z·z` (length `M`).
     pub fn commit_witness(&self, z: &[Z2Ring]) -> Vec<Z2Ring> {
-        debug_assert_eq!(z.len(), M);
-        (0..N)
-            .map(|i| {
-                let mut acc = Z2Ring::zero();
-                for (j, zj) in z.iter().enumerate() {
-                    acc += self.a_z[i][j].clone() * zj.clone();
-                }
-                acc
-            })
-            .collect()
+        self.a_z.mul_vec(z)
     }
 
     /// Commits a gate-length vector (error `E` or cross terms `T`): `A_e·v`.
     pub fn commit_error(&self, v: &[Z2Ring]) -> Vec<Z2Ring> {
-        debug_assert_eq!(v.len(), GATES);
-        (0..N)
-            .map(|i| {
-                let mut acc = Z2Ring::zero();
-                for (j, vj) in v.iter().enumerate() {
-                    acc += self.a_e[i][j].clone() * vj.clone();
-                }
-                acc
-            })
-            .collect()
+        self.a_e.mul_vec(v)
     }
 }
 
@@ -234,14 +218,14 @@ pub fn verify_folded<const N: usize, const M: usize, const GATES: usize>(
     if ce_check != inst.c_e {
         return false;
     }
-    crate::protocols::z2::constraint_residuals(r1cs, &inst.z) == inst.error
+    crate::opening::constraint_residuals(r1cs, &inst.z) == inst.error
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::ring_from_u32;
-    use crate::protocols::z2_ring::gen_toy_instance;
+    use crate::foundation::encoding::ring_from_u32;
+    use crate::instance::r1cs::gen_toy_instance;
 
     const N: usize = 8;
     const M: usize = 4;
@@ -254,9 +238,9 @@ mod tests {
     ) -> RelaxedInstance<M, GATES> {
         RelaxedInstance {
             z: z.to_vec(),
-            error: crate::protocols::z2::constraint_residuals(r1cs, z),
+            error: crate::opening::constraint_residuals(r1cs, z),
             c_z: key.commit_witness(z),
-            c_e: key.commit_error(&crate::protocols::z2::constraint_residuals(r1cs, z)),
+            c_e: key.commit_error(&crate::opening::constraint_residuals(r1cs, z)),
         }
     }
 

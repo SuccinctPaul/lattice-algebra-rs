@@ -1,8 +1,8 @@
 # Z3 · Ring-Sumcheck & Gadget-IPA
 
-**Status: implemented** (`src/protocols::{sumcheck, ipa}`) — the GreyHound-style components of the lattice zkSNARK roadmap: a multilinear sumcheck over any commutative ring and inner-product arguments on Ajtai-committed vectors with a gadget-based approximate opening. Cross-checked against Z2's batched opening on the same toy R1CS instance with size/time benchmarks.
+**Status: implemented** (`src/sumcheck`) — the GreyHound-style components of the lattice zkSNARK roadmap: a multilinear sumcheck over any commutative ring and inner-product arguments on Ajtai-committed vectors with a gadget-based approximate opening. Cross-checked against Z2's batched opening on the same toy R1CS instance with size/time benchmarks.
 
-## Ring-sumcheck (`protocols::sumcheck`)
+## Ring-sumcheck (`sumcheck`)
 
 Proves `Σ_{x ∈ {0,1}^G} T(x) = S` for an explicit truth table `T ∈ R^{2^G}`. The protocol works over **any commutative ring** — no inverses needed: per-round challenges come from a caller-supplied closure (deterministically derived from a shared transcript), and each round message is the pair of partial sums of the folded table.
 
@@ -22,7 +22,7 @@ let (challenges, final_eval) =
 
 Compared to Z2's single γ-combination of gate residuals, the sumcheck gives **round-by-round folding**: a cheating prover is committed to each intermediate folded claim, so soundness holds per round rather than amortized over one big challenge.
 
-## Gadget-IPA (`protocols::ipa`)
+## Gadget-IPA (`sumcheck::ipa`)
 
 Inner-product argument on Ajtai-committed vectors: given `c = A_com·α` and public `u`, prove `⟨α, u⟩ = v`.
 

@@ -3,7 +3,7 @@
 //!
 //! This is the *decomposition-based* folding line of LatticeFold/LatticeFold+
 //! — distinct from the Nova-style relaxed-instance folding in
-//! [`crate::protocols::fold`]: here two **committed short witnesses** are
+//! [`crate::folding::nova`]: here two **committed short witnesses** are
 //! folded into one committed vector whose shortness is re-certified through
 //! its `b`-bit balanced digits, without ever opening the folded vector.
 //!
@@ -48,13 +48,13 @@
 //! recurse: each level replaces one committed vector by `L` short committed
 //! digit vectors.
 
-use crate::fs::absorb_rings;
-use crate::protocols::short::{infinity_norm, split_balanced};
-use crate::protocols::z2_ring::{Z2Coeff, Z2Ring, D};
-use crate::sampling::{hyperball_vec, uniform_matrix_from_seed};
-use algebra::crypto::sampling::BitStream;
+use crate::commitment::key::AjtaiKey;
+use crate::foundation::fs::absorb_rings;
+use crate::foundation::sampling::hyperball_ring_from_seed;
+use crate::instance::ring::{infinity_norm, pow2_const, Z2Coeff, Z2Ring, D};
+use crate::shortness::balanced::split_balanced;
 use algebra::crypto::transcript::Transcript;
-use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
 
 /// Digit width `b` of the balanced decomposition.
@@ -62,40 +62,13 @@ pub const DIGIT_BITS: u32 = 8;
 /// Number of digits `L = 32/b` (the quotient vanishes in `Z_{2^32}`).
 pub const NUM_DIGITS: usize = (32 / DIGIT_BITS) as usize;
 
-/// Ajtai commitment key for the decomposition layer: `A ∈ R^{N×M}`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LfKey<const N: usize, const M: usize> {
-    a: Vec<Vec<Z2Ring>>,
-}
-
-impl<const N: usize, const M: usize> LfKey<N, M> {
-    /// Derives the key from a seed.
-    pub fn setup(seed: &[u8; 32]) -> Self {
-        Self {
-            a: uniform_matrix_from_seed::<Z2Coeff, D>(b"", seed, N, M),
-        }
-    }
-
-    /// `A·x`.
-    pub fn mul_vec(&self, x: &[Z2Ring]) -> Vec<Z2Ring> {
-        debug_assert_eq!(x.len(), M);
-        (0..N)
-            .map(|i| {
-                let mut acc = Z2Ring::zero();
-                for (j, xj) in x.iter().enumerate() {
-                    acc += self.a[i][j].clone() * xj.clone();
-                }
-                acc
-            })
-            .collect()
-    }
-}
+/// Ajtai commitment key for the decomposition layer — the shared
+/// [`AjtaiKey`] under the protocol-historical name.
+pub type LfKey<const N: usize, const M: usize> = AjtaiKey<N, M>;
 
 /// The constant ring element `2^{bi}`.
 fn pow2_digit(i: usize) -> Z2Ring {
-    let mut coeffs = [0u32; D];
-    coeffs[0] = 1u32 << (DIGIT_BITS * i as u32);
-    crate::encoding::ring_from_u32(&coeffs)
+    pow2_const(DIGIT_BITS * i as u32)
 }
 
 /// Balanced `b`-bit decomposition of a ring vector into `L` digit vectors:
@@ -153,13 +126,7 @@ pub fn splitting_norm_bound(l1_zeta: u64) -> u64 {
 /// `‖ζ‖₁ ≤ l1_bound`) from a domain-separated re-expansion of a transcript
 /// seed (the crate's standard three-step FS shape).
 fn hyperball_challenge(domain: &[u8], seed: &[u8], l1_bound: u64) -> Z2Ring {
-    let mut xof = Shake128Xof::new(&[]);
-    xof.absorb(domain);
-    xof.absorb(seed);
-    let mut stream = BitStream::new(&mut xof);
-    hyperball_vec::<Z2Coeff, Shake128Xof, D>(&mut stream, 1, 1, l1_bound, 1 << 20)
-        .expect("hyperball challenge must sample for sound parameters")
-        .remove(0)
+    hyperball_ring_from_seed::<Z2Coeff, D>(domain, seed, 1, l1_bound)
 }
 
 /// Fold challenge `r` (`‖r‖∞ ≤ 1`, `‖r‖₁ ≤ l1_bound`) bound to the key and
@@ -348,7 +315,7 @@ pub fn verify_fold_decompose<const N: usize, const M: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::{ring_from_u32, ring_to_u32};
+    use crate::foundation::encoding::{ring_from_u32, ring_to_u32};
     use algebra::crypto::xof::Xof;
 
     const N: usize = 8;

@@ -8,7 +8,7 @@
 //! 2. squeeze a seed (`challenge_bytes`);
 //! 3. re-expand the seed in a **fresh**, labeled XOF stream and shape the
 //!    challenge from it (uniform ring element, sparse in-ball polynomial,
-//!    non-unit linear challenge — see [`crate::sampling`]).
+//!    non-unit linear challenge — see [`crate::foundation::sampling`]).
 //!
 //! Step 3 uses a new XOF instance (rather than squeezing the transcript
 //! directly) so that differently-shaped challenges are drawn from
@@ -21,7 +21,7 @@ use algebra::crypto::xof::Xof;
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::Ring;
 
-use crate::encoding::{ring_to_u32, u32s_to_le_bytes};
+use crate::foundation::encoding::{ring_to_u32, u32s_to_le_bytes};
 
 /// Expands a Fiat–Shamir seed into a fresh XOF stream bound to `domain`.
 ///

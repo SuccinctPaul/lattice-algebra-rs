@@ -8,18 +8,18 @@ use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
 use algebra::ring::Ring;
-use zk::encoding::{ring_from_u32, ring_to_u32};
-use zk::protocols::commitment::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
-use zk::protocols::fold::{fold, verify_folded, FoldKey, RelaxedInstance};
-use zk::protocols::latticefold::{prove_fold_decompose, verify_fold_decompose, LfKey};
-use zk::protocols::short::{
-    certified_bound, infinity_norm, projection_challenge, prove_projection, verify_projection,
-    ShortKey,
+use zk::commitment::ajtai::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
+use zk::folding::latticefold::{prove_fold_decompose, verify_fold_decompose, LfKey};
+use zk::folding::nova::{fold, verify_folded, FoldKey, RelaxedInstance};
+use zk::foundation::encoding::{ring_from_u32, ring_to_u32};
+use zk::instance::r1cs::gen_toy_instance;
+use zk::instance::ring::infinity_norm;
+use zk::opening::{prove, verify, Z2CommitKey};
+use zk::shortness::balanced::{
+    certified_bound, projection_challenge, prove_projection, verify_projection, ShortKey,
 };
-use zk::protocols::sigma::{fs_prove, fs_verify};
-use zk::protocols::sumcheck;
-use zk::protocols::z2::{prove, verify, Z2CommitKey};
-use zk::protocols::z2_ring::gen_toy_instance;
+use zk::sigma::{fs_prove, fs_verify};
+use zk::sumcheck;
 
 type Z1Ring = Zq<8380417>;
 const K: usize = 4;
@@ -175,11 +175,11 @@ fn folding_layer_accepts_honest_chain_and_rejects_tampering() {
     let (_r2, z2) = gen_toy_instance(&seed32(b"contract-fold-i2"), GATES, M);
     let (_r3, z3) = gen_toy_instance(&seed32(b"contract-fold-i3"), GATES, M);
 
-    let make = |z: &[zk::protocols::z2_ring::Z2Ring]| RelaxedInstance {
+    let make = |z: &[zk::instance::ring::Z2Ring]| RelaxedInstance {
         z: z.to_vec(),
-        error: zk::protocols::z2::constraint_residuals(&r1cs, z),
+        error: zk::opening::constraint_residuals(&r1cs, z),
         c_z: key.commit_witness(z),
-        c_e: key.commit_error(&zk::protocols::z2::constraint_residuals(&r1cs, z)),
+        c_e: key.commit_error(&zk::opening::constraint_residuals(&r1cs, z)),
     };
 
     let mut r_coeffs = [0u32; 64];
@@ -207,7 +207,7 @@ fn contract_rnd_vec(
     xof: &mut Shake128Xof,
     len: usize,
     mask: u32,
-) -> Vec<zk::protocols::z2_ring::Z2Ring> {
+) -> Vec<zk::instance::ring::Z2Ring> {
     (0..len)
         .map(|_| {
             let mut coeffs = [0u32; 64];
@@ -223,7 +223,7 @@ fn contract_rnd_vec(
 
 #[test]
 fn projection_argument_accepts_honest_and_rejects_forgeries() {
-    use zk::protocols::z2_ring::Z2Ring;
+    use zk::instance::ring::Z2Ring;
 
     const N: usize = 8;
     const M: usize = 4;

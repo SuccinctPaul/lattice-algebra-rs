@@ -43,9 +43,9 @@
 //! honest-verifier zero-knowledge (HVZK); malicious-verifier ZK and
 //! blinding are deferred (Z3).
 
-use crate::fs::absorb_rings;
-use crate::protocols::commitment::{CommitmentKey, LatticeCommitment, SisParams};
-use crate::sampling::{centered_bounded_poly, in_ball_poly};
+use crate::commitment::ajtai::{CommitmentKey, LatticeCommitment, SisParams};
+use crate::foundation::fs::absorb_rings;
+use crate::foundation::sampling::{centered_bounded_poly, in_ball_poly};
 use algebra::crypto::sampling::BitStream;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::{Shake256Xof, Xof};
@@ -207,8 +207,8 @@ pub fn extract<P: SisParams, const K: usize, const L: usize, const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocols::commitment::{Z1Instance, RING_DIM};
-    use crate::sampling::poly_from_centered;
+    use crate::commitment::ajtai::{Z1Instance, RING_DIM};
+    use crate::foundation::sampling::poly_from_centered;
     use algebra::ring::PolynomialQuotientRing;
     use algebra::ring::Ring;
 

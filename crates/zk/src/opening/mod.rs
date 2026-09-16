@@ -55,10 +55,14 @@
 //! is the machinery the full LaBRADOR recursion (Z3) layers into a complete
 //! shortness proof.
 
-use crate::encoding::{ring_from_u32, ring_to_u32, u32s_to_le_bytes};
-use crate::fs::absorb_rings;
-use crate::protocols::z2_ring::{map_over_gates, ToyR1cs, Z2Coeff, Z2Ring, D};
-use crate::sampling::{nonunit_linear_poly, uniform_ring_from_seed, uniform_vec_from_seed};
+use crate::commitment::key::AjtaiKey;
+use crate::foundation::encoding::{ring_from_u32, ring_to_u32, u32s_to_le_bytes};
+use crate::foundation::fs::absorb_rings;
+use crate::foundation::sampling::{
+    nonunit_linear_poly, uniform_ring_from_seed, uniform_vec_from_seed,
+};
+use crate::instance::r1cs::{map_over_gates, ToyR1cs};
+use crate::instance::ring::{Z2Coeff, Z2Ring, D};
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
@@ -68,34 +72,11 @@ pub const N_COMMIT: usize = 8;
 /// Witness length (ring variables).
 pub const M_VARS: usize = 2;
 
-/// Ajtai commitment key over the Z2 ring (raw-coefficient expansion).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Z2CommitKey {
-    a: Vec<Vec<Z2Ring>>,
-}
+/// Ajtai commitment key over the Z2 ring (raw-coefficient expansion) —
+/// the shared [`AjtaiKey`] under the protocol-historical name.
+pub type Z2CommitKey = AjtaiKey<N_COMMIT, M_VARS>;
 
-impl Z2CommitKey {
-    /// Derives the key from a seed.
-    pub fn setup(seed: &[u8; 32]) -> Self {
-        Self {
-            a: crate::sampling::uniform_matrix_from_seed::<Z2Coeff, D>(b"", seed, N_COMMIT, M_VARS),
-        }
-    }
-
-    /// `A_com·z`.
-    pub fn commit(&self, z: &[Z2Ring]) -> Vec<Z2Ring> {
-        debug_assert_eq!(z.len(), M_VARS);
-        (0..N_COMMIT)
-            .map(|i| {
-                let mut acc = Z2Ring::zero();
-                for (j, zj) in z.iter().enumerate() {
-                    acc += self.a[i][j].clone() * zj.clone();
-                }
-                acc
-            })
-            .collect()
-    }
-}
+pub use crate::shortness::gadget::{approx_linear_check, gadget_join, gadget_split, slack_bound};
 
 /// Proof for one batched opening: mask commitment + response.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -179,8 +160,9 @@ fn challenges(
     absorb_rings(&mut tr, b"d", d);
     let seed = tr.challenge_bytes(64);
     // C = X − a with a odd: a true non-unit (see the module soundness notes).
-    let x =
-        nonunit_linear_poly::<Z2Coeff, Shake128Xof, D>(&mut crate::fs::seed_stream(b"X", &seed));
+    let x = nonunit_linear_poly::<Z2Coeff, Shake128Xof, D>(
+        &mut crate::foundation::fs::seed_stream(b"X", &seed),
+    );
     let gamma = uniform_ring_from_seed::<Z2Coeff, D>(b"gamma", &seed);
     (x, gamma)
 }
@@ -327,65 +309,10 @@ pub fn verify(
     true
 }
 
-/// Gadget split: `v = high·2^drop + low`, with `low` re-centered into
-/// `(−2^{drop−1}, 2^{drop−1}]` and the remainder tracked as slack.
-/// Returns `(high, low_centered, slack)` with `|slack| ≤ 2^{drop−1}`.
-pub fn gadget_split(v: u32, drop: u32) -> (u32, i64, i64) {
-    debug_assert!((1..32).contains(&drop));
-    let high = v >> drop;
-    let low = v & ((1u32 << drop) - 1);
-    let low_i = i64::from(low);
-    let half = 1i64 << (drop - 1);
-    let centered = if low_i > half {
-        low_i - (1i64 << drop)
-    } else {
-        low_i
-    };
-    let slack = low_i - centered;
-    (high, centered, slack)
-}
-
-/// Rebuilds a value from its gadget split (exact when slack is included).
-pub fn gadget_join(high: u32, drop: u32, low_centered: i64, slack: i64) -> u32 {
-    let low = (low_centered + slack).rem_euclid(1i64 << drop) as u32;
-    (high << drop) | low
-}
-
-/// provable slack of an approximate linear opening: `N·D·2^{drop−1}`
-/// (operator-norm bound of `A` acting on a coefficient-bounded residual).
-pub fn slack_bound(n_rows: usize, drop: u32) -> i64 {
-    i64::from(n_rows as u32 * (1u32 << (drop - 1)))
-}
-
-/// Approximate linear check: does `lhs ≈ 2^drop·(A·high) + A·low_centered`
-/// hold within the provable slack? `lhs` and `rhs` are `N`-vectors of ring
-/// elements (the committed and reconstructed values).
-pub fn approx_linear_check(lhs: &[Z2Ring], reconstructed: &[Z2Ring], drop: u32) -> bool {
-    let bound = slack_bound(lhs.len() * D, drop) as u64;
-    for (l, r) in lhs.iter().zip(reconstructed.iter()) {
-        let lc = ring_to_u32(l);
-        let rc = ring_to_u32(r);
-        for (a, b) in lc.iter().zip(&rc) {
-            let diff = i64::from(*a) - i64::from(*b);
-            // centered difference on the power-of-two modulus
-            let diff = diff.rem_euclid(1i64 << 32);
-            let diff = if diff > (1i64 << 31) {
-                diff - (1i64 << 32)
-            } else {
-                diff
-            };
-            if diff.unsigned_abs() > bound {
-                return false;
-            }
-        }
-    }
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocols::z2_ring::gen_toy_instance;
+    use crate::instance::r1cs::gen_toy_instance;
     use algebra::crypto::xof::Xof;
 
     fn instance_and_witness() -> (ToyR1cs, Vec<Z2Ring>) {
@@ -394,43 +321,6 @@ mod tests {
 
     fn instance_and_witness_10k() -> (ToyR1cs, Vec<Z2Ring>) {
         gen_toy_instance(b"z2-instance-00000000000000000000", 10_000, 2)
-    }
-
-    fn make_probe(v: u32) -> [u32; D] {
-        let mut c = [0u32; D];
-        c[0] = v;
-        c
-    }
-
-    #[test]
-    fn gadget_split_is_exact_and_bounded() {
-        for drop in [4u32, 12, 16] {
-            for v in [0u32, 1, 0x7FFF_FFFF, 0xFFFF_FFFF, 123_456_789] {
-                let (hi, lo, slack) = gadget_split(v, drop);
-                assert_eq!(gadget_join(hi, drop, lo, slack), v);
-                assert!(slack.abs() <= 1i64 << drop, "slack {slack} out of range");
-                assert!(lo.abs() <= 1i64 << (drop - 1));
-            }
-        }
-    }
-
-    #[test]
-    fn approx_check_accepts_exact_and_bounded_slack() {
-        // exact reconstruction accepted
-        let v = [0x1234_5678u32, 0xFFFF_FFFF, 42];
-        let mut lhs = Vec::new();
-        let mut recon = Vec::new();
-        for &x in &v {
-            let (hi, lo, slack) = gadget_split(x, 12);
-            lhs.push(ring_from_u32(&make_probe(x)));
-            let rebuilt = gadget_join(hi, 12, lo, slack);
-            recon.push(ring_from_u32(&make_probe(rebuilt)));
-        }
-        assert!(approx_linear_check(&lhs, &recon, 12));
-        // a deviation beyond the slack bound must be rejected
-        let mut bad = recon.clone();
-        bad[2] = ring_from_u32(&make_probe(42 + 1_000_000));
-        assert!(!approx_linear_check(&lhs, &bad, 12));
     }
 
     #[test]
@@ -716,8 +606,8 @@ mod tests {
 
     #[test]
     fn z2_z3_crosscheck_and_benchmarks() {
-        use crate::protocols::sumcheck::{prove as sc_prove, verify as sc_verify};
-        use crate::protocols::z2_ring::gen_toy_instance;
+        use crate::instance::r1cs::gen_toy_instance;
+        use crate::sumcheck::{prove as sc_prove, verify as sc_verify};
 
         const GATES: usize = 1024; // 2^10: matches the sumcheck arity
 

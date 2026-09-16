@@ -11,13 +11,13 @@ use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use zk::encoding::ring_from_u32;
-use zk::protocols::commitment::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
-use zk::protocols::fold::{fold, verify_folded, FoldKey, RelaxedInstance};
-use zk::protocols::sigma::{fs_prove, fs_verify};
-use zk::protocols::sumcheck;
-use zk::protocols::z2::{prove, verify, Z2CommitKey};
-use zk::protocols::z2_ring::gen_toy_instance;
+use zk::commitment::ajtai::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
+use zk::folding::nova::{fold, verify_folded, FoldKey, RelaxedInstance};
+use zk::foundation::encoding::ring_from_u32;
+use zk::instance::r1cs::gen_toy_instance;
+use zk::opening::{prove, verify, Z2CommitKey};
+use zk::sigma::{fs_prove, fs_verify};
+use zk::sumcheck;
 
 type Z1Ring = Zq<8380417>;
 const SIGMA_K: usize = 4;
@@ -168,11 +168,11 @@ fn bench_fold(c: &mut Criterion) {
     let (r1cs, z1) = gen_toy_instance(&seed32(b"zk-bench-fold-i1"), GATES, M);
     let (_r2, z2) = gen_toy_instance(&seed32(b"zk-bench-fold-i2"), GATES, M);
 
-    let make = |z: &[zk::protocols::z2_ring::Z2Ring]| RelaxedInstance {
+    let make = |z: &[zk::instance::ring::Z2Ring]| RelaxedInstance {
         z: z.to_vec(),
-        error: zk::protocols::z2::constraint_residuals(&r1cs, z),
+        error: zk::opening::constraint_residuals(&r1cs, z),
         c_z: key.commit_witness(z),
-        c_e: key.commit_error(&zk::protocols::z2::constraint_residuals(&r1cs, z)),
+        c_e: key.commit_error(&zk::opening::constraint_residuals(&r1cs, z)),
     };
     let i1 = make(&z1);
     let i2 = make(&z2);

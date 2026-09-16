@@ -1,13 +1,13 @@
 # Z1 · Ajtai Commitments & Lyubashevsky Σ-Protocols
 
-**Status: implemented** (`src/protocols::{commitment, sigma}`) — the first landing component of the lattice zkSNARK roadmap: an Ajtai/SIS commitment scheme and a Lyubashevsky-style approximate-knowledge proof compiled to an FS-NIZK, with extractor tests and a full slack analysis, all built on the same L0–L4 base as ML-DSA.
+**Status: implemented** (`src/commitment::ajtai`, `src/sigma`) — the first landing component of the lattice zkSNARK roadmap: an Ajtai/SIS commitment scheme and a Lyubashevsky-style approximate-knowledge proof compiled to an FS-NIZK, with extractor tests and a full slack analysis, all built on the same L0–L4 base as ML-DSA.
 
 ## Ajtai/SIS commitments
 
 `C = A·s` where `A ∈ R_q^{K×L}` derives from a seed (`ExpandA`, NTT-domain resident) and `s` is a short witness (`‖s‖∞ ≤ B_S`). Binding follows from Module-SIS: two colliding openings give the short kernel vector `s − s'`.
 
 ```rust
-use zk::protocols::commitment::*;
+use zk::commitment::ajtai::*;
 
 type Key = CommitmentKey<Z1Instance, 8, 6, 256>;
 let key = Key::setup(&[1u8; 32]);

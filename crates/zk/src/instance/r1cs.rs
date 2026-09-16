@@ -1,34 +1,22 @@
-//! LaBRADOR-style Z2 instance over the power-of-two ring
-//! `R = Z_{2^32}[X]/(X^64+1)` (L5, Z2).
+//! Toy R1CS instance over the Z2 ring (L5 instance domain).
 //!
-//! With `q = 2^32` the modular reduction is a shift and `is_ntt_friendly`
-//! is false, so ring multiplication takes the schoolbook negacyclic path —
-//! correct and cheap at dimension 64 (4096 u32 multiplies per product).
+//! A [`ToyR1cs`] is a system of **squaring gates**
+//! `(A_k·z) ∘ (A_k·z) = U_k · z_{sel_k}`: any R1CS reduces to squaring gates
+//! (introduce one auxiliary variable per product, `B = I`), so this reduced
+//! form is representative. "≈10^4 constraints" means 10^4 ring rows — each
+//! one a 64-lane batch of scalar constraints.
 //!
-//! Key expansion uses **raw 32-bit coefficients** (four squeezed bytes per
-//! coefficient, no rejection): every 32-bit value is a valid coefficient of
-//! this ring. The expansion lives in [`crate::sampling`]
-//! ([`uniform_matrix_from_seed`](crate::sampling::uniform_matrix_from_seed)),
-//! the coefficient wire conversion in [`crate::encoding`].
+//! The gate-mapping helpers are the shared traversal used by the opening,
+//! folding and shortness protocols (sequential, or parallel across threads
+//! when the `parallel` feature is on and the instance is large enough).
 
-use crate::encoding::{ring_from_u32, ring_to_u32};
-use crate::sampling::uniform_poly;
+use crate::foundation::encoding::ring_from_u32;
+use crate::foundation::sampling::uniform_poly;
+use crate::instance::ring::{ring_inv_newton, Z2Coeff, Z2Ring, D};
 use algebra::crypto::sampling::BitStream;
 use algebra::crypto::xof::{Shake128Xof, Xof};
-use algebra::ring::poly_ring::PolyRing;
-use algebra::ring::traits::MatrixElement;
-use algebra::ring::zq::Zq;
+use algebra::ring::MatrixElement;
 use algebra::ring::PolynomialQuotientRing;
-use algebra::ring::Ring;
-
-/// The Z2 ring: `Z_{2^32}[X]/(X^64+1)`.
-pub type Z2Ring = PolyRing<Zq<4294967296>, 64>;
-/// Coefficient type of the Z2 ring (`q = 2^32`).
-pub type Z2Coeff = Zq<4294967296>;
-
-/// Number of coefficients of a ring element.
-/// Ring dimension of the Z2 polynomial ring `Z_{2^32}[X]/(X^D + 1)`.
-pub const D: usize = 64;
 
 /// Gate-count threshold above which the `parallel` feature engages. Below
 /// it, per-task dispatch overhead outweighs the per-gate ring work.
@@ -83,11 +71,6 @@ pub struct SparseRow {
 
 /// Toy R1CS instance over `R`: squaring gates
 /// `(A_k·z) ∘ (A_k·z) = U_k · z_{sel_k}`.
-///
-/// Any R1CS reduces to squaring gates (introduce one auxiliary variable per
-/// product, `B = I`), so this reduced form is representative. "≈10^4
-/// constraints" means 10^4 ring rows — each one a 64-lane batch of scalar
-/// constraints.
 #[derive(Debug, Clone)]
 pub struct ToyR1cs {
     /// Rows of `A` (each with a few non-zero ring entries).
@@ -190,66 +173,9 @@ pub fn gen_toy_instance(
     )
 }
 
-/// Ring inverse via Newton iteration: `x_{n+1} = x_n·(2 − a·x_n)`.
-///
-/// `a` is a unit of `Z_{2^32}[X]/(X^64+1)` iff its coefficient sum is odd
-/// (the reduction mod 2 is `F_2[X]/(X+1)^64`, a local ring whose units are
-/// the elements with `X = 1` evaluation equal to 1).
-fn ring_inv_newton(a: &Z2Ring) -> Option<Z2Ring> {
-    let parity: u64 = a
-        .coefficients()
-        .iter()
-        .map(|c| (c.to_u128() & 1) as u64)
-        .sum::<u64>()
-        & 1;
-    if parity == 0 {
-        return None;
-    }
-    let two = Z2Ring::from_coefficients(vec![Z2Coeff::new(2)]);
-    let mut x = Z2Ring::from_coefficients(vec![Z2Coeff::new(1)]);
-    for _ in 0..8 {
-        // x = x·(2 − a·x)
-        let ax = a.clone() * x.clone();
-        let t = two.clone() - ax;
-        x = x.clone() * t;
-    }
-    // verify
-    let check = a.clone() * x.clone();
-    (ring_to_u32(&check)[0] == 1 && ring_to_u32(&check)[1..].iter().all(|&v| v == 0)).then_some(x)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn ring_arithmetic_basics() {
-        // (X^63)·(X) = X^64 ≡ −1 (mod X^64+1), q = 2^32 → −1 = 2^32−1
-        let mut c = [0u32; D];
-        c[63] = 1;
-        let x63: Z2Ring = ring_from_u32(&c);
-        let mut c1 = [0u32; D];
-        c1[1] = 1;
-        let x: Z2Ring = ring_from_u32(&c1);
-        let prod = x63 * x;
-        let coeffs = ring_to_u32(&prod);
-        assert_eq!(coeffs[0], u32::MAX);
-        assert!(coeffs[1..].iter().all(|&v| v == 0));
-    }
-
-    #[test]
-    fn inv_odd_roundtrip() {
-        fn inv_odd(a: u32) -> u32 {
-            let mut x = 1u32;
-            for _ in 0..5 {
-                x = x.wrapping_mul(2u32.wrapping_sub(a.wrapping_mul(x)));
-            }
-            x
-        }
-        for a in [1u32, 3, 5, 0xDEAD_BEEF, 0xFFFF_FFFF] {
-            assert_eq!(a.wrapping_mul(inv_odd(a)), 1, "a = {a}");
-        }
-    }
 
     #[test]
     #[ignore]
@@ -264,9 +190,10 @@ mod tests {
             let rhs = r1cs.u[k].clone() * z[r1cs.sel[k]].clone();
             println!(
                 "gate {k}: sq={:?} rhs={:?} match={}",
-                &ring_to_u32(&sq)[..2],
-                &ring_to_u32(&rhs)[..2],
-                ring_to_u32(&sq) == ring_to_u32(&rhs)
+                &crate::foundation::encoding::ring_to_u32(&sq)[..2],
+                &crate::foundation::encoding::ring_to_u32(&rhs)[..2],
+                crate::foundation::encoding::ring_to_u32(&sq)
+                    == crate::foundation::encoding::ring_to_u32(&rhs)
             );
         }
         println!("satisfied: {}", r1cs.is_satisfied(&z));
