@@ -13,11 +13,32 @@ categories.workspace = true
 [lib]
 name = "pqc"
 
+[features]
+default = []
+# Multi-threaded batch APIs and row/block parallelism (rayon).
+parallel = ["dep:rayon"]
+# Umbrella: every SIMD-accelerated kernel below. The lane paths are written
+# on `wide` fixed-width types (no `unsafe`), which execute safely on every
+# supported CPU — they lower to AVX2 under `target-feature=+avx2` and
+# otherwise decompose into baseline SSE2 halves (x86_64) or NEON (aarch64);
+# other targets get the scalar fallbacks. The granular features exist so
+# constrained targets can pull in exactly one kernel family (or none — the
+# default build is pure scalar).
+simd = ["simd-mlkem", "simd-frodo"]
+# ML-KEM: transform butterflies on 8x32-bit lanes with an in-lane Montgomery
+# reduction (R = 2^16, Montgomery-form twiddle tables).
+simd-mlkem = ["dep:wide", "lattice-algebra/simd"]
+# FrodoKEM: matrix products as 16-lane wrapping dot/axpy kernels (exact for
+# the power-of-two moduli q = 2^15 / 2^16).
+simd-frodo = ["dep:wide", "lattice-algebra/simd"]
+
 [dependencies]
 lattice-algebra.workspace = true
 zeroize.workspace = true
 sha2.workspace = true
 sha3.workspace = true
+rayon = { workspace = true, optional = true }
+wide = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -46,3 +67,10 @@ harness = false
 [[bench]]
 name = "sntrup"
 harness = false
+
+# Batch-API benchmarks require the rayon feature; cargo skips the target
+# (instead of failing) on feature sets that exclude it.
+[[bench]]
+name = "parallel"
+harness = false
+required-features = ["parallel"]

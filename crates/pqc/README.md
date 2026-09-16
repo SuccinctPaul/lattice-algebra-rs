@@ -98,6 +98,57 @@ round-3 submission KAT vectors.
     same code path and are covered by round-trip tests). The companion
     NTRU-LPRime (`ntrulpr`) variant is not implemented.
 
+## Performance features
+
+Two opt-in feature flags (bit-exact — all KAT/ACVP vectors pass unchanged
+with every combination):
+
+- **`parallel`** (rayon)
+  - *Batch APIs* on every parameter-set module: `keygen_batch` /
+    `encapsulate_batch` / `decapsulate_batch` (ML-KEM, FrodoKEM, NTRU,
+    Streamlined NTRU Prime) and `sign_deterministic_batch` / `verify_batch` /
+    `sign_batch` / `verify_batch` (ML-DSA, Falcon). Outputs are
+    order-preserving and identical to single-shot calls (tested). Per-item
+    `InvalidLength` / `KeygenRetry` results are reported positionally where
+    the single-shot API can fail. Single-shot paths stay sequential: per-stream
+    rayon dispatch measured *slower* (see the note in `mldsa::ntt`).
+  - *Internal row/block parallelism* in FrodoKEM: `expand_a` (AES-ECB blocks
+    and SHAKE rows) and the four matrix products fan out over independent
+    output rows.
+- **`simd`** (`algebra::simd` lane kernels, no `unsafe`) — an umbrella with
+  two granular sub-features, so constrained targets can pull in exactly one
+  kernel family or none (the default build is pure scalar, and every lane
+  path lives in its own module: `mlkem::simd_ntt`, `frodo::simd`):
+  - **`simd-mlkem`**: transform butterflies on 8×32-bit lanes with an
+    in-lane Montgomery reduction (`R = 2^16`, Montgomery-form twiddles).
+  - **`simd-frodo`**: the four FrodoKEM matrix products run as 16-lane
+    wrapping dots/axpy — exact for the power-of-two moduli (`q = 2^15` /
+    `2^16`).
+  - **Device support**: the lane types execute safely on *every* supported
+    CPU — under `target-feature=+avx2` they lower to AVX2, otherwise they
+    decompose into baseline SSE2 halves (x86_64) or NEON (aarch64), and
+    other architectures fall back to scalar. The features therefore gate
+    codegen surface, not safety: enable none for minimal/unsupported
+    targets, a single family to trade binary size for one hot path.
+  - ML-DSA intentionally stays scalar: 23-bit `q` forces 46-bit products out
+    of the lanes, and the lane bookkeeping measured ~25% *slower* on sign.
+
+Measured on an 8-core Apple M-series host (`cargo bench`, criterion medians):
+
+| benchmark | default | `simd` (+`parallel`) |
+| --- | --- | --- |
+| frodo1344 keygen | 52.7 ms | **24.7 ms (2.1×)** |
+| mlkem768 decaps | 105 µs | 93 µs (1.14×) |
+| mldsa65 sign (scalar Barrett arithmetic) | — | unchanged |
+
+The scalar `mul_mod` in ML-KEM/ML-DSA was also reworked from 128-bit modulo
+division to Barrett-mulhi reduction (always on, not feature-gated).
+
+```sh
+cargo test  -p lattice-pqc --all-features
+cargo bench -p lattice-pqc --features parallel -- parallel
+```
+
 ## Status: FIPS 206 (FN-DSA) tracking
 
 FIPS 206 (FN-DSA) is still a draft — its initial public draft has not been

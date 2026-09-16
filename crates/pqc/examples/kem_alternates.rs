@@ -24,12 +24,8 @@ fn main() {
     // --- FrodoKEM-976 -----------------------------------------------------
     let ss = <pqc::frodo::params::Frodo976 as FrodoParams>::SS_BYTES;
     let mu_len = <pqc::frodo::params::Frodo976 as FrodoParams>::MU_BYTES;
-    let (sk, ek) = frodo976::keygen(
-        &fresh_bytes(1, ss),
-        &fresh_bytes(2, ss),
-        &[3u8; 16],
-    )
-    .expect("well-sized keygen randomness");
+    let (sk, ek) = frodo976::keygen(&fresh_bytes(1, ss), &fresh_bytes(2, ss), &[3u8; 16])
+        .expect("well-sized keygen randomness");
     let mu = fresh_bytes(4, mu_len);
     let (ct, k) = frodo976::encapsulate(&ek, &mu).expect("well-sized mu");
     assert_eq!(frodo976::decapsulate(&sk, &ct).as_bytes(), k.as_bytes());

@@ -810,6 +810,50 @@ macro_rules! instantiate_mldsa {
             ) -> bool {
                 super::verify_hash_mldsa::<super::params::$params, $k, $l>(vk, ctx, ph_m, sigma)
             }
+            /// Batch deterministic `ML-DSA.Sign` across the rayon pool
+            /// (`parallel` feature): one signature per message,
+            /// order-preserving.
+            #[cfg(feature = "parallel")]
+            pub fn sign_deterministic_batch(
+                sk: &SigningKey<super::params::$params>,
+                ctx: &[u8],
+                msgs: &[&[u8]],
+            ) -> Vec<Vec<u8>> {
+                use rayon::prelude::*;
+
+                msgs.par_iter()
+                    .map(|msg| {
+                        super::sign_deterministic::<super::params::$params, $k, $l>(sk, ctx, msg)
+                    })
+                    .collect()
+            }
+
+            /// Batch `ML-DSA.Verify` across the rayon pool (`parallel`
+            /// feature), order-preserving booleans.
+            ///
+            /// # Panics
+            /// If `msgs.len() != sigmas.len()`.
+            #[cfg(feature = "parallel")]
+            pub fn verify_batch(
+                vk: &VerifyingKey<super::params::$params>,
+                ctx: &[u8],
+                msgs: &[&[u8]],
+                sigmas: &[&[u8]],
+            ) -> Vec<bool> {
+                assert_eq!(
+                    msgs.len(),
+                    sigmas.len(),
+                    "messages and signatures must pair up"
+                );
+                use rayon::prelude::*;
+
+                msgs.par_iter()
+                    .zip(sigmas)
+                    .map(|(msg, sigma)| {
+                        super::verify_core::<super::params::$params, $k, $l>(vk, ctx, msg, sigma)
+                    })
+                    .collect()
+            }
         }
     };
 }

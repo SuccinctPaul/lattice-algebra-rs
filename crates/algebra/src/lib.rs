@@ -30,6 +30,10 @@ pub mod ntt;
 pub mod poly;
 pub mod ring;
 pub mod security;
+/// Safe explicit SIMD kernels (`wide` lane types with scalar fallbacks),
+/// compiled only under the `simd` feature.
+#[cfg(feature = "simd")]
+pub mod simd;
 /// Small shared bit/byte conversion helpers (little-endian bit order,
 /// bit normalization) kept apart from the FIPS-convention codecs in
 /// [`crate::crypto::bits`].

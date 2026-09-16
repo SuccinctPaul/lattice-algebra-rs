@@ -166,7 +166,6 @@ impl<P: NtruParams> Ciphertext<P> {
     }
 }
 
-
 impl<P: NtruParams> AsRef<[u8]> for Ciphertext<P> {
     fn as_ref(&self) -> &[u8] {
         &self.bytes
@@ -472,6 +471,60 @@ macro_rules! instantiate_ntru {
                 ct: &Ciphertext<super::params::$params>,
             ) -> SharedSecret {
                 super::decapsulate::<super::params::$params>(dk, ct)
+            }
+            /// Batch keygen across the rayon pool (`parallel` feature):
+            /// `seed[i]`/`prf_key[i]` drive key `i`; per-item errors
+            /// (`InvalidLength`, `KeygenRetry`) are reported positionally.
+            ///
+            /// # Panics
+            /// If the randomness slices do not pair up.
+            #[cfg(feature = "parallel")]
+            pub fn keygen_batch(
+                seed: &[&[u8]],
+                prf_key: &[[u8; 32]],
+            ) -> Vec<
+                super::SchemeResult<(
+                    SecretKey<super::params::$params>,
+                    PublicKey<super::params::$params>,
+                )>,
+            > {
+                assert_eq!(seed.len(), prf_key.len(), "seeds and PRF keys must pair up");
+                use rayon::prelude::*;
+
+                seed.par_iter()
+                    .enumerate()
+                    .map(|(i, seed)| super::keygen::<super::params::$params>(seed, &prf_key[i]))
+                    .collect()
+            }
+
+            /// Batch encapsulation across the rayon pool (`parallel`
+            /// feature); `rm_seed[i]` must be fresh per-ciphertext
+            /// randomness, per-item length errors reported positionally.
+            #[cfg(feature = "parallel")]
+            pub fn encapsulate_batch(
+                ek: &PublicKey<super::params::$params>,
+                rm_seed: &[&[u8]],
+            ) -> Vec<super::SchemeResult<(Ciphertext<super::params::$params>, SharedSecret)>> {
+                use rayon::prelude::*;
+
+                rm_seed
+                    .par_iter()
+                    .map(|rm| super::encapsulate::<super::params::$params>(ek, rm))
+                    .collect()
+            }
+
+            /// Batch decapsulation across the rayon pool (`parallel`
+            /// feature), order-preserving.
+            #[cfg(feature = "parallel")]
+            pub fn decapsulate_batch(
+                dk: &SecretKey<super::params::$params>,
+                cts: &[Ciphertext<super::params::$params>],
+            ) -> Vec<SharedSecret> {
+                use rayon::prelude::*;
+
+                cts.par_iter()
+                    .map(|ct| super::decapsulate::<super::params::$params>(dk, ct))
+                    .collect()
             }
         }
     };

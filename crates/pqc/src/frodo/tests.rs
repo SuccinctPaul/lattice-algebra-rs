@@ -97,9 +97,8 @@ macro_rules! frodo_roundtrip_tests {
             #[test]
             fn wrong_length_inputs_are_errors_not_panics() {
                 let (sk, pk) = keygen_pair(6);
-                let err =
-                    keygen::<$params>(&fresh_bytes(1, 3), &fresh_bytes(2, 3), &[0u8; 16])
-                        .expect_err("short inputs must be rejected");
+                let err = keygen::<$params>(&fresh_bytes(1, 3), &fresh_bytes(2, 3), &[0u8; 16])
+                    .expect_err("short inputs must be rejected");
                 assert_eq!(
                     err,
                     InvalidInput::InvalidLength {
@@ -113,7 +112,6 @@ macro_rules! frodo_roundtrip_tests {
         }
     };
 }
-
 
 frodo_roundtrip_tests!(frodo640, params::Frodo640, 9616, 19888, 9720, 16);
 frodo_roundtrip_tests!(frodo976, params::Frodo976, 15632, 31296, 15744, 24);

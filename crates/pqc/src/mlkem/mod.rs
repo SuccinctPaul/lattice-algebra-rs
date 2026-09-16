@@ -21,6 +21,11 @@ pub mod encoding;
 pub mod ntt;
 pub mod params;
 
+/// Lane-path NTT kernels, split out of [`ntt`] so scheme code carries no
+/// SIMD code unless the `simd-mlkem` feature is enabled.
+#[cfg(feature = "simd-mlkem")]
+mod simd_ntt;
+
 pub use params::{MlKem1024, MlKem512, MlKem768, MlKemParams, N, Q};
 
 use algebra::crypto::xof::shortcuts::shake256_parts;
@@ -321,7 +326,6 @@ impl<P: MlKemParams> PartialEq for Ciphertext<P> {
 
 impl<P: MlKemParams> Eq for Ciphertext<P> {}
 
-
 impl<P: MlKemParams> AsRef<[u8]> for Ciphertext<P> {
     fn as_ref(&self) -> &[u8] {
         &self.bytes
@@ -615,6 +619,55 @@ macro_rules! instantiate_mlkem {
                 c: &Ciphertext<super::params::$params>,
             ) -> SharedSecret {
                 super::decapsulate::<super::params::$params, $k>(dk, c)
+            }
+            /// Batch `ML-KEM.KeyGen` across the rayon pool (`parallel`
+            /// feature). Output `i` corresponds to seed pair `(d[i], z[i])`.
+            ///
+            /// # Panics
+            /// If `d.len() != z.len()`.
+            #[cfg(feature = "parallel")]
+            pub fn keygen_batch(
+                d: &[[u8; 32]],
+                z: &[[u8; 32]],
+            ) -> Vec<(
+                DecapsulationKey<super::params::$params>,
+                EncapsulationKey<super::params::$params>,
+            )> {
+                assert_eq!(d.len(), z.len(), "seed arrays must have equal length");
+                use rayon::prelude::*;
+
+                d.par_iter()
+                    .zip(z)
+                    .map(|(d, z)| super::keygen_internal::<super::params::$params, $k>(d, z))
+                    .collect()
+            }
+
+            /// Batch `ML-KEM.Encaps` across the rayon pool (`parallel`
+            /// feature); `m[i]` must be fresh uniform randomness.
+            #[cfg(feature = "parallel")]
+            pub fn encapsulate_batch(
+                ek: &EncapsulationKey<super::params::$params>,
+                m: &[[u8; 32]],
+            ) -> Vec<(Ciphertext<super::params::$params>, SharedSecret)> {
+                use rayon::prelude::*;
+
+                m.par_iter()
+                    .map(|m| super::encapsulate_internal::<super::params::$params, $k>(ek, m))
+                    .collect()
+            }
+
+            /// Batch `ML-KEM.Decaps` across the rayon pool (`parallel`
+            /// feature), order-preserving.
+            #[cfg(feature = "parallel")]
+            pub fn decapsulate_batch(
+                dk: &DecapsulationKey<super::params::$params>,
+                c: &[Ciphertext<super::params::$params>],
+            ) -> Vec<SharedSecret> {
+                use rayon::prelude::*;
+
+                c.par_iter()
+                    .map(|c| super::decapsulate::<super::params::$params, $k>(dk, c))
+                    .collect()
             }
         }
     };

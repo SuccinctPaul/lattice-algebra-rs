@@ -312,6 +312,58 @@ macro_rules! instantiate_falcon {
             pub fn secret_key_from_bytes(bytes: &[u8]) -> Option<SecretKey> {
                 SecretKey::from_bytes(bytes, $logn)
             }
+            /// Batch signing across the rayon pool (`parallel` feature):
+            /// `msgs[i]` is signed with `nonces[i]` and `sig_seeds[i]`
+            /// (both must be fresh uniform randomness), order-preserving.
+            ///
+            /// # Panics
+            /// If the randomness slices do not pair up with `msgs`.
+            #[cfg(feature = "parallel")]
+            pub fn sign_batch(
+                sk: &SecretKey,
+                msgs: &[&[u8]],
+                nonces: &[[u8; 40]],
+                sig_seeds: &[[u8; 48]],
+            ) -> Vec<Vec<u8>> {
+                assert_eq!(msgs.len(), nonces.len(), "messages and nonces must pair up");
+                assert_eq!(
+                    msgs.len(),
+                    sig_seeds.len(),
+                    "messages and signing seeds must pair up"
+                );
+                use rayon::prelude::*;
+
+                msgs.par_iter()
+                    .enumerate()
+                    .map(|(i, msg)| sign_internal(sk, msg, &nonces[i], &sig_seeds[i]))
+                    .collect()
+            }
+
+            /// Batch verification across the rayon pool (`parallel`
+            /// feature), order-preserving booleans.
+            ///
+            /// # Panics
+            /// If the nonce/signature slices do not pair up with `msgs`.
+            #[cfg(feature = "parallel")]
+            pub fn verify_batch(
+                pk: &PublicKey,
+                msgs: &[&[u8]],
+                nonces: &[[u8; 40]],
+                esigs: &[&[u8]],
+            ) -> Vec<bool> {
+                assert_eq!(msgs.len(), nonces.len(), "messages and nonces must pair up");
+                assert_eq!(
+                    msgs.len(),
+                    esigs.len(),
+                    "messages and signatures must pair up"
+                );
+                use rayon::prelude::*;
+
+                msgs.par_iter()
+                    .enumerate()
+                    .map(|(i, msg)| verify_internal(pk, msg, &nonces[i], esigs[i]))
+                    .collect()
+            }
         }
     };
 }

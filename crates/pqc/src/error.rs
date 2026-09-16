@@ -40,7 +40,10 @@ impl fmt::Display for InvalidInput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidLength { expected, got } => {
-                write!(f, "invalid input length: expected {expected} bytes, got {got}")
+                write!(
+                    f,
+                    "invalid input length: expected {expected} bytes, got {got}"
+                )
             }
             Self::KeygenRetry => {
                 write!(f, "keygen randomness unusable (non-invertible sample); retry with fresh randomness")
