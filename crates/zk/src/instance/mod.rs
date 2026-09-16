@@ -9,3 +9,9 @@
 
 pub mod r1cs;
 pub mod ring;
+
+/// Lane kernels for the Z2 ring: the negacyclic product as contiguous
+/// wrapping 32-bit dots under the `simd` feature, falling back to the
+/// generic ring product without it. Protocol code calls `simd::z2_mul`
+/// unconditionally.
+pub mod simd;

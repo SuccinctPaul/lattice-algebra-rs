@@ -17,7 +17,7 @@ use zk::foundation::encoding::ring_from_u32;
 use zk::instance::r1cs::gen_toy_instance;
 use zk::opening::{prove, verify, Z2CommitKey};
 use zk::sigma::{fs_prove, fs_verify};
-use zk::sumcheck;
+use zk::sumcheck::{self, RoundChallenger};
 
 type Z1Ring = Zq<8380417>;
 const SIGMA_K: usize = 4;
@@ -116,28 +116,31 @@ fn bench_sumcheck(c: &mut Criterion) {
     let table: Vec<Z1Ring> = (0..1 << G).map(|_| x.squeeze_z1()).collect();
     let claimed: Z1Ring = table.iter().cloned().sum();
 
-    let mut cnt = 0u64;
-    let proof = sumcheck::prove::<Z1Ring, G>(&table, &mut || {
-        cnt += 1;
-        Z1Ring::new(cnt)
-    });
+    // Deterministic counter challenger: identical derivation on both sides.
+    struct CounterChallenger {
+        cnt: u64,
+    }
+    impl RoundChallenger<Z1Ring> for CounterChallenger {
+        fn round_challenge(&mut self, _h0: &Z1Ring, _h1: &Z1Ring) -> Z1Ring {
+            self.cnt += 1;
+            Z1Ring::new(self.cnt)
+        }
+    }
+
+    let proof = sumcheck::prove::<Z1Ring, G>(&table, &mut CounterChallenger { cnt: 0 });
 
     group.bench_function("prove_2pow8", |bench| {
-        let mut cnt = 0u64;
         bench.iter(|| {
-            sumcheck::prove::<Z1Ring, G>(black_box(&table), &mut || {
-                cnt += 1;
-                Z1Ring::new(cnt)
-            })
+            sumcheck::prove::<Z1Ring, G>(black_box(&table), &mut CounterChallenger { cnt: 0 })
         })
     });
     group.bench_function("verify_2pow8", |bench| {
-        let mut cnt = 0u64;
         bench.iter(|| {
-            sumcheck::verify(black_box(&proof), black_box(claimed), &mut || {
-                cnt += 1;
-                Z1Ring::new(cnt)
-            })
+            sumcheck::verify(
+                black_box(&proof),
+                black_box(claimed),
+                &mut CounterChallenger { cnt: 0 },
+            )
         })
     });
 

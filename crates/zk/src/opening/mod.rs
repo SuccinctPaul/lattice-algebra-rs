@@ -39,13 +39,22 @@
 //! response — the check would be vacuous. `X − a` with `a` odd is a genuine
 //! non-unit: reducing mod 2 gives `X + 1`, which is nilpotent in
 //! `F_2[X]/(X+1)^64`, and units lift. With a non-unit challenge the
-//! equation is solvable only when `Σγ^k R_k ∈ C·R`, an index-2 ideal
-//! (`C·R = {f : Σ coeffs even}`); a false response therefore passes only
-//! with probability ½ per mask attempt. The full 2^-32 relation soundness
-//! of the documented design requires the LaBRADOR recursion (committing the
-//! masked terms `m_k, q_k` under a second Ajtai key before the challenges
-//! open them) — tracked as the Z2 milestone; the Z3 sumcheck path replaces
-//! this single combination with round-by-round challenges.
+//! equation is solvable only when `Σγ^k R_k ∈ C·R`; that ideal is exactly
+//! `{f : Σ coeffs even}` and has index 2 — the coefficient-sum map
+//! `χ(f) = Σ f_i (mod 2)` is a well-defined homomorphism `R → F_2` (it
+//! kills both `2` and `X^64 + 1`), `χ(C) = 1 − a ≡ 0 (mod 2)` puts `C·R`
+//! inside its kernel, and both have index 2, cross-checked by the norm
+//! `N(C) = a^64 + 1` whose `v_2` is exactly 1 for odd `a`. Because χ is
+//! multiplicative, the certified bit is `χ(R_0) + χ(γ)·Σ_{k≥1} χ(R_k)` —
+//! two `F_2`-linear functionals of the witness's coefficient-sum vector. A
+//! false response therefore passes with probability ½ per mask attempt (or
+//! always, if its witness satisfies those parity conditions
+//! structurally). The
+//! full relation soundness of the documented design requires the LaBRADOR
+//! recursion (committing the masked terms `m_k, q_k` under a second Ajtai
+//! key before the challenges open them) — tracked as the Z2 milestone; the
+//! Z3 sumcheck path replaces this single combination with round-by-round
+//! challenges.
 //!
 //! # Approximate shortness (gadget layer)
 //!
@@ -63,6 +72,7 @@ use crate::foundation::sampling::{
 };
 use crate::instance::r1cs::{map_over_gates, ToyR1cs};
 use crate::instance::ring::{Z2Coeff, Z2Ring, D};
+use crate::instance::simd::z2_mul;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
@@ -178,12 +188,11 @@ fn masked_constraint_terms(
         let mut az = Z2Ring::zero();
         let mut ay = Z2Ring::zero();
         for (j, coeff) in &row.terms {
-            az += coeff.clone() * z[*j].clone();
-            ay += coeff.clone() * y[*j].clone();
+            az += z2_mul(coeff, &z[*j]);
+            ay += z2_mul(coeff, &y[*j]);
         }
-        let term_m = (az.clone() * ay.clone()) + (ay.clone() * az.clone())
-            - r1cs.u[k].clone() * y[r1cs.sel[k]].clone();
-        (term_m, ay.clone() * ay)
+        let term_m = z2_mul(&az, &ay) + z2_mul(&ay, &az) - z2_mul(&r1cs.u[k], &y[r1cs.sel[k]]);
+        (term_m, z2_mul(&ay, &ay))
     })
     .into_iter()
     .unzip()
@@ -197,9 +206,9 @@ pub fn quadratic_products(r1cs: &ToyR1cs, zp: &[Z2Ring]) -> Vec<Z2Ring> {
     map_over_gates(r1cs, |_k, row| {
         let mut az = Z2Ring::zero();
         for (j, coeff) in &row.terms {
-            az += coeff.clone() * zp[*j].clone();
+            az += z2_mul(coeff, &zp[*j]);
         }
-        az.clone() * az
+        z2_mul(&az, &az)
     })
 }
 
@@ -215,9 +224,9 @@ pub fn constraint_residuals(r1cs: &ToyR1cs, zp: &[Z2Ring]) -> Vec<Z2Ring> {
     map_over_gates(r1cs, |k, row| {
         let mut az = Z2Ring::zero();
         for (j, coeff) in &row.terms {
-            az += coeff.clone() * zp[*j].clone();
+            az += z2_mul(coeff, &zp[*j]);
         }
-        az.clone() * az.clone() - r1cs.u[k].clone() * zp[r1cs.sel[k]].clone()
+        z2_mul(&az, &az) - z2_mul(&r1cs.u[k], &zp[r1cs.sel[k]])
     })
 }
 
@@ -225,7 +234,7 @@ pub fn constraint_residuals(r1cs: &ToyR1cs, zp: &[Z2Ring]) -> Vec<Z2Ring> {
 fn ring_combine(v: &[Z2Ring], gamma: &Z2Ring) -> Z2Ring {
     let mut acc = Z2Ring::zero();
     for v_k in v.iter().rev() {
-        acc = acc * gamma.clone() + v_k.clone();
+        acc = z2_mul(&acc, gamma) + v_k.clone();
     }
     acc
 }
@@ -255,7 +264,7 @@ pub fn prove(
         let z_prime: Vec<Z2Ring> = z
             .iter()
             .zip(&y)
-            .map(|(zi, yi)| zi.clone() + x.clone() * yi.clone())
+            .map(|(zi, yi)| zi.clone() + z2_mul(&x, yi))
             .collect();
         let (m, q) = masked_constraint_terms(r1cs, z, &y);
         let t_star = ring_combine(&m, &gamma);
@@ -289,7 +298,7 @@ pub fn verify(
     // 1. binding link: A_com·z' == c + X·d
     let azp = key.commit(&proof.z_prime);
     for i in 0..N_COMMIT {
-        let rhs = c[i].clone() + x.clone() * proof.d[i].clone();
+        let rhs = c[i].clone() + z2_mul(&x, &proof.d[i]);
         if ring_to_u32(&azp[i]) != ring_to_u32(&rhs) {
             #[cfg(test)]
             eprintln!("verify: linear link failed at row {i}");
@@ -301,8 +310,8 @@ pub fn verify(
     //    Σ γ^k R_k == X·t* + X²·q*,  R_k = (A_k·z')² − U_k·z'_sel
     let residuals = constraint_residuals(r1cs, &proof.z_prime);
     let r_comb = ring_combine(&residuals, &gamma);
-    let x2 = x.clone() * x.clone();
-    let rhs_comb = x.clone() * proof.t_star.clone() + x2 * proof.q_star.clone();
+    let x2 = z2_mul(&x, &x);
+    let rhs_comb = z2_mul(&x, &proof.t_star) + z2_mul(&x2, &proof.q_star);
     if ring_to_u32(&r_comb) != ring_to_u32(&rhs_comb) {
         return false;
     }
@@ -463,12 +472,12 @@ mod tests {
         let zp1: Vec<Z2Ring> = z
             .iter()
             .zip(&y1)
-            .map(|(a, b)| a.clone() + x1.clone() * b.clone())
+            .map(|(a, b)| a.clone() + z2_mul(&x1, b))
             .collect();
         let zp2: Vec<Z2Ring> = z
             .iter()
             .zip(&y2)
-            .map(|(a, b)| a.clone() + x2.clone() * b.clone())
+            .map(|(a, b)| a.clone() + z2_mul(&x2, b))
             .collect();
 
         // both transcripts are accepting
@@ -607,7 +616,7 @@ mod tests {
     #[test]
     fn z2_z3_crosscheck_and_benchmarks() {
         use crate::instance::r1cs::gen_toy_instance;
-        use crate::sumcheck::{prove as sc_prove, verify as sc_verify};
+        use crate::sumcheck::{prove as sc_prove, verify as sc_verify, FsChallenger};
 
         const GATES: usize = 1024; // 2^10: matches the sumcheck arity
 
@@ -654,26 +663,13 @@ mod tests {
             |a, b| a + b.clone(),
         );
 
-        let gen = |label: &'static [u8]| {
-            let mut xof = Shake128Xof::new(&[]);
-            xof.absorb(label);
-            move || {
-                let mut coeffs = [0u32; D];
-                let mut buf = [0u8; 4];
-                for cc in &mut coeffs {
-                    xof.squeeze(&mut buf);
-                    *cc = u32::from_le_bytes(buf);
-                }
-                ring_from_u32(&coeffs)
-            }
-        };
-        let mut ch_prove = gen(b"z3-sumcheck");
+        let mut ch_prove = FsChallenger::<Shake128Xof, Z2Ring>::new(b"z3-sumcheck");
         let t2 = std::time::Instant::now();
         let sc = sc_prove::<Z2Ring, 10>(&table, &mut ch_prove);
         let z3_prove_time = t2.elapsed();
         let z3_size = 10 * 2 * D * 4 + D * 4; // 10 rounds × 2 ring elems + final eval
 
-        let mut ch_verify = gen(b"z3-sumcheck");
+        let mut ch_verify = FsChallenger::<Shake128Xof, Z2Ring>::new(b"z3-sumcheck");
         let t3 = std::time::Instant::now();
         let out = sc_verify::<Z2Ring, 10>(&sc, claimed.clone(), &mut ch_verify);
         let z3_verify_time = t3.elapsed();
@@ -704,5 +700,70 @@ mod tests {
 
         assert_eq!(z2_size, 3072, "Z2 proof must stay at 3072 B");
         assert_eq!(z3_size, 5376, "Z3 sumcheck transcript must stay at 5376 B");
+    }
+
+    /// Pins the exact semantics of the masked-consistency check: the
+    /// coefficient-sum map `χ(f) = Σ f_i (mod 2)` is a well-defined
+    /// homomorphism `R → F_2` (it kills `2` and `X^64 + 1`), `C` lies in
+    /// its kernel, and the honest combined residual satisfies it — while a
+    /// false residual's parity is ~balanced (the ½-per-grind soundness
+    /// loss that the LaBRADOR recursion closes).
+    #[test]
+    fn verifier_equation_is_single_bit_parity() {
+        let chi = |f: &[u32; D]| -> u32 { f.iter().map(|v| v & 1).sum::<u32>() & 1 };
+
+        let (r1cs, z) = instance_and_witness();
+        let mut key_seed = [0u8; 32];
+        key_seed[..13].copy_from_slice(b"z2-commit-key");
+        let key = Z2CommitKey::setup(&key_seed);
+        let (c, proof) = prove(
+            &key,
+            &key_seed,
+            b"z2-r1cs0000000000000000000000000",
+            &r1cs,
+            &z,
+            &[9u8; 32],
+        );
+        let (challenge, gamma) =
+            challenges(&key_seed, b"z2-r1cs0000000000000000000000000", &c, &proof.d);
+
+        // C lies in the kernel: χ(C) = χ(X − a) = (1 − a) mod 2 = 0
+        assert_eq!(chi(&ring_to_u32(&challenge)), 0);
+
+        // the honest combined residual satisfies the verifier equation,
+        // hence lies in C·R ⊆ ker χ
+        let residuals = constraint_residuals(&r1cs, &proof.z_prime);
+        let combined = ring_combine(&residuals, &gamma);
+        assert_eq!(chi(&ring_to_u32(&combined)), 0);
+
+        // The single-bit loss, pinned precisely. χ is multiplicative, so
+        // χ(Σ_k γ^k·R_k) = χ(R_0) + χ(γ)·Σ_{k≥1} χ(R_k): the whole
+        // constraint check reduces to two F_2-linear functionals of the
+        // witness's coefficient-sum vector. For this instance's challenge
+        // χ(γ) = 0, so only gate 0's parity is visible — perturbing gate 0
+        // flips the bit, perturbing any later gate does not. A false prover
+        // that satisfies the parity conditions on its witness passes
+        // deterministically; otherwise it grinds at ~½ per attempt. This is
+        // exactly the slack the LaBRADOR recursion (Z2 milestone) closes.
+        assert_eq!(chi(&ring_to_u32(&gamma)), 0, "this instance: χ(γ) = 0");
+        let one = ring_from_u32(&{
+            let mut c = [0u32; D];
+            c[0] = 1;
+            c
+        });
+        let mut flip_gate0 = residuals.clone();
+        flip_gate0[0] = flip_gate0[0].clone() + one.clone();
+        assert_eq!(
+            chi(&ring_to_u32(&ring_combine(&flip_gate0, &gamma))),
+            1,
+            "gate 0's parity is the certified bit"
+        );
+        let mut flip_gate1 = residuals.clone();
+        flip_gate1[1] = flip_gate1[1].clone() + one;
+        assert_eq!(
+            chi(&ring_to_u32(&ring_combine(&flip_gate1, &gamma))),
+            0,
+            "gates k ≥ 1 are invisible when χ(γ) = 0"
+        );
     }
 }

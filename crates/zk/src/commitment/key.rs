@@ -12,9 +12,16 @@
 //! the folding key composes two labeled [`AjtaiKey`]s.
 
 use crate::foundation::sampling::uniform_matrix_from_seed;
+use crate::instance::simd::z2_mul;
 use algebra::ring::MatrixElement;
 
 use crate::instance::ring::{Z2Coeff, Z2Ring, D};
+
+/// Ring-element products above which `mul_vec` distributes its independent
+/// output rows across the rayon pool (`parallel` feature). Every real
+/// instance clears this by orders of magnitude.
+#[cfg(feature = "parallel")]
+const PAR_MIN_TERMS: usize = 1024;
 
 /// Ajtai commitment key `A ∈ R^{N×M}` over the Z2 ring.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,13 +44,35 @@ impl<const N: usize, const M: usize> AjtaiKey<N, M> {
     }
 
     /// `A·x`.
+    ///
+    /// Output rows are independent, so with the `parallel` feature large
+    /// keys distribute rows across the rayon pool (results are
+    /// order-preserving and identical to the sequential product).
     pub fn mul_vec(&self, x: &[Z2Ring]) -> Vec<Z2Ring> {
         debug_assert_eq!(x.len(), M);
+
+        #[cfg(feature = "parallel")]
+        if N * M >= PAR_MIN_TERMS {
+            use rayon::prelude::*;
+
+            return self
+                .a
+                .par_iter()
+                .map(|row| {
+                    let mut acc = Z2Ring::zero();
+                    for (a_ij, xj) in row.iter().zip(x.iter()) {
+                        acc += z2_mul(a_ij, xj);
+                    }
+                    acc
+                })
+                .collect();
+        }
+
         (0..N)
             .map(|i| {
                 let mut acc = Z2Ring::zero();
-                for (j, xj) in x.iter().enumerate() {
-                    acc += self.a[i][j].clone() * xj.clone();
+                for (a_ij, xj) in self.a[i].iter().zip(x.iter()) {
+                    acc += z2_mul(a_ij, xj);
                 }
                 acc
             })

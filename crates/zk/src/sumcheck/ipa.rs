@@ -25,11 +25,14 @@
 //! challenge would make the inner-product check vacuous: any `v` could be
 //! rationalized as `v + C·t*` with `t* = C⁻¹(⟨α',u⟩ − v)`.) With the
 //! non-unit challenge, solving the verifier equation for `t*` requires
-//! `⟨α',u⟩ − v ∈ C·R`, an index-2 ideal of the ring (`C·R = {f : Σ coeffs
-//! even}`) — a cheating prover grinding over masks passes with probability
-//! ½ per attempt. Full relation soundness (the documented 2^-32) needs the
-//! LaBRADOR recursion that commits the masked inner product before the
-//! challenge opens it — tracked as the Z3 milestone.
+//! `⟨α',u⟩ − v ∈ C·R`; that ideal is exactly `{f : Σ coeffs even}` (index
+//! 2): the coefficient-sum map `χ(f) = Σ f_i (mod 2)` is a well-defined
+//! homomorphism `R → F_2` (it kills `2` and `X^64 + 1`), and `χ(C) =
+//! 1 − a ≡ 0 (mod 2)` puts `C·R` inside its kernel. A cheating prover
+//! grinding over masks passes with probability ½ per attempt. Full
+//! relation soundness (the documented 2^-32) needs the LaBRADOR recursion
+//! that commits the masked inner product before the challenge opens it —
+//! tracked as the Z3 milestone.
 //!
 //! # Approximate opening (gadget layer)
 //!
@@ -56,7 +59,7 @@ pub type IpaKey<const N: usize, const M: usize> = AjtaiKey<N, M>;
 pub fn ring_inner_product(alpha: &[Z2Ring], u: &[Z2Ring]) -> Z2Ring {
     let mut acc = Z2Ring::zero();
     for (a, b) in alpha.iter().zip(u) {
-        acc += a.clone() * b.clone();
+        acc += crate::instance::simd::z2_mul(a, b);
     }
     acc
 }
