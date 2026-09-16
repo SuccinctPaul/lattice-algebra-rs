@@ -43,7 +43,7 @@
 //! these `h` under a fresh Ajtai key and proves their shortness at the
 //! next level, shrinking `B_h` level by level). This module is the
 //! reusable core step of that recursion, and of the LatticeFold-style
-//! quotient/residue checks ([`crate::protocols::latticefold`]).
+//! quotient/residue checks ([`crate::folding::latticefold`]).
 //!
 //! Relation to the literature: LaBRADOR's *own* shortness proof is a
 //! different, l2-based mechanism (modular Johnson–Lindenstrauss projections
@@ -52,55 +52,19 @@
 //! variant shared by LaBRADOR's per-round norm control, LNP22 and
 //! LatticeFold.
 
-use crate::encoding::{ring_from_u32, ring_to_u32};
-use crate::fs::absorb_rings;
-use crate::protocols::z2_ring::{Z2Coeff, Z2Ring, D};
-use crate::sampling::{from_centered, hyperball_vec, uniform_matrix_from_seed};
-use algebra::crypto::sampling::BitStream;
+use crate::commitment::key::AjtaiKey;
+use crate::foundation::encoding::{ring_from_u32, ring_to_u32};
+use crate::foundation::fs::absorb_rings;
+use crate::foundation::sampling::{from_centered, hyperball_ring_from_seed};
+use crate::instance::ring::{infinity_norm, pow2_const, Z2Coeff, Z2Ring, D};
 use algebra::crypto::transcript::Transcript;
-use algebra::crypto::xof::{Shake128Xof, Xof};
+use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::traits::CenteredRing;
-use algebra::ring::{MatrixElement, PolynomialQuotientRing, Ring};
+use algebra::ring::{PolynomialQuotientRing, Ring};
 
 /// Ajtai commitment key for shortness arguments: `A ∈ R^{N×M}` derived from
-/// a seed (raw-coefficient expansion, same as the Z2/Z3 keys).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShortKey<const N: usize, const M: usize> {
-    a: Vec<Vec<Z2Ring>>,
-}
-
-impl<const N: usize, const M: usize> ShortKey<N, M> {
-    /// Derives the key from a seed.
-    pub fn setup(seed: &[u8; 32]) -> Self {
-        Self {
-            a: uniform_matrix_from_seed::<Z2Coeff, D>(b"", seed, N, M),
-        }
-    }
-
-    /// `A·x`.
-    pub fn mul_vec(&self, x: &[Z2Ring]) -> Vec<Z2Ring> {
-        debug_assert_eq!(x.len(), M);
-        (0..N)
-            .map(|i| {
-                let mut acc = Z2Ring::zero();
-                for (j, xj) in x.iter().enumerate() {
-                    acc += self.a[i][j].clone() * xj.clone();
-                }
-                acc
-            })
-            .collect()
-    }
-}
-
-/// Infinity norm of a ring vector (max over all coefficients of all
-/// elements, centered representatives).
-pub fn infinity_norm(v: &[Z2Ring]) -> u64 {
-    v.iter()
-        .flat_map(|r| r.coefficients())
-        .map(|c| c.abs_infinity())
-        .max()
-        .unwrap_or(0)
-}
+/// a seed — the shared [`AjtaiKey`] under the protocol-historical name.
+pub type ShortKey<const N: usize, const M: usize> = AjtaiKey<N, M>;
 
 /// The norm bound a projection proof certifies: `2^γ·B_h + 2^{γ−1}`.
 pub fn certified_bound(gamma: u32, high_bound: u64) -> u64 {
@@ -157,13 +121,6 @@ pub fn join_balanced(high: &[Z2Ring], low: &[Z2Ring], gamma: u32) -> Vec<Z2Ring>
     out
 }
 
-/// The constant ring element `2^γ` (for ring-domain scalar shifts).
-fn pow2_ring(gamma: u32) -> Z2Ring {
-    let mut coeffs = [0u32; D];
-    coeffs[0] = 1u32 << gamma;
-    ring_from_u32(&coeffs)
-}
-
 /// FS challenge for a projection statement: a small-norm ring element
 /// (`‖ζ‖∞ ≤ b`, `‖ζ‖₁ ≤ B`) derived from the transcript
 /// `H(key seed ‖ c ‖ t)` — the hyperball distribution keeps the caller's
@@ -180,13 +137,7 @@ pub fn projection_challenge<const N: usize, const M: usize>(
     absorb_rings(&mut tr, b"c", c);
     absorb_rings(&mut tr, b"t", t);
     let seed = tr.challenge_bytes(64);
-    let mut xof = Shake128Xof::new(&[]);
-    xof.absorb(b"zeta");
-    xof.absorb(&seed);
-    let mut stream = BitStream::new(&mut xof);
-    hyperball_vec::<Z2Coeff, Shake128Xof, D>(&mut stream, 1, coeff_bound, l1_bound, 1 << 20)
-        .expect("hyperball challenge must sample for sound parameters")
-        .remove(0)
+    hyperball_ring_from_seed::<Z2Coeff, D>(b"zeta", &seed, coeff_bound, l1_bound)
 }
 
 /// Proof for the projection statement: the two digit vectors of the balanced
@@ -242,7 +193,7 @@ pub fn verify_projection<const N: usize, const M: usize>(
         return false;
     }
     // exact linear link: A·(2^γ·h + l) == c − ζ·(A·t)
-    let s = pow2_ring(gamma);
+    let s = pow2_const(gamma);
     let recon: Vec<Z2Ring> = proof
         .high
         .iter()
@@ -262,8 +213,9 @@ pub fn verify_projection<const N: usize, const M: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::ring_from_u32;
+    use crate::foundation::encoding::ring_from_u32;
     use algebra::crypto::xof::Xof;
+    use algebra::ring::MatrixElement;
 
     const N: usize = 8;
     const M: usize = 4;

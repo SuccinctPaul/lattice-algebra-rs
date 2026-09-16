@@ -14,8 +14,8 @@
 批处理）+ gadget 与 b-bit 分解（近似短性、范数控制）+ 环上 sumcheck + folding（同态承诺
 更新、批量分解检查、跨项吸收）+ Fiat–Shamir（2-adic 环要求非单位/强采样挑战集）**。
 `zk` crate 在 Z1–Z4 已有前几类的基础版；本次补齐三个此前缺失的可复用件：
-**hyperball 采样器**（`sampling::hyperball_vec`）、**数字分解式投影/近似短性论证**
-（`protocols::short`）、**LatticeFold 式分解折叠**（`protocols::latticefold`）。
+**hyperball 采样器**（`foundation::sampling::hyperball_vec`）、**数字分解式投影/近似短性论证**
+（`shortness::balanced`）、**LatticeFold 式分解折叠**（`protocols::latticefold`）。
 
 ## 1. 方案与原语清单
 
@@ -154,39 +154,39 @@ LatticeFold 线之后：**Lova**（2024/1964，非结构化格）、**Neo / Supe
 
 | # | 原语 | 谁在用 | crate 内位置 | 状态 |
 | --- | --- | --- | --- | --- |
-| 1 | Ajtai/SIS 承诺（种子展开 key，线性同态） | 全部 | `protocols::commitment`（Z1 环）、`z2::Z2CommitKey`、`ipa::IpaKey`、`fold::FoldKey`、`short::ShortKey`、`latticefold::LfKey` | ✅ |
-| 2 | uniform / CBD / centered-bounded 采样 | LNP22 系、PQC | `sampling::{uniform_poly, cbd_poly, centered_bounded_poly}` | ✅ |
-| 3 | 固定重量稀疏 in-ball 挑战 | MatRiCT（`C^d_{w,p}`）、Dilithium | `sampling::in_ball_poly` | ✅ |
-| 4 | 非单位线性挑战 `X − a`（`a` 奇） | Rinocchio（奇元素）、Greyhound（商多项式）、2-adic batched opening | `sampling::nonunit_linear_poly` | ✅ |
-| 5 | **HyperBall 挑战向量**（`‖β‖∞ ≤ b ∧ ‖β‖₁ ≤ B`） | LaBRADOR（lattirust `hyperball`）、LNP22 掩码分布 | `sampling::hyperball_vec` | ✅ 本次新增 |
-| 6 | 摊销 batched opening（掩码二次项 `m_k/q_k` 线性化） | LaBRADOR、LNP22、LaZer | `protocols::z2` | ✅ |
-| 7 | Multilinear ring-sumcheck（任意交换环、无逆元） | LatticeFold/+、Greyhound | `protocols::sumcheck` | ✅ |
-| 8 | Gadget-IPA（近似 opening） | Greyhound | `protocols::ipa` | ✅ |
-| 9 | Gadget split + provable slack | LaBRADOR 递归、LNP22 分解 | `protocols::z2::{gadget_split, approx_linear_check, slack_bound}` | ✅ |
-| 10 | **数字分解式投影/近似短性**（balanced `2^γ` split + 精确链接 + 范数门） | LaBRADOR 范数控制（`z = z₀+b·z₁`）、LNP22 分解论证、MatRiCT 范围证明 | `protocols::short` | ✅ 本次新增 |
-| 11 | **b-bit balanced 批量分解**（`Z_{2^32}` 上商消失，环内精确） | LatticeFold（`split_{b,k}` + `Π*_dec` 检查）、Neo/Cyclo | `protocols::latticefold::{decompose_balanced, recompose}` | ✅ 本次新增 |
-| 12 | **分解式 folding + splitting query + 同态折叠** | LatticeFold/+、ACL'22 | `protocols::latticefold::{prove_fold_decompose, verify_fold_decompose}` | ✅ 本次新增 |
-| 13 | Nova 式 folding / IVC（跨项吸收、relaxed 实例） | LatticeFold Expansion、ACL'22、Nova 系 | `protocols::fold` | ✅ |
-| 14 | FS transcript（域分离 + 逐形状重展开 + 非单位挑战） | 全部 | `fs` + `sampling::nonunit_linear_poly` + `algebra::crypto::transcript` | ✅ |
+| 1 | Ajtai/SIS 承诺（种子展开 key，线性同态） | 全部 | `commitment::ajtai`（Z1 环）、`opening::Z2CommitKey`、`sumcheck::ipa::IpaKey`、`folding::nova::FoldKey`、`shortness::balanced::ShortKey`、`folding::latticefold::LfKey` | ✅ |
+| 2 | uniform / CBD / centered-bounded 采样 | LNP22 系、PQC | `foundation::sampling::{uniform_poly, cbd_poly, centered_bounded_poly}` | ✅ |
+| 3 | 固定重量稀疏 in-ball 挑战 | MatRiCT（`C^d_{w,p}`）、Dilithium | `foundation::sampling::in_ball_poly` | ✅ |
+| 4 | 非单位线性挑战 `X − a`（`a` 奇） | Rinocchio（奇元素）、Greyhound（商多项式）、2-adic batched opening | `foundation::sampling::nonunit_linear_poly` | ✅ |
+| 5 | **HyperBall 挑战向量**（`‖β‖∞ ≤ b ∧ ‖β‖₁ ≤ B`） | LaBRADOR（lattirust `hyperball`）、LNP22 掩码分布 | `foundation::sampling::hyperball_vec` | ✅ 本次新增 |
+| 6 | 摊销 batched opening（掩码二次项 `m_k/q_k` 线性化） | LaBRADOR、LNP22、LaZer | `opening` | ✅ |
+| 7 | Multilinear ring-sumcheck（任意交换环、无逆元） | LatticeFold/+、Greyhound | `sumcheck` | ✅ |
+| 8 | Gadget-IPA（近似 opening） | Greyhound | `sumcheck::ipa` | ✅ |
+| 9 | Gadget split + provable slack | LaBRADOR 递归、LNP22 分解 | `shortness::gadget::{gadget_split, approx_linear_check, slack_bound}` | ✅ |
+| 10 | **数字分解式投影/近似短性**（balanced `2^γ` split + 精确链接 + 范数门） | LaBRADOR 范数控制（`z = z₀+b·z₁`）、LNP22 分解论证、MatRiCT 范围证明 | `shortness::balanced` | ✅ 本次新增 |
+| 11 | **b-bit balanced 批量分解**（`Z_{2^32}` 上商消失，环内精确） | LatticeFold（`split_{b,k}` + `Π*_dec` 检查）、Neo/Cyclo | `folding::latticefold::{decompose_balanced, recompose}` | ✅ 本次新增 |
+| 12 | **分解式 folding + splitting query + 同态折叠** | LatticeFold/+、ACL'22 | `folding::latticefold::{prove_fold_decompose, verify_fold_decompose}` | ✅ 本次新增 |
+| 13 | Nova 式 folding / IVC（跨项吸收、relaxed 实例） | LatticeFold Expansion、ACL'22、Nova 系 | `folding::nova` | ✅ |
+| 14 | FS transcript（域分离 + 逐形状重展开 + 非单位挑战） | 全部 | `foundation::fs` + `foundation::sampling::nonunit_linear_poly` + `algebra::crypto::transcript` | ✅ |
 | 15 | 离散高斯采样（CDT） | Falcon、部分 Σ-protocols | `algebra::crypto::sampling::DiscreteGaussian` | ✅（algebra 层） |
-| 16 | Rejection sampling / FS with aborts（HVZK） | LNP22、MatRiCT、Dilithium | `protocols::sigma::fs_prove`（拒绝循环） | ✅ |
+| 16 | Rejection sampling / FS with aborts（HVZK） | LNP22、MatRiCT、Dilithium | `sigma::fs_prove`（拒绝循环） | ✅ |
 | 17 | 投影论证的 JL 变体（modular JL，`Π: Z_q^{dn} → Z_q^{256}`） | LaBRADOR 完整版 | — | ⏳ 可作为 `short` 的姊妹件（l2 范数、√(128/30) gap） |
 | 18 | ZK 盲化承诺（掩码 Ajtai + `u = T·w + y` 近似检查） | LaZer、LNP22、Biscuit | — | ⏳ roadmap |
-| 19 | LaBRADOR 递归全链（masked 项在挑战打开前二次承诺） | LaBRADOR 完整版 | `protocols::z2` 文档标注（当前 1-bit slack） | ⏳ roadmap |
+| 19 | LaBRADOR 递归全链（masked 项在挑战打开前二次承诺） | LaBRADOR 完整版 | `opening` 文档标注（当前 1-bit slack） | ⏳ roadmap |
 | 20 | 多断言合并 sumcheck（β/γ/α/μ/ζ 权重）、vanishing-polynomial range check | LatticeFold Π_batch | — | ⏳ `sumcheck` 的下一步 |
 | 21 | 模/环切换同态（ModSwitch/缩放） | 折叠生态逐轮范数管理 | — | ⏳ algebra 层规划 |
-| 22 | 强采样集/NTT-对角挑战空间 | LatticeFold、LaBRADOR（LS18） | `sampling::nonunit_linear_poly` 覆盖 2-adic 特例 | ⏳ 素数环推广 |
+| 22 | 强采样集/NTT-对角挑战空间 | LatticeFold、LaBRADOR（LS18） | `foundation::sampling::nonunit_linear_poly` 覆盖 2-adic 特例 | ⏳ 素数环推广 |
 | 23 | Lookup/bit 参数（非算术约束） | 全部（公认弱项） | — | ⏳ 研究分支 |
 
 ## 3. 本次新增件的协议细节（与代码对应）
 
-### 3.1 `sampling::hyperball_vec`
+### 3.1 `foundation::sampling::hyperball_vec`
 
 `{β ∈ R^k : ‖β‖∞ ≤ b, ‖β‖₁ ≤ B}` 上的拒绝采样：系数逐个 masked rejection
 （`[-b, b]` 均匀），整向量 l1 超预算则重抽。确定性（XOF 驱动）、可复现（KAT 友好）。
 用途：batched opening 挑战向量、folding/splitting 挑战——`‖ζ‖₁` 直接进范数门。
 
-### 3.2 `protocols::short`（数字分解式投影论证）
+### 3.2 `shortness::balanced`（数字分解式投影论证）
 
 语句：`c = A·w` 公开，证明 `‖w − ζ·t‖∞ ≤ certified_bound(γ, B_h)`。
 
@@ -205,7 +205,7 @@ LatticeFold 的 quotient/residue 检查——均为"分解数字 + 范数门 + �
 LaBRADOR 完整版的 **JL 投影变体**（l2 范数、`√(128/30) ≈ 2.07` gap、256 个
 免费内积方程）是本模块的姊妹件，列为 ⏳。
 
-### 3.3 `protocols::latticefold`（分解式折叠）
+### 3.3 `folding::latticefold`（分解式折叠）
 
 ```text
 r  ← H(key, c₁, c₂)                    ‖r‖∞ ≤ 1, ‖r‖₁ ≤ B_r（hyperball）
@@ -225,9 +225,9 @@ multilinear 求值断言 `v̂`（由 sumcheck 承担）、强采样集挑战空�
 
 ## 4. 参考实现入口
 
-- hyperball：`crates/zk/src/sampling.rs::hyperball_vec`
-- 投影论证（数字分解式）：`crates/zk/src/protocols/short.rs`
-- 分解式折叠：`crates/zk/src/protocols/latticefold.rs`
+- hyperball：`crates/zk/src/foundation/sampling.rs::hyperball_vec`
+- 投影论证（数字分解式）：`crates/zk/src/shortness/balanced.rs`
+- 分解式折叠：`crates/zk/src/folding/latticefold.rs`
 - 契约测试：`crates/zk/tests/protocol_contract.rs`（projection / latticefold 两组）
 
 ## 5. 参考（eprint 已核对）

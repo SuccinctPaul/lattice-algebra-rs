@@ -25,7 +25,7 @@ background and the symbol table; the snippets below only assume Rust.
 [dependencies]
 lattice-algebra = "0.1"      # use algebra::ring::...
 lattice-pqc     = "0.1"      # use pqc::mldsa::...
-lattice-zk      = "0.1"      # use zk::protocols::...
+lattice-zk      = "0.1"      # use zk::sigma, zk::opening, ...
 ```
 
 ## Scalar ring `Zq<MODULUS>`
@@ -169,8 +169,8 @@ use algebra::module::ModuleVector;
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::PolynomialQuotientRing;
 use algebra::ring::zq::Zq;
-use zk::protocols::commitment::{CommitmentKey, LatticeCommitment, RING_DIM, Z1Instance};
-use zk::protocols::sigma::{fs_prove, fs_verify};
+use zk::commitment::ajtai::{CommitmentKey, LatticeCommitment, RING_DIM, Z1Instance};
+use zk::sigma::{fs_prove, fs_verify};
 
 type Z1Ring = Zq<8380417>;
 const K: usize = 4;

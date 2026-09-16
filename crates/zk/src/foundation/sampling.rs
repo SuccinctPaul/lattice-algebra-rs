@@ -243,6 +243,29 @@ pub fn hyperball_vec<R: Ring, X: Xof, const N: usize>(
     None
 }
 
+/// Squeezes a single-element hyperball challenge (`‖ζ‖∞ ≤ b`, `‖ζ‖₁ ≤ B`)
+/// from a domain-separated re-expansion of a transcript seed — the crate's
+/// standard three-step Fiat–Shamir shape, shared by the shortness and
+/// folding protocols so their challenge derivation cannot drift apart.
+///
+/// # Panics
+/// If the rejection loop exhausts (statistically unreachable for sound
+/// parameters).
+pub fn hyperball_ring_from_seed<R: Ring, const N: usize>(
+    domain: &[u8],
+    seed: &[u8],
+    coeff_bound: u32,
+    l1_bound: u64,
+) -> PolyRing<R, N> {
+    let mut xof = Shake128Xof::new(&[]);
+    xof.absorb(domain);
+    xof.absorb(seed);
+    let mut stream = BitStream::new(&mut xof);
+    hyperball_vec::<R, Shake128Xof, N>(&mut stream, 1, coeff_bound, l1_bound, 1 << 20)
+        .expect("hyperball challenge must sample for sound parameters")
+        .remove(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

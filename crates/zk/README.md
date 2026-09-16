@@ -8,20 +8,26 @@ modulus) and `Z_{2^32}[X]/(X^64+1)` (raw 32-bit coefficients for folding).
 
 ## Protocol stack
 
-| Module | Milestone | What it provides |
+The crate is organized by **domain** — each top-level module is one domain,
+layered strictly `foundation → instance → commitment → protocol domains`:
+
+| Domain | Milestone | What it provides |
 | --- | --- | --- |
-| `sampling` | utils | Protocol-level samplers, generic over the ring: uniform expansion (masked rejection; raw at `q = 2^32`), centered-bounded / CBD masks, `SampleInBall` sparse challenges, non-unit linear challenges `C = X − a` (a odd), LaBRADOR hyperball challenge vectors (`‖β‖∞ ≤ b`, `‖β‖₁ ≤ B`), seed-driven vectors & matrices — all XOF-driven |
-| `fs` | utils | Fiat–Shamir derivation: transcript absorption of ring vectors, domain-separated seed re-expansion |
-| `encoding` | utils | Canonical ring ↔ little-endian `u32`/bytes wire encoding shared by transcripts and proof serialization |
-| `commitment` | Z1 | Ajtai/SIS commitments `C = A·s` with short `s` (binding from Module-SIS), `LatticeCommitment` trait, `ExpandA` commitment keys |
+| `foundation::sampling` | utils | Protocol-level samplers, generic over the ring: uniform expansion (masked rejection; raw at `q = 2^32`), centered-bounded / CBD masks, `SampleInBall` sparse challenges, non-unit linear challenges `C = X − a` (a odd), LaBRADOR hyperball challenge vectors (`‖β‖∞ ≤ b`, `‖β‖₁ ≤ B`), seed-driven vectors & matrices — all XOF-driven |
+| `foundation::fs` | utils | Fiat–Shamir derivation: transcript absorption of ring vectors, domain-separated seed re-expansion |
+| `foundation::encoding` | utils | Canonical ring ↔ little-endian `u32`/bytes wire encoding shared by transcripts and proof serialization |
+| `instance::ring` | Z2 | The `Z_{2^32}` ring instance: ring helpers, norms, power-of-two constants, Newton inverse |
+| `instance::r1cs` | Z2 | Toy-R1CS layer: squaring gates, generator, parallel gate traversal |
+| `commitment::key` | — | The single Ajtai commitment key over the Z2 ring (every Z2-ring protocol commits through it) |
+| `commitment::ajtai` | Z1 | Ajtai/SIS commitments `C = A·s` with short `s` (binding from Module-SIS), `LatticeCommitment` trait, `ExpandA` commitment keys |
 | `sigma` | Z1 | Lyubashevsky approximate-knowledge Σ-protocol: FS-NIZK with rejection-sampled responses, forking extractor, HVZK |
-| `z2_ring` | Z2 | The `Z_{2^32}` ring instance: raw-coefficient expansion, power-of-two Barrett fast path, toy-R1CS generator (squaring gates, ring Newton inverse) |
-| `z2` | Z2 | LaBRADOR-style batched opening: binding link + masked constraint consistency, gadget split with provable slack (≈ 3 KB proofs for 10⁴ ring constraints) |
+| `opening` | Z2 | LaBRADOR-style batched opening: binding link + masked constraint consistency (≈ 3 KB proofs for 10⁴ ring constraints) |
 | `sumcheck` | Z3 | Multilinear sumcheck over any commutative ring, transcript-bound challenges |
-| `ipa` | Z3 | Gadget-IPA: inner-product arguments on Ajtai-committed vectors, approximate opening mode |
-| `fold` | Z4 | Nova-style folding / IVC: relaxed R1CS instances, homomorphic commitment updates, cross-term absorption, folding verifier |
-| `short` | Z5 | Digit-based projection argument (approximate shortness, the LaBRADOR `z = z₀ + b·z₁` / LNP22 decomposition flavor): exact balanced `2^γ` split of `v = w − ζ·t`, digit gates + exact commitment link certify `‖v‖∞ ≤ 2^γ·B_h + 2^{γ−1}` |
-| `latticefold` | Z5 | LatticeFold-style folding: small-norm fold challenge, exact quotient-free `b`-bit balanced decomposition of the folded vector, homomorphic digit commitments, splitting-query batched opening with a provable norm gate |
+| `sumcheck::ipa` | Z3 | Gadget-IPA: inner-product arguments on Ajtai-committed vectors, approximate opening mode |
+| `shortness::balanced` | Z5 | Digit-based projection argument (approximate shortness, the LaBRADOR `z = z₀ + b·z₁` / LNP22 decomposition flavor): exact balanced `2^γ` split of `v = w − ζ·t`, digit gates + exact commitment link certify `‖v‖∞ ≤ 2^γ·B_h + 2^{γ−1}` |
+| `shortness::gadget` | Z2 | Gadget split + approximate linear check with provable slack |
+| `folding::nova` | Z4 | Nova-style folding / IVC: relaxed R1CS instances, homomorphic commitment updates, cross-term absorption, folding verifier |
+| `folding::latticefold` | Z5 | LatticeFold-style folding: small-norm fold challenge, exact quotient-free `b`-bit balanced decomposition of the folded vector, homomorphic digit commitments, splitting-query batched opening with a provable norm gate |
 
 A survey mapping these primitives to the schemes that use them (LaBRADOR,
 Greyhound, LatticeFold/+, LaZer, Rinocchio, …) lives in
@@ -34,8 +40,8 @@ roadmap.
 ## Usage
 
 ```rust
-use zk::protocols::z2::{prove, verify, Z2CommitKey};
-use zk::protocols::z2_ring::gen_toy_instance;
+use zk::instance::r1cs::gen_toy_instance;
+use zk::opening::{prove, verify, Z2CommitKey};
 
 fn seed32(tag: &[u8]) -> [u8; 32] {
     let mut s = [0u8; 32];

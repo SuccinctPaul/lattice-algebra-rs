@@ -11,8 +11,8 @@ use algebra::module::ModuleVector;
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
-use zk::protocols::commitment::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
-use zk::protocols::sigma::{fs_prove, fs_verify};
+use zk::commitment::ajtai::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
+use zk::sigma::{fs_prove, fs_verify};
 
 type Z1Ring = Zq<8380417>;
 const K: usize = 4;
@@ -70,5 +70,5 @@ fn main() {
     assert!(!ok_wrong);
 
     println!("\nThe same machinery, keyed differently, underlies the batched");
-    println!("opening and folding layers — see protocols::z2 and protocols::fold.");
+    println!("opening and folding layers — see opening and folding::nova.");
 }

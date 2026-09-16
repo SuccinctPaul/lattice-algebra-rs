@@ -15,7 +15,7 @@ that share one dependency direction:
 | `lattice-algebra` (`algebra`) | `crates/algebra` | `ring`, `ntt`, `poly`, `module`, `crypto`, `matrix`, `security`, `utils` (L0–L4 + security) |
 | `lattice-zk` / `lattice-pqc` | per-crate `parallel` feature (rayon): Z2/Z3/Z4 gate loops fan out above a 256-gate threshold; ML-DSA XOF streams are deliberately sequential (dispatch overhead > stream work, measured) | ✅ |
 | `lattice-pqc` (`pqc`) | `crates/pqc` | `mldsa`, `mlkem` (L6 PQC, incl. the FIPS-exact NTTs `mldsa::ntt` / `mlkem::ntt`) + `falcon`, `frodo`, `ntru`, `sntrup` (round-3 reference ports) |
-| `lattice-zk` (`zk`) | `crates/zk` | `sampling`, `fs`, `encoding` (L5 utilities) + `protocols` (L5–L6 ZK line) |
+| `lattice-zk` (`zk`) | `crates/zk` | `foundation` (L5 utilities: sampling / fs / encoding), `instance` (ring / r1cs), `commitment`, then the protocol domains `sigma`, `opening`, `sumcheck`, `shortness`, `folding` (L5–L6 ZK line) |
 
 ```mermaid
 flowchart TB
@@ -24,7 +24,7 @@ flowchart TB
         MLKEM["mlkem (FIPS 203)"]
         FALCON["falcon (Falcon-512/1024, round-3 reference port)"]
         ALTKEM["frodo / ntru / sntrup (round-3 alternates, reference ports)"]
-        ZK["protocols: zkSNARK line"]
+        ZK["zk: zkSNARK line (domain modules)"]
     end
     subgraph L5["L5 · Protocol components"]
         COMMIT["commit: Ajtai/SIS"]
@@ -125,13 +125,13 @@ const-generic engine is the only path.
 
 | Module | Owns | Status |
 | --- | --- | --- |
-| `protocols::commitment` | Ajtai/SIS commitments `C = A·s` with short `s` (`LatticeCommitment` trait, `ExpandA` key) | ✅ (Z1) |
-| `protocols::sigma` | Lyubashevsky-style approximate-knowledge Σ-protocol, FS-NIZK, forking extractor, slack analysis | ✅ (Z1) |
-| `protocols::z2_ring` | `Z_{2^32}[X]/(X^64+1)` instance: raw-coefficient expansion, power-of-two fast path, toy-R1CS generator (squaring gates, ring Newton inverse) | ✅ (Z2) |
-| `protocols::z2` | LaBRADOR-style batched opening: binding link + masked constraint consistency (`t*`, `q*`), ≤ 10 KB proofs for 10^4 ring constraints; gadget split + approximate linear check with provable slack | ✅ (Z2) |
-| `protocols::sumcheck` | multilinear ring-sumcheck (`prove`/`verify` over any commutative ring, transcript-bound challenges) | ✅ (Z3) |
-| `protocols::ipa` | gadget-IPA: inner-product arguments on Ajtai-committed vectors + approximate opening with provable slack | ✅ (Z3) |
-| `protocols::fold` | LatticeFold+/IVC folding: relaxed R1CS instances `(z, E, c_z, c_E)`, homomorphic fold `z' = z1 + rz2`, `E' = E1 + r²E2 + rT` (cross terms), folding verifier. Transparent (not ZK); full compact IVC deferred | ✅ (Z4) |
+| `commitment::ajtai` | Ajtai/SIS commitments `C = A·s` with short `s` (`LatticeCommitment` trait, `ExpandA` key) | ✅ (Z1) |
+| `sigma` | Lyubashevsky-style approximate-knowledge Σ-protocol, FS-NIZK, forking extractor, slack analysis | ✅ (Z1) |
+| `instance::ring` / `instance::r1cs` | `Z_{2^32}[X]/(X^64+1)` instance: raw-coefficient expansion, power-of-two fast path, toy-R1CS generator (squaring gates, ring Newton inverse) | ✅ (Z2) |
+| `opening` | LaBRADOR-style batched opening: binding link + masked constraint consistency (`t*`, `q*`), ≤ 10 KB proofs for 10^4 ring constraints; gadget split + approximate linear check with provable slack | ✅ (Z2) |
+| `sumcheck` | multilinear ring-sumcheck (`prove`/`verify` over any commutative ring, transcript-bound challenges) | ✅ (Z3) |
+| `sumcheck::ipa` | gadget-IPA: inner-product arguments on Ajtai-committed vectors + approximate opening with provable slack | ✅ (Z3) |
+| `folding::nova` | LatticeFold+/IVC folding: relaxed R1CS instances `(z, E, c_z, c_E)`, homomorphic fold `z' = z1 + rz2`, `E' = E1 + r²E2 + rT` (cross terms), folding verifier. Transparent (not ZK); full compact IVC deferred | ✅ (Z4) |
 
 ## L6 — Schemes
 
