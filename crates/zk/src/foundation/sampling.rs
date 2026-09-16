@@ -357,6 +357,23 @@ pub fn nonunit_linear_poly<R: Ring, X: Xof, const N: usize>(xof: &mut X) -> Poly
 /// acceptance probability is bounded away from zero and this is
 /// statistically unreachable. Randomness continues from the same stream
 /// across attempts (masked-rejection convention, like `RejBounded`).
+/// # Example
+///
+/// ```rust
+/// use algebra::crypto::sampling::BitStream;
+/// use algebra::crypto::xof::{Shake128Xof, Xof};
+/// use algebra::ring::PolynomialQuotientRing;
+/// use zk::foundation::sampling::hyperball_vec;
+/// use zk::instance::ring::Z2Coeff;
+///
+/// let mut xof = Shake128Xof::new(&[]);
+/// xof.absorb(b"challenge");
+/// let mut stream = BitStream::new(&mut xof);
+/// let beta = hyperball_vec::<Z2Coeff, _, 64>(
+///     &mut stream, 4, 1, 200, 4096,
+/// ).expect("feasible budget");
+/// assert_eq!(beta.len(), 4);
+/// ```
 pub fn hyperball_vec<R: Ring, X: Xof, const N: usize>(
     stream: &mut BitStream<'_, X>,
     k: usize,

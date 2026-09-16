@@ -30,7 +30,7 @@
 //! Milestone labels (Z1–Z5) are roadmap tags and live in module docs and
 //! the README, not in module names. A primitive-level survey of the scheme
 //! landscape maps each domain to the literature
-//! (`crates/zk/docs/survey-lattice-zksnarks.zh.md`).
+//! (`crates/zk/docs/survey-lattice-zksnarks.md`).
 //!
 //! [`algebra`]: algebra
 

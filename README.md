@@ -22,7 +22,7 @@ directly.
 | --- | --- | --- |
 | `lattice-algebra` | [`crates/algebra`](crates/algebra) | L0–L4 foundation: scalar rings (`Zq`), negacyclic polynomial rings (`PolyRing`), capability traits (`Ring`/`Field`/`TwoAdicRing`/`CenteredRing`), NTT + NTT-domain views, module-lattice vectors/matrices, XOF / transcript / sampling crypto |
 | `lattice-pqc` | [`crates/pqc`](crates/pqc) | NIST PQC schemes on the foundation: **ML-KEM** (FIPS 203) keygen / encapsulate / decapsulate and **ML-DSA** (FIPS 204) keygen / sign / verify, all three parameter sets each, byte-exact with the official ACVP vectors; **Falcon** (round-3 spec) keygen / sign / verify, byte-exact with the official round-3 KATs; and the round-3 lattice alternates **FrodoKEM** (both AES/SHAKE matrix-A variants), **NTRU** and **Streamlined NTRU Prime** (all parameter sets), byte-exact with the official round-3 submission KATs. FN-DSA (FIPS 206) is still a draft — parameter sets may shift before the freeze; no stable release until then |
-| `lattice-zk` | [`crates/zk`](crates/zk) | Lattice zkSNARK building blocks: Ajtai/SIS commitments, Lyubashevsky Σ-protocols, batch opening, ring-sumcheck, gadget IPA, Nova-style folding / IVC |
+| `lattice-zk` | [`crates/zk`](crates/zk) | Lattice zkSNARK building blocks, organized by domain — `foundation` (samplers / Fiat–Shamir / encoding), `instance` (the `Z_{2^32}` ring + toy R1CS), `commitment` (shared Ajtai key + Z1 SIS instance), then the protocol domains `sigma` (Lyubashevsky FS-NIZK), `opening` (LaBRADOR-style batched opening), `sumcheck` (ring-sumcheck + gadget-IPA), `shortness` (projection / norm-bound arguments) and `folding` (Nova-style and LatticeFold-style). A primitive-level survey maps each domain to the literature (`crates/zk/docs/survey-lattice-zksnarks.md`) |
 
 ## Usage
 
@@ -32,13 +32,13 @@ Depend on the crates you need (lib names: `algebra`, `pqc`, `zk`):
 [dependencies]
 lattice-algebra = "0.1.0"   # use algebra::ring::...
 lattice-pqc     = "0.1.0"   # use pqc::mldsa::...
-lattice-zk      = "0.1.0"   # use zk::protocols::...
+lattice-zk      = "0.1.0"   # use zk::sigma, zk::opening, zk::folding, ...
 ```
 
 ```rust
 use algebra::module::ModuleVector;
 use pqc::mldsa::{MlDsa65, MlDsaParams};
-use zk::protocols::commitment::CommitmentKey;
+use zk::commitment::ajtai::CommitmentKey;
 ```
 
 ## Requirements
@@ -50,7 +50,7 @@ use zk::protocols::commitment::CommitmentKey;
 
 ```sh
 make gate                     # the merge gate: fmt + clippy -D warnings + tests
-cargo test --workspace        # 590+ tests (unit + integration + doc, incl. all KAT suites)
+cargo test --workspace        # 670+ tests (unit + integration + doc, incl. all KAT suites)
 cargo bench --workspace       # criterion: foundation, ML-DSA, Falcon, Z1-Z4 protocols
 
 make kat                      # regenerate KAT/ACVP fixtures from official NIST sources + verify

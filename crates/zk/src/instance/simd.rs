@@ -3,7 +3,7 @@
 //! The Z2 ring `Z_{2^32}[X]/(X^64+1)` multiplies with pure wrapping `u32`
 //! arithmetic — products, sums and negation are all exact mod 2^32 — so the
 //! schoolbook negacyclic product factors into contiguous
-//! [`wrapping_dot_u32`](algebra::simd::wrapping_dot_u32) windows over 8×32-bit
+//! `algebra::simd::wrapping_dot_u32` windows over 8×32-bit
 //! lanes. All lane-specific code lives here; protocol code calls `z2_mul`
 //! unconditionally and the scalar fallback (the generic `PolyRing`
 //! product) compiles when the feature is off. Both paths are exact integer

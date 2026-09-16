@@ -45,6 +45,9 @@ export default defineConfig({
         { text: 'Z1 · Ajtai & Σ-Protocols', link: '/schemes/z1-sigma' },
         { text: 'Z2 · Batched Openings', link: '/schemes/z2-batched' },
         { text: 'Z3 · Ring-Sumcheck & IPA', link: '/schemes/z3-sumcheck' },
+        { text: 'Z4/Z5 · Folding & IVC', link: '/schemes/z4-folding' },
+        { text: 'Z5 · Shortness Arguments', link: '/schemes/z5-shortness' },
+        { text: 'Z6 · Blinded Σ & Helpers', link: '/schemes/z6-blinded-sigma' },
       ],
     },
     {

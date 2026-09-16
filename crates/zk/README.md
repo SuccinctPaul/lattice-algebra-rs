@@ -13,7 +13,7 @@ layered strictly `foundation → instance → commitment → protocol domains`:
 
 | Domain | Milestone | What it provides |
 | --- | --- | --- |
-| `foundation::sampling` | utils | Protocol-level samplers, generic over the ring: uniform expansion (masked rejection; raw at `q = 2^32`), centered-bounded / CBD masks, `SampleInBall` sparse challenges, non-unit linear challenges `C = X − a` (a odd), LaBRADOR hyperball challenge vectors (`‖β‖∞ ≤ b`, `‖β‖₁ ≤ B`), seed-driven vectors & matrices — all XOF-driven |
+| `foundation::sampling` | utils | Protocol-level samplers, generic over the ring: uniform expansion (masked rejection; raw at `q = 2^32`), centered-bounded / CBD masks, `SampleInBall` sparse challenges, non-unit linear challenges `C = X − a` (a odd), LaBRADOR hyperball challenge vectors (`‖β‖∞ ≤ b`, `‖β‖₁ ≤ B`), MatRiCT `C^d_{w,p}` fixed-weight amplitude challenges, seed-driven vectors & matrices — all XOF-driven |
 | `foundation::fs` | utils | Fiat–Shamir derivation: transcript absorption of ring vectors, domain-separated seed re-expansion |
 | `foundation::encoding` | utils | Canonical ring ↔ little-endian `u32`/bytes wire encoding shared by transcripts and proof serialization |
 | `instance::ring` | Z2 | The `Z_{2^32}` ring instance: ring helpers, norms, power-of-two constants, Newton inverse |
@@ -21,17 +21,18 @@ layered strictly `foundation → instance → commitment → protocol domains`:
 | `commitment::key` | — | The single Ajtai commitment key over the Z2 ring (every Z2-ring protocol commits through it) |
 | `commitment::ajtai` | Z1 | Ajtai/SIS commitments `C = A·s` with short `s` (binding from Module-SIS), `LatticeCommitment` trait, `ExpandA` commitment keys |
 | `sigma` | Z1 | Lyubashevsky approximate-knowledge Σ-protocol: FS-NIZK with rejection-sampled responses, forking extractor, HVZK |
-| `opening` | Z2 | LaBRADOR-style batched opening: binding link + masked constraint consistency (≈ 3 KB proofs for 10⁴ ring constraints) |
+| `opening` | Z2 | LaBRADOR-style batched opening: binding link + masked constraint consistency (≈ 3 KB proofs for 10⁴ ring constraints); recursive mode `prove_recursive` commits the masked terms before the challenges open them — **full relation soundness** at O(gates) proof size |
 | `sumcheck` | Z3 | Multilinear sumcheck over any commutative ring, transcript-bound challenges |
 | `sumcheck::ipa` | Z3 | Gadget-IPA: inner-product arguments on Ajtai-committed vectors, approximate opening mode |
 | `shortness::balanced` | Z5 | Digit-based projection argument (approximate shortness, the LaBRADOR `z = z₀ + b·z₁` / LNP22 decomposition flavor): exact balanced `2^γ` split of `v = w − ζ·t`, digit gates + exact commitment link certify `‖v‖∞ ≤ 2^γ·B_h + 2^{γ−1}` |
+| `shortness::projection` | Z5 | Johnson–Lindenstrauss projection argument (`l2` shortness, LaBRADOR/GHL21 flavor): ±1 projection + `√(2k)` acceptance certifies `‖s‖₂ ≲ 2·B`, `k`-parameterized confidence |
 | `shortness::gadget` | Z2 | Gadget split + approximate linear check with provable slack |
 | `folding::nova` | Z4 | Nova-style folding / IVC: relaxed R1CS instances, homomorphic commitment updates, cross-term absorption, folding verifier |
 | `folding::latticefold` | Z5 | LatticeFold-style folding: small-norm fold challenge, exact quotient-free `b`-bit balanced decomposition of the folded vector, homomorphic digit commitments, splitting-query batched opening with a provable norm gate |
 
 A survey mapping these primitives to the schemes that use them (LaBRADOR,
 Greyhound, LatticeFold/+, LaZer, Rinocchio, …) lives in
-[`docs/survey-lattice-zksnarks.zh.md`](docs/survey-lattice-zksnarks.zh.md).
+[`docs/survey-lattice-zksnarks.md`](docs/survey-lattice-zksnarks.md).
 
 Zero-knowledge status: Z1 is honest-verifier ZK (rejection sampling); Z2/Z3
 are transparent like LaBRADOR. Full ZK via blinding is deferred — see the

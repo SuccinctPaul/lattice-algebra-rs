@@ -153,6 +153,38 @@ pub struct ProjectionProof<const M: usize> {
 
 /// Proves the projection statement `‖w − ζ·t‖∞ ≤ certified_bound(γ, B_h)`
 /// for the committed vector `c = A·w`.
+///
+/// # Example
+///
+/// ```rust
+/// use algebra::ring::MatrixElement;
+/// use zk::commitment::key::AjtaiKey;
+/// use zk::foundation::encoding::ring_from_u32;
+/// use zk::instance::ring::{infinity_norm, Z2Ring, D};
+/// use zk::shortness::balanced::{
+///     certified_bound, prove_projection, projection_challenge,
+///     verify_projection, ShortKey,
+/// };
+///
+/// let key_seed = [7u8; 32];
+/// let key = ShortKey::<8, 4>::setup(&key_seed);
+/// let w: Vec<Z2Ring> = (0..4).map(|j| {
+///     ring_from_u32(&{ let mut c = [0u32; D]; c[j * 7 % D] = 9; c })
+/// }).collect();
+/// let c = key.mul_vec(&w);
+/// let t = vec![Z2Ring::zero(); 4];
+///
+/// let zeta = projection_challenge::<8, 4>(&key_seed, &c, &t, 1, 56);
+/// let gamma = 8;
+/// let proof = prove_projection::<8, 4>(&w, &t, &zeta, gamma);
+/// let high_bound = infinity_norm(&proof.high);
+/// assert!(verify_projection(&key, &c, &t, &zeta, gamma, high_bound, &proof));
+/// let v: Vec<Z2Ring> = {
+///     let zt: Vec<Z2Ring> = t.iter().map(|ti| zeta.clone() * ti.clone()).collect();
+///     w.iter().zip(&zt).map(|(a, b)| a.clone() - b.clone()).collect()
+/// };
+/// assert!(infinity_norm(&v) <= certified_bound(gamma, high_bound));
+/// ```
 pub fn prove_projection<const N: usize, const M: usize>(
     w: &[Z2Ring],
     t: &[Z2Ring],

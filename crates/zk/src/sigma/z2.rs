@@ -81,6 +81,24 @@ fn challenge(key_seed: &[u8; 32], c: &[Z2Ring], d: &[Z2Ring]) -> Z2Ring {
 /// # Errors
 /// [`SigmaError::RejectionLimit`] if 128 attempts all exceed the response
 /// bound (statistically unreachable for the default parameters).
+/// # Example
+///
+/// ```rust
+/// use zk::commitment::key::AjtaiKey;
+/// use zk::foundation::encoding::ring_from_u32;
+/// use zk::instance::ring::{Z2Ring, D};
+/// use zk::sigma::z2::{prove, verify};
+///
+/// let key_seed = [1u8; 32];
+/// let key = AjtaiKey::<8, 4>::setup(&key_seed);
+/// let w: Vec<Z2Ring> = (0..4).map(|j| {
+///     ring_from_u32(&{ let mut c = [0u32; D]; c[j * 7 % D] = (j + 1) as u32; c })
+/// }).collect();
+/// let c = key.mul_vec(&w);
+///
+/// let proof = prove(&key, &key_seed, &w, &c, &[9u8; 32]).expect("honest prove");
+/// assert!(verify(&key, &key_seed, &c, &proof));
+/// ```
 pub fn prove<const N: usize, const M: usize>(
     key: &AjtaiKey<N, M>,
     key_seed: &[u8; 32],

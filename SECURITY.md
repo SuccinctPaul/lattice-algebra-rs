@@ -25,7 +25,7 @@ you believe is violated.
 - Correctness violations of the claims table: wrong signatures accepted,
   honest proofs rejected, encodings that do not round-trip, determinism
   guarantees breaking.
-- Soundness issues in the implemented protocol layers (Z1–Z4): extractor
+- Soundness issues in the implemented protocol layers (Z1–Z5): extractor
   failures, rejected tampering that verifies, slack-bound violations.
 - Panics reachable from public APIs on malformed *but length-valid* inputs
   (decoders are expected to return `None`/errors, not panic).

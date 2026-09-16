@@ -132,6 +132,13 @@ const-generic engine is the only path.
 | `sumcheck` | multilinear ring-sumcheck (`prove`/`verify` over any commutative ring, transcript-bound challenges) | ✅ (Z3) |
 | `sumcheck::ipa` | gadget-IPA: inner-product arguments on Ajtai-committed vectors + approximate opening with provable slack | ✅ (Z3) |
 | `folding::nova` | LatticeFold+/IVC folding: relaxed R1CS instances `(z, E, c_z, c_E)`, homomorphic fold `z' = z1 + rz2`, `E' = E1 + r²E2 + rT` (cross terms), folding verifier. Transparent (not ZK); full compact IVC deferred | ✅ (Z4) |
+| `folding::latticefold` | LatticeFold-style decomposition folding: exact quotient-free balanced b-bit batch decomposition, splitting query, provable norm gate on the batched digit opening | ✅ (Z5) |
+| `shortness::balanced` | digit-based projection argument: exact balanced `2^γ` split, digit gates + exact commitment link, certified `‖v‖∞ ≤ 2^γ·B_h + 2^{γ−1}` | ✅ (Z5) |
+| `shortness::projection` | JL projection argument (l2 shortness, LaBRADOR/GHL21 flavor): ±1 projections, `√(2k)` acceptance, certified `‖w‖₂ ≲ 2·B` | ✅ (Z5) |
+| `shortness::gadget` | gadget split + approximate linear check with provable operator-norm slack | ✅ (Z2) |
+| `sigma::z2` | blinded HVZK Σ-response over the Z2 ring: small non-unit challenge (`nonunit_small_poly`), rejection-sampled masked response | ✅ (Z6) |
+| `foundation::sampling` (zk-side) | hyperball vectors, MatRiCT `C^d_{w,p}` fixed-weight challenges, small non-unit and strong-sampling-set (odd-sum) draws | ✅ |
+| `instance::ring::{split_mod_2k, modswitch_ring}` | LaZer integer lift (`A·s + 2^k·v = t`) and the 2-adic modulus-switch homomorphism | ✅ |
 
 ## L6 — Schemes
 
