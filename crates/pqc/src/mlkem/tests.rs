@@ -24,7 +24,7 @@ macro_rules! mlkem_roundtrip_tests {
                 assert_eq!(dk.to_bytes().len(), $dk_len);
                 let m = [7u8; 32];
                 let (c, ss) = encapsulate_internal::<$params, $k>(&ek, &m);
-                assert_eq!(c.len(), $ct_len);
+                assert_eq!(c.as_bytes().len(), $ct_len);
                 assert_eq!(
                     decapsulate::<$params, $k>(&dk, &c).as_bytes(),
                     ss.as_bytes()
@@ -52,7 +52,7 @@ macro_rules! mlkem_roundtrip_tests {
                 let (dk, ek) = keygen_internal::<$params, $k>(&d, &z);
                 let m = [9u8; 32];
                 let (mut c, ss) = encapsulate_internal::<$params, $k>(&ek, &m);
-                c[0] ^= 0x01;
+                c.as_mut()[0] ^= 0x01;
                 let bad = decapsulate::<$params, $k>(&dk, &c);
                 assert_ne!(bad.as_bytes(), ss.as_bytes());
                 // Implicit rejection is deterministic.
@@ -60,29 +60,26 @@ macro_rules! mlkem_roundtrip_tests {
                 assert_eq!(bad.as_bytes(), again.as_bytes());
                 // A different tampering point yields a different rejection key.
                 let mut c2 = c;
-                c2[$ct_len - 1] ^= 0x80;
+                c2.as_mut()[$ct_len - 1] ^= 0x80;
                 let other = decapsulate::<$params, $k>(&dk, &c2);
                 assert_ne!(bad.as_bytes(), other.as_bytes());
             }
 
             #[test]
-            fn wrong_length_ciphertext_rejects_implicitly() {
+            fn wrong_length_ciphertext_is_rejected_at_construction() {
+                // Typed ciphertexts cannot carry a wrong length: the
+                // constructor validates, and decapsulate never sees one
+                // (implicit rejection covers re-encryption mismatches).
                 let (d, z) = fresh_coins(4);
                 let (dk, ek) = keygen_internal::<$params, $k>(&d, &z);
                 let m = [5u8; 32];
                 let (c, _) = encapsulate_internal::<$params, $k>(&ek, &m);
-                let short = decapsulate::<$params, $k>(&dk, &c[..$ct_len - 1]);
-                let again = decapsulate::<$params, $k>(&dk, &c[..$ct_len - 1]);
-                assert_eq!(short.as_bytes(), again.as_bytes());
-                let (c2, ss2) = encapsulate_internal::<$params, $k>(&ek, &m);
-                assert_ne!(
-                    short.as_bytes(),
-                    decapsulate::<$params, $k>(&dk, &c2).as_bytes()
-                );
-                assert_eq!(
-                    decapsulate::<$params, $k>(&dk, &c2).as_bytes(),
-                    ss2.as_bytes()
-                );
+                assert!(Ciphertext::<$params>::from_bytes(&c.as_bytes()[..$ct_len - 1]).is_none());
+                let mut padded = c.as_bytes().to_vec();
+                padded.push(0);
+                assert!(Ciphertext::<$params>::from_bytes(&padded).is_none());
+                assert!(Ciphertext::<$params>::from_bytes(c.as_bytes()).is_some());
+                let _ = &dk;
             }
 
             #[test]

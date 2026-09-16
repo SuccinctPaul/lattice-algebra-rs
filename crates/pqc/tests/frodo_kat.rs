@@ -33,14 +33,14 @@ fn run_case<P: FrodoParams>(
     let mut z = [0u8; 16];
     z.copy_from_slice(&keyrand[2 * P::SS_BYTES..2 * P::SS_BYTES + 16]);
 
-    let (sk, pk) = frodo::keygen::<P>(&s, &seed_se, &z);
+    let (sk, pk) = frodo::keygen::<P>(&s, &seed_se, &z).expect("DRBG-sized inputs");
     assert_eq!(pk.to_bytes(), expected.0, "{set} count {count}: pk");
     assert_eq!(sk.to_bytes(), expected.1, "{set} count {count}: sk");
 
     // enc: one randombytes(MU_BYTES) → mu.
     let mut mu = vec![0u8; P::MU_BYTES];
     drbg.fill(&mut mu);
-    let (ct, ss) = frodo::encapsulate::<P>(&pk, &mu);
+    let (ct, ss) = frodo::encapsulate::<P>(&pk, &mu).expect("DRBG-sized inputs");
     assert_eq!(
         ct.as_bytes(),
         expected.2.as_slice(),

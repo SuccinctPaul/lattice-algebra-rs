@@ -70,8 +70,8 @@ fn check_encaps<P: MlKemParams, const K: usize>(rec: &Value) {
     let m = bytes32(rec, "m");
     let (c, k) = pqc::mlkem::encapsulate_internal::<P, K>(&ek, &m);
     assert_eq!(
-        c,
-        hex_decode(rec["c"].as_str().unwrap()),
+        c.as_bytes(),
+        hex_decode(rec["c"].as_str().unwrap()).as_slice(),
         "ciphertext mismatch for {id:?}"
     );
     assert_eq!(
@@ -85,7 +85,8 @@ fn check_decaps<P: MlKemParams, const K: usize>(rec: &Value) {
     let id = (set_of(rec), rec["tcId"].as_i64().unwrap());
     let dk = DecapsulationKey::<P>::from_bytes(&hex_decode(rec["dk"].as_str().unwrap()))
         .unwrap_or_else(|| panic!("dk rejected by key check for {id:?}"));
-    let c = hex_decode(rec["c"].as_str().unwrap());
+    let c = pqc::mlkem::Ciphertext::<P>::from_bytes(&hex_decode(rec["c"].as_str().unwrap()))
+        .unwrap_or_else(|| panic!("malformed ACVP ciphertext for {id:?}"));
     let k = pqc::mlkem::decapsulate::<P, K>(&dk, &c);
     assert_eq!(
         k.as_bytes(),

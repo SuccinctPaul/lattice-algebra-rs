@@ -28,15 +28,15 @@ fn run_case<P: NtruParams>(
     let mut prf_key = [0u8; 32];
     drbg.fill(&mut prf_key);
 
-    let (sk, pk) = ntru::keygen::<P>(&fg_seed, &prf_key);
+    let (sk, pk) = ntru::keygen::<P>(&fg_seed, &prf_key).expect("DRBG-sized inputs");
     assert_eq!(pk.to_bytes(), expected.0, "{set} count {count}: pk");
     assert_eq!(sk.to_bytes(), expected.1, "{set} count {count}: sk");
 
     // enc: randombytes(SAMPLE_RM_BYTES).
     let mut rm_seed = vec![0u8; P::SAMPLE_RM_BYTES];
     drbg.fill(&mut rm_seed);
-    let (ct, ss) = ntru::encapsulate::<P>(&pk, &rm_seed);
-    assert_eq!(ct, expected.2.as_slice(), "{set} count {count}: ct");
+    let (ct, ss) = ntru::encapsulate::<P>(&pk, &rm_seed).expect("DRBG-sized inputs");
+    assert_eq!(ct.as_bytes(), expected.2.as_slice(), "{set} count {count}: ct");
     assert_eq!(
         ss.as_bytes(),
         expected.3.as_slice(),

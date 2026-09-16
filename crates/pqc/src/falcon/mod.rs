@@ -39,13 +39,30 @@ pub struct PublicKey {
     logn: u32,
 }
 
-/// Decoded secret key: f, g, F plus the canonical encoding.
+/// Decoded secret key: f, g, F plus the canonical encoding. Redacted
+/// `Debug`; the secret fields are zeroized when the key is dropped.
 pub struct SecretKey {
     bytes: Vec<u8>,
     f: Vec<i8>,
     g: Vec<i8>,
     big_f: Vec<i8>,
     logn: u32,
+}
+
+impl std::fmt::Debug for SecretKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecretKey").finish_non_exhaustive()
+    }
+}
+
+impl Drop for SecretKey {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.bytes.zeroize();
+        self.f.zeroize();
+        self.g.zeroize();
+        self.big_f.zeroize();
+    }
 }
 
 impl PublicKey {
@@ -301,3 +318,34 @@ macro_rules! instantiate_falcon {
 
 instantiate_falcon!(falcon512, 9, 512, 1281, 897);
 instantiate_falcon!(falcon1024, 10, 1024, 2305, 1793);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Scheme-level smoke test through the public API (the byte-exact
+    /// KAT coverage lives in `tests/falcon_kat.rs`).
+    #[test]
+    fn keygen_sign_verify_roundtrip_and_serialization() {
+        let seed = [42u8; 48];
+        let (sk, pk) = falcon512::keygen(&seed);
+
+        let nonce = [7u8; 40];
+        let sig_seed = [9u8; 48];
+        let msg = b"falcon smoke test message";
+        let esig = falcon512::sign(&sk, msg, &nonce, &sig_seed);
+        assert!(falcon512::verify(&pk, msg, &nonce, &esig));
+        assert!(!falcon512::verify(&pk, b"tampered", &nonce, &esig));
+
+        // Canonical key serialization roundtrips (length/header checks).
+        let pk2 = falcon512::public_key_from_bytes(pk.to_bytes()).expect("well-formed pk");
+        let sk2 = falcon512::secret_key_from_bytes(sk.to_bytes()).expect("well-formed sk");
+        assert_eq!(pk2.to_bytes(), pk.to_bytes());
+        assert_eq!(sk2.to_bytes(), sk.to_bytes());
+        assert!(falcon512::verify(&pk2, msg, &nonce, &esig));
+
+        // Truncated encodings are rejected.
+        assert!(falcon512::secret_key_from_bytes(&sk.to_bytes()[..1279]).is_none());
+        assert!(falcon512::public_key_from_bytes(&pk.to_bytes()[..896]).is_none());
+    }
+}

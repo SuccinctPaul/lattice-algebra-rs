@@ -113,6 +113,27 @@ with the draft.
 - FN-DSA migration: track the FIPS 206 draft toward its freeze and adapt
   parameters/APIs as the standard solidifies.
 
+## API conventions
+
+- **Explicit randomness**: every function takes its randomness as a
+  parameter (deterministic, KAT-driven design) — nothing draws from an
+  ambient RNG.
+- **Typed errors, no panics**: runtime-sized inputs (randomness streams)
+  are length-checked and reported as `Err(pqc::InvalidInput)` —
+  `InvalidLength`, or `KeygenRetry` where the reference resamples
+  (sntrup's `R3_recip`). Compile-time-sized inputs (`&[u8; 32]` seeds)
+  rule the same errors out at the type level. `from_bytes` constructors
+  return `Option`. Decapsulation never fails: malformed or manipulated
+  ciphertexts fold into implicit rejection by design.
+- **Typed ciphertexts**: all four KEMs wrap ciphertexts in a
+  length-validated `Ciphertext<P>` (`as_bytes` / `from_bytes`, `AsRef`/
+  `AsMut`), mirroring the typed keys.
+- **Spec-native naming**: key types and per-set module names follow each
+  specification's own terminology — ML-KEM's encapsulation/decapsulation
+  keys and `mlkem_512`, ML-DSA's `mldsa_44`; the round-3 submissions'
+  public/secret keys and concatenated names (`falcon512`, `frodo640`,
+  `ntruhps2048677`, `sntrup761`).
+
 ## Usage
 
 ```rust
@@ -153,21 +174,24 @@ let (dk, ek) = mlkem_768::keygen(&d, &z);
 
 let m = [3u8; 32]; // fresh uniform randomness per encapsulation
 let (ciphertext, ss) = mlkem_768::encapsulate(&ek, &m);
+assert_eq!(ciphertext.as_bytes().len(), 1088); // ML-KEM-768 ct size
 assert_eq!(mlkem_768::decapsulate(&dk, &ciphertext).as_bytes(), ss.as_bytes());
 ```
 
 ```rust,ignore
 // FrodoKEM, NTRU and Streamlined NTRU Prime follow the same pattern —
 // explicit randomness exactly as the submissions' reference
-// implementations draw it (see each module's docs for the shapes):
+// implementations draw it (see each module's docs for the shapes).
+// Runtime-sized randomness is length-checked and reported as
+// `Err(pqc::InvalidInput)` — never a panic.
 use pqc::frodo::frodo976;
-let (sk, ek) = frodo976::keygen(&s, &seed_se, &z);      // s/seedSE: 24B, z: 16B
-let (ct, ss) = frodo976::encapsulate(&ek, &mu);          // mu: 24B fresh uniform
+let (sk, ek) = frodo976::keygen(&s, &seed_se, &z)?;      // s/seedSE: 24B, z: 16B
+let (ct, ss) = frodo976::encapsulate(&ek, &mu)?;         // mu: 24B fresh uniform
 assert_eq!(frodo976::decapsulate(&sk, &ct).as_bytes(), ss.as_bytes());
 
 use pqc::ntru::ntruhrss701;
-let (sk, pk) = ntruhrss701::keygen(&seed, &prf_key);     // seed: 1400B, prf_key: 32B
-let (ct, ss) = ntruhrss701::encapsulate(&pk, &rm_seed);  // rm_seed: 1400B
+let (sk, pk) = ntruhrss701::keygen(&seed, &prf_key)?;    // seed: 1400B, prf_key: 32B
+let (ct, ss) = ntruhrss701::encapsulate(&pk, &rm_seed)?; // rm_seed: 1400B
 ```
 
 Keys serialize canonically: `SigningKey::to_bytes` / `from_bytes`,
