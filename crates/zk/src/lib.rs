@@ -27,6 +27,10 @@
 //! - [`protocols::ipa`]: gadget-based inner-product argument with approximate
 //!   opening (Z3).
 //! - [`protocols::fold`]: Nova-style folding / IVC layer (Z4).
+//! - [`protocols::short`]: projection argument — approximate shortness for
+//!   committed vectors, one level of the LaBRADOR shortness recursion (Z5).
+//! - [`protocols::latticefold`]: LatticeFold-style folding — linear fold +
+//!   exact balanced `b`-bit batch decomposition + splitting query (Z5).
 //!
 //! [`algebra`]: algebra
 

@@ -2,6 +2,7 @@
 //! through its public API, including the negative cases verifiers must
 //! reject.
 
+use algebra::crypto::xof::{Shake128Xof, Xof};
 use algebra::module::ModuleVector;
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::zq::Zq;
@@ -10,6 +11,11 @@ use algebra::ring::Ring;
 use zk::encoding::{ring_from_u32, ring_to_u32};
 use zk::protocols::commitment::{CommitmentKey, LatticeCommitment, Z1Instance, RING_DIM};
 use zk::protocols::fold::{fold, verify_folded, FoldKey, RelaxedInstance};
+use zk::protocols::latticefold::{prove_fold_decompose, verify_fold_decompose, LfKey};
+use zk::protocols::short::{
+    certified_bound, infinity_norm, projection_challenge, prove_projection, verify_projection,
+    ShortKey,
+};
 use zk::protocols::sigma::{fs_prove, fs_verify};
 use zk::protocols::sumcheck;
 use zk::protocols::z2::{prove, verify, Z2CommitKey};
@@ -194,4 +200,112 @@ fn folding_layer_accepts_honest_chain_and_rejects_tampering() {
     coeffs[1] ^= 1;
     bad.z[0] = ring_from_u32(&coeffs);
     assert!(!verify_folded(&key, &r1cs, &bad));
+}
+
+/// Ring vectors with small (masked) coefficients, drawn from a SHAKE stream.
+fn contract_rnd_vec(
+    xof: &mut Shake128Xof,
+    len: usize,
+    mask: u32,
+) -> Vec<zk::protocols::z2_ring::Z2Ring> {
+    (0..len)
+        .map(|_| {
+            let mut coeffs = [0u32; 64];
+            let mut buf = [0u8; 4];
+            for c in &mut coeffs {
+                xof.squeeze(&mut buf);
+                *c = u32::from_le_bytes(buf) & mask;
+            }
+            ring_from_u32(&coeffs)
+        })
+        .collect()
+}
+
+#[test]
+fn projection_argument_accepts_honest_and_rejects_forgeries() {
+    use zk::protocols::z2_ring::Z2Ring;
+
+    const N: usize = 8;
+    const M: usize = 4;
+    let key_seed = seed32(b"contract-short-key");
+    let key = ShortKey::<N, M>::setup(&key_seed);
+    let mut xof = Shake128Xof::new(&[]);
+    xof.absorb(b"contract-short-witness");
+    let w = contract_rnd_vec(&mut xof, M, 0x0000_FFFF);
+    let t = contract_rnd_vec(&mut xof, M, 0x0000_000F);
+    let c = key.mul_vec(&w);
+
+    let zeta = projection_challenge::<N, M>(&key_seed, &c, &t, 1, 56);
+    let gamma = 12;
+    let proof = prove_projection::<N, M>(&w, &t, &zeta, gamma);
+
+    // The certified bound covers the true norm of v = w − ζ·t.
+    let zt: Vec<Z2Ring> = t.iter().map(|ti| zeta.clone() * ti.clone()).collect();
+    let v = w
+        .iter()
+        .zip(&zt)
+        .map(|(a, b)| a.clone() - b.clone())
+        .collect::<Vec<_>>();
+    let high_bound = infinity_norm(&proof.high);
+    assert!(verify_projection::<N, M>(
+        &key, &c, &t, &zeta, gamma, high_bound, &proof
+    ));
+    assert!(infinity_norm(&v) <= certified_bound(gamma, high_bound));
+
+    // Overclaiming the high bound must be rejected.
+    assert!(!verify_projection::<N, M>(
+        &key,
+        &c,
+        &t,
+        &zeta,
+        gamma,
+        high_bound.saturating_sub(1),
+        &proof
+    ));
+
+    // Tampering with a digit breaks the exact link.
+    let mut bad = proof.clone();
+    let mut coeffs = ring_to_u32(&bad.low[0]);
+    coeffs[0] ^= 1;
+    bad.low[0] = ring_from_u32(&coeffs);
+    assert!(!verify_projection::<N, M>(
+        &key, &c, &t, &zeta, gamma, high_bound, &bad
+    ));
+}
+
+#[test]
+fn latticefold_folding_accepts_honest_and_rejects_tampering() {
+    const N: usize = 8;
+    const M: usize = 4;
+    let key_seed = seed32(b"contract-lf-key");
+    let key = LfKey::<N, M>::setup(&key_seed);
+    let mut xof = Shake128Xof::new(&[]);
+    xof.absorb(b"contract-lf-witnesses");
+    let w1 = contract_rnd_vec(&mut xof, M, 0x0000_FFFF);
+    let w2 = contract_rnd_vec(&mut xof, M, 0x0000_FFFF);
+
+    let l1_r = 48;
+    let l1_zeta = 48;
+    let (c1, c2, proof) = prove_fold_decompose::<N, M>(&key, &key_seed, &w1, &w2, l1_r, l1_zeta);
+    assert!(verify_fold_decompose::<N, M>(
+        &key, &key_seed, &c1, &c2, l1_r, l1_zeta, &proof
+    ));
+
+    // A tampered digit commitment must fail (consistency or splitting).
+    let mut bad = proof.clone();
+    let mut coeffs = ring_to_u32(&bad.digit_comms[2][0]);
+    coeffs[1] ^= 1;
+    bad.digit_comms[2][0] = ring_from_u32(&coeffs);
+    assert!(!verify_fold_decompose::<N, M>(
+        &key, &key_seed, &c1, &c2, l1_r, l1_zeta, &bad
+    ));
+
+    // A tampered batched opening must fail.
+    let mut bad = proof;
+    let mut coeffs = ring_to_u32(&bad.d_tilde[1]);
+    coeffs[5] ^= 1;
+    bad.d_tilde[1] = ring_from_u32(&coeffs);
+    assert!(!verify_fold_decompose::<N, M>(
+        &key, &key_seed, &c1, &c2, l1_r, l1_zeta, &bad
+    ));
 }

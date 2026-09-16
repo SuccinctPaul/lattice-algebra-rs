@@ -11,15 +11,22 @@
 //!   batched-opening R1CS proofs and gadget decomposition;
 //! - [`sumcheck`] (Z3): multilinear sumcheck over any commutative ring;
 //! - [`ipa`] (Z3): gadget-IPA — inner-product arguments on Ajtai-committed
-//!   vectors with an approximate (slack-bounded) opening mode.
+//!   vectors with an approximate (slack-bounded) opening mode;
+//! - [`fold`] (Z4): Nova-style folding / IVC over the Z2 ring;
+//! - [`short`] (Z5): projection argument — approximate shortness for
+//!   committed vectors (one level of the LaBRADOR shortness recursion);
+//! - [`latticefold`] (Z5): LatticeFold-style folding — linear fold + exact
+//!   balanced `b`-bit batch decomposition + splitting query.
 //!
 //! Zero-knowledge status: Z1's rejection-sampled protocol is honest-verifier
-//! zero-knowledge (HVZK); Z2/Z3 proofs-of-knowledge are transparent (like
-//! LaBRADOR); full ZK via blinding is deferred to Z4.
+//! zero-knowledge (HVZK); Z2/Z3/Z5 proofs-of-knowledge are transparent (like
+//! LaBRADOR/LatticeFold); full ZK via blinding is deferred to Z4.
 
 pub mod commitment;
 pub mod fold;
 pub mod ipa;
+pub mod latticefold;
+pub mod short;
 pub mod sigma;
 pub mod sumcheck;
 pub mod z2;
