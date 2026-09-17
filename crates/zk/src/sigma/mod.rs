@@ -355,3 +355,6 @@ mod tests {
         assert_eq!(nonzeros, Z1Instance::TAU as usize);
     }
 }
+
+/// Z2-ring HVZK Σ-protocol: blinded short openings (K2 step).
+pub mod z2;

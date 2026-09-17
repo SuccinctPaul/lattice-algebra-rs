@@ -68,7 +68,7 @@ use crate::commitment::key::AjtaiKey;
 use crate::foundation::encoding::{ring_from_u32, ring_to_u32, u32s_to_le_bytes};
 use crate::foundation::fs::absorb_rings;
 use crate::foundation::sampling::{
-    nonunit_linear_poly, uniform_ring_from_seed, uniform_vec_from_seed,
+    nonunit_linear_poly, uniform_matrix_from_seed, uniform_ring_from_seed, uniform_vec_from_seed,
 };
 use crate::instance::r1cs::{map_over_gates, ToyR1cs};
 use crate::instance::ring::{Z2Coeff, Z2Ring, D};
@@ -85,6 +85,190 @@ pub const M_VARS: usize = 2;
 /// Ajtai commitment key over the Z2 ring (raw-coefficient expansion) —
 /// the shared [`AjtaiKey`] under the protocol-historical name.
 pub type Z2CommitKey = AjtaiKey<N_COMMIT, M_VARS>;
+
+// === LaBRADOR recursion: full relation soundness (transparent, O(G) size) ===
+
+/// Rows of the recursion commitment key `A₂ ∈ R^{N_RECURSION×GATES}`.
+pub const N_RECURSION: usize = 4;
+
+/// Derives the recursion commitment key for a gate count (runtime shaped:
+/// one column per gate, derived from the same seed as `A_com` under a
+/// distinct domain label).
+fn recursion_key(seed: &[u8; 32], gates: usize) -> Vec<Vec<Z2Ring>> {
+    uniform_matrix_from_seed::<Z2Coeff, D>(b"z2-recursion", seed, N_RECURSION, gates)
+}
+
+/// `A₂·v` for the runtime-shaped recursion key.
+fn commit_masked(a2: &[Vec<Z2Ring>], v: &[Z2Ring]) -> Vec<Z2Ring> {
+    (0..N_RECURSION)
+        .map(|i| {
+            let mut acc = Z2Ring::zero();
+            for (a, v) in a2[i].iter().zip(v) {
+                acc += z2_mul(a, v);
+            }
+            acc
+        })
+        .collect()
+}
+
+/// Recursive-mode challenges: identical to [`challenges`] but absorbing the
+/// masked-term commitments — the recursion's whole point is that they are
+/// bound *before* the challenges open them.
+fn challenges_recursive(
+    key_seed: &[u8; 32],
+    r1cs_seed: &[u8; 32],
+    c: &[Z2Ring],
+    d: &[Z2Ring],
+    c_masked: &[Z2Ring],
+    c_quad: &[Z2Ring],
+) -> (Z2Ring, Z2Ring) {
+    let mut tr = Transcript::<Shake128Xof>::new(b"lattice-algebra/Z2/batched-open");
+    tr.absorb(b"key", key_seed);
+    tr.absorb(b"r1cs", r1cs_seed);
+    absorb_rings(&mut tr, b"c", c);
+    absorb_rings(&mut tr, b"d", d);
+    absorb_rings(&mut tr, b"cm", c_masked);
+    absorb_rings(&mut tr, b"cq", c_quad);
+    let seed = tr.challenge_bytes(64);
+    let x = nonunit_linear_poly::<Z2Coeff, Shake128Xof, D>(
+        &mut crate::foundation::fs::seed_stream(b"X", &seed),
+    );
+    let gamma = uniform_ring_from_seed::<Z2Coeff, D>(b"gamma", &seed);
+    (x, gamma)
+}
+
+/// Proof with the LaBRADOR recursion applied: the per-gate masked terms are
+/// Ajtai-committed **before** the challenges open them, and revealed with
+/// the proof. This upgrades the constraint check from the compact mode's
+/// single parity bit to **full relation soundness**: an accepting proof
+/// implies `Σγ^k R_k(z_fake) = 0` for the *pre-committed* false witness —
+/// i.e. the witness satisfies the gates exactly in the ring.
+///
+/// Cost: the masked-term vectors (`2·GATES` ring elements) dominate the
+/// proof size. Amortizing that revelation (challenge-driven second-level
+/// combinations instead of full revelation) is exactly LaBRADOR's
+/// contribution and stays a size-optimization milestone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Z2RecursiveProof {
+    /// The compact-mode proof (mask commitment, response, combined terms).
+    pub base: Z2Proof,
+    /// `A₂·m` — masked linear terms, committed before the challenges.
+    pub c_masked: Vec<Z2Ring>,
+    /// `A₂·q` — masked quadratic terms, committed before the challenges.
+    pub c_quad: Vec<Z2Ring>,
+    /// The per-gate masked linear terms `m` (revealed).
+    pub masked: Vec<Z2Ring>,
+    /// The per-gate masked quadratic terms `q` (revealed).
+    pub quad: Vec<Z2Ring>,
+}
+
+/// Prover side of the recursive mode: identical first message to [`prove`],
+/// plus the recursion commitments of the per-gate masked terms.
+pub fn prove_recursive(
+    key: &Z2CommitKey,
+    key_seed: &[u8; 32],
+    r1cs_seed: &[u8; 32],
+    r1cs: &ToyR1cs,
+    z: &[Z2Ring],
+    randomness: &[u8; 32],
+) -> (Vec<Z2Ring>, Z2RecursiveProof) {
+    debug_assert_eq!(z.len(), M_VARS);
+    let c = key.commit(z);
+    let y = uniform_vec_from_seed::<Z2Coeff, D>(b"mask", randomness, M_VARS);
+    let d = key.commit(&y);
+    let (m, q) = masked_constraint_terms(r1cs, z, &y);
+    let a2 = recursion_key(key_seed, r1cs.a.len());
+    let c_masked = commit_masked(&a2, &m);
+    let c_quad = commit_masked(&a2, &q);
+    let (x, gamma) = challenges_recursive(key_seed, r1cs_seed, &c, &d, &c_masked, &c_quad);
+    let z_prime: Vec<Z2Ring> = z
+        .iter()
+        .zip(&y)
+        .map(|(zi, yi)| zi.clone() + x.clone() * yi.clone())
+        .collect();
+    let t_star = ring_combine(&m, &gamma);
+    let q_star = ring_combine(&q, &gamma);
+    (
+        c,
+        Z2RecursiveProof {
+            base: Z2Proof {
+                d,
+                z_prime,
+                t_star,
+                q_star,
+            },
+            c_masked,
+            c_quad,
+            masked: m,
+            quad: q,
+        },
+    )
+}
+
+/// Verifier side of the recursive mode. Beyond the compact checks, the
+/// revealed masked terms are pinned to their pre-challenge commitments and
+/// to the combined terms — closing the adaptivity gap entirely.
+pub fn verify_recursive(
+    key: &Z2CommitKey,
+    key_seed: &[u8; 32],
+    r1cs_seed: &[u8; 32],
+    r1cs: &ToyR1cs,
+    c: &[Z2Ring],
+    proof: &Z2RecursiveProof,
+) -> bool {
+    let gates = r1cs.a.len();
+    if proof.base.d.len() != N_COMMIT
+        || proof.base.z_prime.len() != M_VARS
+        || proof.c_masked.len() != N_RECURSION
+        || proof.c_quad.len() != N_RECURSION
+        || proof.masked.len() != gates
+        || proof.quad.len() != gates
+    {
+        return false;
+    }
+    let a2 = recursion_key(key_seed, gates);
+    let (x, gamma) = challenges_recursive(
+        key_seed,
+        r1cs_seed,
+        c,
+        &proof.base.d,
+        &proof.c_masked,
+        &proof.c_quad,
+    );
+
+    // 1. binding link: A_com·z' == c + X·d
+    let azp = key.commit(&proof.base.z_prime);
+    for i in 0..N_COMMIT {
+        let rhs = c[i].clone() + x.clone() * proof.base.d[i].clone();
+        if ring_to_u32(&azp[i]) != ring_to_u32(&rhs) {
+            return false;
+        }
+    }
+
+    // 2. the masked terms match their pre-challenge commitments (exact)
+    if commit_masked(&a2, &proof.masked) != proof.c_masked {
+        return false;
+    }
+    if commit_masked(&a2, &proof.quad) != proof.c_quad {
+        return false;
+    }
+
+    // 3. the combined terms are the γ-combinations of the revealed vectors
+    if ring_combine(&proof.masked, &gamma) != proof.base.t_star {
+        return false;
+    }
+    if ring_combine(&proof.quad, &gamma) != proof.base.q_star {
+        return false;
+    }
+
+    // 4. the compact equation, now over pre-committed terms:
+    //    Σγ^k R_k(z') == X·t* + X²·q*
+    let residuals = constraint_residuals(r1cs, &proof.base.z_prime);
+    let r_comb = ring_combine(&residuals, &gamma);
+    let x2 = x.clone() * x.clone();
+    let rhs_comb = x.clone() * proof.base.t_star.clone() + x2 * proof.base.q_star.clone();
+    ring_to_u32(&r_comb) == ring_to_u32(&rhs_comb)
+}
 
 pub use crate::shortness::gadget::{approx_linear_check, gadget_join, gadget_split, slack_bound};
 
@@ -765,5 +949,61 @@ mod tests {
             0,
             "gates k ≥ 1 are invisible when χ(γ) = 0"
         );
+    }
+
+    /// The recursive mode's headline property: a false witness is rejected
+    /// **deterministically** — the masked terms are pinned to their
+    /// pre-challenge commitments, so the compact mode's ½-per-grind
+    /// adaptivity gap is gone (contrast
+    /// `forged_statement_rejected_despite_binding_link`).
+    #[test]
+    fn recursive_mode_rejects_false_witness_deterministically() {
+        let (r1cs, z_true) = instance_and_witness();
+        let mut z_fake = z_true.clone();
+        z_fake[0] = z_fake[0].clone() + Z2Ring::one();
+        assert!(!r1cs.is_satisfied(&z_fake));
+
+        let mut key_seed = [0u8; 32];
+        key_seed[..13].copy_from_slice(b"z2-commit-key");
+        let key = Z2CommitKey::setup(&key_seed);
+        let r1cs_seed = b"z2-r1cs0000000000000000000000000";
+
+        // the strongest possible cheat in this mode: the honest-formula
+        // masked terms for the false witness (any other choice fails the
+        // A₂ links even earlier)
+        let mut accepted = 0;
+        for trial in 0..8u8 {
+            let mut rnd = [0u8; 32];
+            rnd[..1].copy_from_slice(&[trial]);
+            let (c, proof) = prove_recursive(&key, &key_seed, r1cs_seed, &r1cs, &z_fake, &rnd);
+            if verify_recursive(&key, &key_seed, r1cs_seed, &r1cs, &c, &proof) {
+                accepted += 1;
+            }
+        }
+        assert_eq!(accepted, 0, "recursive mode must reject the false witness");
+
+        // the honest witness passes (completeness)
+        let (c, proof) = prove_recursive(&key, &key_seed, r1cs_seed, &r1cs, &z_true, &[9u8; 32]);
+        assert!(verify_recursive(
+            &key, &key_seed, r1cs_seed, &r1cs, &c, &proof
+        ));
+    }
+
+    #[test]
+    fn recursive_mode_rejects_tampered_masked_terms() {
+        let (r1cs, z) = instance_and_witness();
+        let mut key_seed = [0u8; 32];
+        key_seed[..13].copy_from_slice(b"z2-commit-key");
+        let key = Z2CommitKey::setup(&key_seed);
+        let r1cs_seed = b"z2-r1cs0000000000000000000000000";
+        let (c, mut proof) = prove_recursive(&key, &key_seed, r1cs_seed, &r1cs, &z, &[9u8; 32]);
+
+        // shift one revealed masked term: the A₂ link must fail
+        let mut coeffs = ring_to_u32(&proof.masked[3]);
+        coeffs[0] ^= 1;
+        proof.masked[3] = ring_from_u32(&coeffs);
+        assert!(!verify_recursive(
+            &key, &key_seed, r1cs_seed, &r1cs, &c, &proof
+        ));
     }
 }

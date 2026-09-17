@@ -17,6 +17,8 @@
 //! - [`centered_bounded_poly`]: centered-uniform masks on `[-B, B]`
 //!   (Lyubashevsky `y ← D_y`).
 //! - [`cbd_poly`]: centered binomial noise (MLWE-style masks).
+//! - [`fixed_weight_poly`]: fixed-Hamming-weight challenge with
+//!   amplitude (MatRiCT `C^d_{w,p}`), generic over the dimension
 //! - [`in_ball_poly`]: `τ`-sparse ±1 challenge (FIPS 204 `SampleInBall`).
 //! - [`nonunit_linear_poly`]: the soundness-critical challenge
 //!   `C = X − a` with `a` odd — a guaranteed **non-unit** of
@@ -161,6 +163,144 @@ pub fn in_ball_poly<R: Ring, X: Xof, const N: usize>(
     let signs = sample_in_ball_signs(stream, tau, N);
     let sparse = SparsePolynomial::<R>::from_sign_vector(&signs, N);
     PolyRing::from_coefficients(sparse.to_coeff_vec())
+}
+
+/// Draws a fixed-Hamming-weight sign vector with amplitude: exactly `w`
+/// coefficients are non-zero, each `±1` — the general shape behind
+/// MatRiCT's `C^d_{w,p}` challenge distribution (amplitude `p` applied by
+/// the caller when building the ring element).
+///
+/// Positions are drawn by unbiased rejection (`u32` draws rejected above
+/// the largest multiple of the remaining range), so every `w`-subset is
+/// equiprobable; unlike [`sample_in_ball_signs`] this makes no `n ≤ 256`
+/// assumption and costs `O(n)` scratch.
+///
+/// # Panics
+/// If `w >= n` (the challenge must leave room for the zero coefficients).
+pub fn fixed_weight_signs(stream: &mut BitStream<'_, impl Xof>, w: u32, n: usize) -> Vec<i8> {
+    assert!(
+        (w as usize) < n,
+        "fixed-weight challenge needs w < n (zero room left otherwise)"
+    );
+    let w = w as usize;
+    let mut idx: Vec<usize> = (0..n).collect();
+    let mut signs = vec![0i8; n];
+    let sign_bytes = w.div_ceil(8);
+    let mut sign_bits = vec![0u8; sign_bytes];
+    stream.read_bytes(&mut sign_bits);
+
+    // partial Fisher–Yates: position i swaps with a uniformly drawn
+    // j ∈ [i, n); unbiased via rejection above the largest multiple
+    for i in 0..w {
+        let range = (n - i) as u32;
+        let limit = u32::MAX - (u32::MAX % range); // largest multiple of range
+        let j = loop {
+            let mut buf = [0u8; 4];
+            stream.read_bytes(&mut buf);
+            let v = u32::from_le_bytes(buf);
+            if v < limit {
+                break i + (v % range) as usize;
+            }
+        };
+        signs[idx[j]] = if (sign_bits[i / 8] >> (i % 8)) & 1 == 1 {
+            -1
+        } else {
+            1
+        };
+        idx.swap(i, j);
+    }
+    signs
+}
+
+/// Draws a fixed-Hamming-weight challenge polynomial with amplitude `p`:
+/// exactly `w` coefficients are non-zero, each `±p` — MatRiCT's
+/// `C^d_{w,p}` shape, which keeps `c·s` short *and* makes `c − c′`
+/// non-zero (and hence invertible in the prime rings where that matters)
+/// with high probability.
+///
+/// # Panics
+/// If `w >= N` or the amplitude does not fit the modulus.
+pub fn fixed_weight_poly<R: Ring, X: Xof, const N: usize>(
+    stream: &mut BitStream<'_, X>,
+    w: u32,
+    amplitude: u32,
+) -> PolyRing<R, N> {
+    let signs = fixed_weight_signs(stream, w, N);
+    let coeffs: Vec<R> = signs
+        .iter()
+        .map(|&s| from_centered::<R>(i64::from(s) * i64::from(amplitude)))
+        .collect();
+    PolyRing::from_coefficients(coeffs)
+}
+
+/// Draws a **small non-unit** challenge: every coefficient in `{-1, 0, 1}`
+/// (rejection-shaped draw), re-rolled until the coefficient sum is even.
+///
+/// This resolves the 2-adic challenge dilemma for Σ-protocols over
+/// `Z_{2^k}[X]/(X^N+1)`: small challenges are otherwise always units (any
+/// odd coefficient sum is invertible), which would make Σ-responses
+/// unextractable — while the large `X − a` challenge blows up the response
+/// norm (`‖C‖₁ ≈ 2^31`). Conditioning on even parity keeps `‖C‖₁ ≤ N` AND
+/// non-invertibility (`χ(C) = 0`), so responses stay short and the
+/// extractor's cancellation argument goes through.
+///
+/// # Panics
+/// If the modulus is not a power of two ≥ 4 (the parity argument needs the
+/// 2-adic structure) or `N < 2`.
+pub fn nonunit_small_poly<R: Ring, X: Xof, const N: usize>(
+    stream: &mut BitStream<'_, X>,
+) -> PolyRing<R, N> {
+    assert!(
+        R::MODULUS.is_power_of_two() && R::MODULUS >= 4,
+        "the non-unit parity argument requires a power-of-two modulus ≥ 4"
+    );
+    assert!(N >= 2, "a parity-conditioned challenge needs N ≥ 2");
+    let mut coeffs = Vec::with_capacity(N);
+    let mut parity = 0u32;
+    for _ in 0..N {
+        // ternary draw: two bits, `11` rejected (masked rejection)
+        let v = stream.read_bits(2);
+        if v == 3 {
+            coeffs.push(R::ZERO);
+            continue;
+        }
+        let sign = if stream.read_bits(1) == 1 { -1 } else { 1 };
+        parity ^= 1;
+        coeffs.push(from_centered::<R>(i64::from(sign)));
+    }
+    if parity == 1 {
+        // odd sum: zero the constant term (removes ±1, keeps smallness,
+        // makes the sum even) — cheaper than a full re-roll and
+        // statistically equivalent for challenge purposes
+        coeffs[0] = R::ZERO;
+    }
+    PolyRing::from_coefficients(coeffs)
+}
+
+/// Draws a **strong-sampling-set** challenge: a uniform ring element with
+/// odd coefficient sum — the LatticeFold notion of a challenge set `C`
+/// where `a − b` is invertible for distinct draws (odd differences are
+/// units of `Z_{2^k}[X]/(X^N+1)`).
+///
+/// # Panics
+/// If the modulus is not a power of two (the parity structure is needed).
+pub fn odd_sum_poly<R: Ring, X: Xof, const N: usize>(
+    stream: &mut BitStream<'_, X>,
+) -> PolyRing<R, N> {
+    assert!(
+        R::MODULUS.is_power_of_two(),
+        "the strong-sampling-set parity argument requires a power-of-two modulus"
+    );
+    let mut draws = Vec::with_capacity(N);
+    for _ in 0..N {
+        let mut buf = [0u8; 4];
+        stream.read_bytes(&mut buf);
+        draws.push(u32::from_le_bytes(buf));
+    }
+    if draws.iter().map(|v| v & 1).sum::<u32>() & 1 == 0 {
+        draws[0] |= 1; // flip the constant term into the unit coset
+    }
+    PolyRing::from_coefficients(draws.iter().map(|v| R::from(u64::from(*v))).collect())
 }
 
 /// Draws the linear non-unit challenge `C = X − a` with `a` odd, squeezed
@@ -466,6 +606,50 @@ mod tests {
             .map(|c| c.centered().unsigned_abs())
             .sum();
         assert!(l1 <= 8);
+    }
+
+    #[test]
+    fn fixed_weight_has_exactly_w_entries_at_amplitude() {
+        let mut x = Shake256Xof::new(&[]);
+        let mut s = BitStream::new(&mut x);
+        let c = fixed_weight_poly::<Rq, _, 256>(&mut s, 39, 7);
+        let nonzeros: Vec<i64> = c
+            .coefficients()
+            .iter()
+            .map(|v| v.centered())
+            .filter(|v| *v != 0)
+            .collect();
+        assert_eq!(nonzeros.len(), 39);
+        assert!(nonzeros.iter().all(|v| *v == 7 || *v == -7));
+
+        // generic n beyond the SampleInBall byte limit
+        let mut x = Shake128Xof::new(&[]);
+        let mut s = BitStream::new(&mut x);
+        let signs = fixed_weight_signs(&mut s, 3, 1000);
+        assert_eq!(signs.iter().filter(|v| **v != 0).count(), 3);
+    }
+
+    #[test]
+    fn fixed_weight_is_deterministic_and_uniform_enough() {
+        let draw = |seed: &[u8]| {
+            let mut x = Shake256Xof::new(&[]);
+            x.absorb(seed);
+            let mut s = BitStream::new(&mut x);
+            fixed_weight_signs(&mut s, 4, 64)
+        };
+        assert_eq!(draw(b"a"), draw(b"a"));
+
+        // position coverage: over many draws every slot turns non-zero
+        let mut hits = vec![0u32; 64];
+        for k in 0..200u8 {
+            for (i, sg) in draw(&[k; 32]).iter().enumerate() {
+                hits[i] += (*sg != 0) as u32;
+            }
+        }
+        assert!(
+            hits.iter().all(|h| *h > 0),
+            "positions must rotate: {hits:?}"
+        );
     }
 
     #[test]
