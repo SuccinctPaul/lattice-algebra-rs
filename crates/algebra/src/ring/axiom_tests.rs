@@ -2,11 +2,17 @@
 //!
 //! Acceptance gate for M0: the axioms must hold on every modulus the crate
 //! is used with — small test primes, NIST PQC moduli and SNARK-friendly
-//! power-of-two moduli alike (≥ 8 instances; currently 15).
+//! power-of-two moduli alike (≥ 8 instances; currently 17), now including the
+//! `q > 2^63` end of `Zq`'s documented domain (`2 <= q <= u64::MAX`), where a
+//! `wrapping_add`-based reduction loses the 2^64 carry. Moduli whose `q - 1`
+//! does not factor quickly (e.g. `u64::MAX - 58`) are covered by the targeted
+//! tests in `zq`/`reduction::barrett` instead, because `primitive_root`
+//! factorises `q - 1` by trial division.
 
 use crate::ring::traits::{CenteredRing, TwoAdicRing};
 use crate::ring::zq::Zq;
 use crate::ring::Ring;
+use alloc::{vec, vec::Vec};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -25,6 +31,8 @@ type Zq786433 = Zq<786433>;
 type ZqMersenne31 = Zq<2147483647>; // 2^31 - 1
 type ZqDilithium = Zq<8380417>; // FIPS 204
 type ZqLaBrador = Zq<4294967296>; // 2^32 (LaBRADOR, composite!)
+type ZqMersenne61 = Zq<2305843009213693951>; // 2^61 - 1
+type ZqGoldilocks = Zq<18446744069414584321>; // 2^64 - 2^32 + 1, above 2^63
 
 /// The representative set used for exhaustive small-scale axiom checks:
 /// edges (0, 1, q-1, q-2), small values and the middle of the range.
@@ -167,14 +175,19 @@ macro_rules! ring_axiom_tests {
 
                 #[test]
                 fn centered_ring_semantics() {
-                    let q = <$ty as Ring>::MODULUS as i64;
+                    // i128 throughout: `MODULUS as i64` wraps for the `q > 2^63`
+                    // instances, and `2 * c` overflows i64 near the top of the
+                    // centered range.
+                    let modulus = <$ty as Ring>::MODULUS;
+                    let q = modulus as i128;
                     for a in representatives::<$ty>() {
                         let c = a.centered();
+                        let c128 = i128::from(c);
                         // centered stays in (-q/2, q/2]
                         // exactly (-q/2, q/2], without integer-division truncation
-                        assert!(2 * c > -q && 2 * c <= q, "centered {c} out of range for q={q}");
+                        assert!(2 * c128 > -q && 2 * c128 <= q, "centered {c} out of range for q={modulus}");
                         // centered(a) ≡ a (mod q)
-                        assert_eq!((c as i128).rem_euclid(q as i128) as u64, a.to_u128() as u64 % <$ty as Ring>::MODULUS);
+                        assert_eq!(c128.rem_euclid(q), (a.to_u128() % modulus as u128) as i128);
                         // |c| == abs_infinity
                         assert_eq!(c.unsigned_abs(), a.abs_infinity());
                     }
@@ -205,4 +218,8 @@ ring_axiom_tests! {
     zq_mersenne31 => ZqMersenne31,
     zq_dilithium => ZqDilithium, // FIPS 204
     zq_la_brador => ZqLaBrador,  // 2^32, exercises the composite-modulus path
+    zq_mersenne61 => ZqMersenne61,   // 2^61 - 1
+    zq_goldilocks => ZqGoldilocks,   // 2^64 - 2^32 + 1: past 2^63, where the
+                                      // sum of two reduced elements can carry
+                                      // out of u64
 }

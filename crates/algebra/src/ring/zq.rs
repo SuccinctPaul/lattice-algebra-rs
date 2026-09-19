@@ -2,12 +2,17 @@ use crate::ring::number_theory::{is_prime_u64, primitive_root};
 use crate::ring::reduction::ModularArithmetic;
 use crate::ring::traits::{CenteredRing, Field, TwoAdicRing};
 use crate::ring::Ring;
+use core::fmt::*;
+use core::iter::Sum;
+use core::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 use serde::{Deserialize, Serialize};
-use std::fmt::*;
-use std::iter::Sum;
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 
-/// Z_q: Ring of integers mod q, where q <= 2^64.
+/// Z_q: Ring of integers mod q, for `2 <= q <= u64::MAX`.
+///
+/// Elements store the canonical representative in `[0, q)` as a `u64`, and
+/// `+`/`-`/`*`/`inverse`/`centered` are correct over that whole range (the
+/// boundary cases above `2^63` are covered by `ring::axiom_tests` and the
+/// tests at the bottom of this file).
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize)]
 pub struct Zq<const MODULUS: u64> {
     pub(crate) value: u64,
@@ -26,22 +31,29 @@ impl<const MODULUS: u64> Zq<MODULUS> {
     }
 
     /// Returns the modular multiplicative inverse, if it exists.
+    ///
+    /// Extended Euclid with the Bézout coefficient carried reduced modulo `q`
+    /// at every step. That keeps every intermediate inside `u128` across the
+    /// whole documented domain `q <= u64::MAX`; the previous `i64` walk
+    /// silently produced non-inverses above `2^63` and reported invertible
+    /// elements as non-invertible near it.
     pub fn inverse(self) -> Option<Self> {
-        let (mut t, mut newt) = (0i64, 1i64);
-        let (mut r, mut newr) = (MODULUS as i64, self.value as i64);
+        let modulus = u128::from(MODULUS);
+        let (mut r_prev, mut r) = (modulus, u128::from(self.value));
+        let (mut t_prev, mut t) = (0u128, 1u128);
 
-        while newr != 0 {
-            let quotient = r / newr;
-            (t, newt) = (newt, t - quotient * newt);
-            (r, newr) = (newr, r - quotient * newr);
+        while r != 0 {
+            let quotient = r_prev / r;
+            // `quotient * r <= r_prev`, so this never underflows.
+            (r_prev, r) = (r, r_prev - quotient * r);
+            // `quotient < q` and `t < q`, so the product fits `u128`.
+            let t_new = (t_prev + modulus - (quotient * t) % modulus) % modulus;
+            (t_prev, t) = (t, t_new);
         }
 
-        if r > 1 {
-            None
-        } else {
-            let inv = ((t + MODULUS as i64) % MODULUS as i64) as u64;
-            Some(Self::new(inv))
-        }
+        (r_prev == 1).then_some(Self {
+            value: t_prev as u64,
+        })
     }
 
     /// Little-endian 8-byte encoding of the canonical representative.
@@ -132,10 +144,14 @@ impl<const MODULUS: u64> CenteredRing for Zq<MODULUS> {
     /// For even `q` the half-open interval keeps `+q/2`; for odd `q` this is
     /// exactly the symmetric range `[-(q-1)/2, (q-1)/2]` used by FIPS 204.
     fn centered(&self) -> i64 {
-        let v = self.value as i64;
-        let q = MODULUS as i64;
-        // v - (q when 2v > q else 0), via mask.
-        v - (crate::crypto::ct::maski64(2 * v > q) & q)
+        // u128 throughout: casting `value` or `MODULUS` to `i64` wraps for
+        // `q > 2^63`. The magnitude is at most `q / 2 <= u64::MAX / 2
+        // == i64::MAX`, so the final narrowing is exact over the whole
+        // documented domain.
+        let (v, q) = (u128::from(self.value), u128::from(MODULUS));
+        let (plain, wrapped) = (v as i128, v.wrapping_sub(q) as i128);
+        let mask = (i128::from(2 * v > q)).wrapping_neg();
+        ((wrapped & mask) | (plain & !mask)) as i64
     }
 
     /// `|self|_inf = min(a, q - a)`, branch-free.
@@ -230,6 +246,7 @@ impl<const MODULUS: u64> Display for Zq<MODULUS> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::{format, string::String};
     use serde_json;
     type Zq17 = Zq<17>;
 
@@ -322,6 +339,102 @@ mod tests {
     #[should_panic(expected = "Division by zero")]
     fn test_div_by_zero_panics() {
         let _ = Zq17::new(5) / Zq17::new(0);
+    }
+
+    // Regression tests for the documented domain `2 <= q <= u64::MAX`. Above
+    // 2^63 the previous `i64`-based inverse saw a negative modulus and `+`
+    // lost the 2^64 carry; both are asserted here and in `reduction::barrett`.
+
+    type ZqBig = Zq<18446744073709551557>; // u64::MAX - 58, prime, > 2^63
+    type ZqBelow63 = Zq<9223372036854775783>; // largest prime below 2^63
+    const _: () = assert!(ZqBig::IS_PRIME, "test fixture must be prime");
+    const _: () = assert!(ZqBelow63::IS_PRIME, "test fixture must be prime");
+    // Root cause of the old failure, pinned: the domain reaches past
+    // `i64::MAX`, so the previous `MODULUS as i64` cast started the extended
+    // Euclid walk from a negative modulus.
+    const _: () = assert!((ZqBig::MODULUS as i64) < 0);
+
+    #[test]
+    fn inverse_above_2_63_is_a_real_inverse() {
+        for v in [1u64, 2, 3, 12345, ZqBig::MODULUS - 1] {
+            let a = ZqBig::new(v);
+            let inv = a
+                .inverse()
+                .unwrap_or_else(|| panic!("{v} is invertible mod a prime modulus"));
+            assert_eq!(a * inv, ZqBig::ONE, "a * a^-1 != 1 for a = {v}");
+        }
+        // Exact values, so a silently-wrong inverse cannot slip past the
+        // self-consistency check above.
+        assert_eq!(
+            ZqBig::new(3).inverse().map(|i| i.to_u128()),
+            Some(6148914691236517186)
+        );
+        assert_eq!(
+            ZqBig::new(12345).inverse().map(|i| i.to_u128()),
+            Some(6398457523177343035)
+        );
+    }
+
+    #[test]
+    fn inverse_just_below_2_63_is_unchanged() {
+        for v in [1u64, 3, 7, 123456789, ZqBelow63::MODULUS - 1] {
+            let a = ZqBelow63::new(v);
+            let inv = a
+                .inverse()
+                .unwrap_or_else(|| panic!("{v} is invertible mod a prime modulus"));
+            assert_eq!(a * inv, ZqBelow63::ONE);
+        }
+        assert_eq!(
+            ZqBelow63::new(3).inverse().map(|i| i.to_u128()),
+            Some(6148914691236517189)
+        );
+    }
+
+    #[test]
+    fn inverse_matches_gcd_on_a_composite_modulus() {
+        type ZqC = Zq<4294967296>; // 2^32, the LaBRADOR instance
+        assert_eq!(ZqC::new(0).inverse(), None);
+        assert!(
+            ZqC::new(2).inverse().is_none(),
+            "even residues are not invertible mod 2^32"
+        );
+        let odd = ZqC::new(3);
+        assert_eq!(odd * odd.inverse().unwrap(), ZqC::ONE);
+    }
+
+    #[test]
+    fn division_recovers_the_multiplier_at_the_top_of_the_domain() {
+        let a = ZqBig::new(987654321);
+        let b = ZqBig::new(123456789);
+        assert_eq!((a * b) / b, a);
+    }
+
+    #[test]
+    fn centered_is_exact_above_2_63() {
+        type ZqG = Zq<18446744069414584321>; // Goldilocks: 2^64 - 2^32 + 1
+        let q = ZqG::MODULUS;
+        assert_eq!(ZqG::MAX.centered(), -1); // q - 1 centers to -1
+        assert_eq!(ZqG::new(1).centered(), 1);
+        assert_eq!(
+            ZqG::new(q.div_ceil(2)).centered(),
+            -(((q - 1) / 2) as i64),
+            "the first value past q/2 must wrap to the negative side"
+        );
+        for v in [0u64, 1, 2, q / 2, q / 2 + 1, q - q / 4, q - 1] {
+            let a = ZqG::new(v);
+            let c = a.centered();
+            let (c128, q128) = (i128::from(c), i128::from(q));
+            assert_eq!(
+                c128.rem_euclid(q128),
+                i128::from(v),
+                "centered(a) != a mod q"
+            );
+            assert!(
+                2 * c128 > -q128 && 2 * c128 <= q128,
+                "centered {c} outside (-q/2, q/2] for q = {q}"
+            );
+            assert_eq!(c.unsigned_abs(), a.abs_infinity());
+        }
     }
 
     #[test]

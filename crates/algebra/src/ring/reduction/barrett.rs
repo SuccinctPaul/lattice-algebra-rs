@@ -14,8 +14,21 @@ impl<const MODULUS: u64> ModularArithmetic<MODULUS> for Zq<MODULUS> {
     /// a, b < MODULUS
     #[inline(always)]
     fn mod_add(a: u64, b: u64) -> u64 {
-        let sum = a.wrapping_add(b);
-        if sum >= MODULUS {
+        let (sum, carried) = a.overflowing_add(b);
+        // `carried` means the true sum is `sum + 2^64`, which the conditional
+        // subtract below cannot reach. It requires MODULUS > 2^63, and there
+        // 2^64 = MODULUS + (2^64 - MODULUS) with 0 < 2^64 - MODULUS <
+        // MODULUS, so the carry reduces to that residue. Adding it stays inside
+        // u64 (sum < MODULUS, residue < MODULUS, MODULUS <= u64::MAX) and one
+        // further conditional subtract finishes the job.
+        if carried {
+            let sum = sum.wrapping_add(MODULUS.wrapping_neg());
+            if sum >= MODULUS {
+                sum - MODULUS
+            } else {
+                sum
+            }
+        } else if sum >= MODULUS {
             sum - MODULUS
         } else {
             sum
@@ -67,6 +80,7 @@ impl<const MODULUS: u64> ModularArithmetic<MODULUS> for Zq<MODULUS> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn test_mod_mul_small_modulus() {
@@ -145,6 +159,87 @@ mod tests {
         assert_eq!(Zq17::mod_sub(3, 5), 15); // 3-5 = -2 ≡ 15
         assert_eq!(Zq17::mod_sub(5, 3), 2);
         assert_eq!(Zq17::mod_sub(0, 1), 16);
+    }
+
+    /// Differential check of the three reductions against a `u128` reference at
+    /// moduli where `a + b` overflows 64 bits, which the historical single
+    /// conditional subtract silently dropped.
+    fn check_reductions_against_reference<const M: u64>() {
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        let m = u128::from(M);
+        let mut values = vec![0u64, 1, 2, M - 1, M - 2, M / 2, M / 2 + 1, M / 3 + 1];
+        let mut rng = StdRng::seed_from_u64(0x5EED_1234);
+        values.extend((0..48).map(|_| rng.random_range(0..M)));
+
+        for &a in &values {
+            for &b in &values {
+                let (au, bu) = (u128::from(a), u128::from(b));
+                assert_eq!(
+                    <Zq<M> as ModularArithmetic<M>>::mod_add(a, b),
+                    ((au + bu) % m) as u64,
+                    "mod_add({a}, {b}) mod {M}"
+                );
+                assert_eq!(
+                    <Zq<M> as ModularArithmetic<M>>::mod_sub(a, b),
+                    ((au + m - bu) % m) as u64,
+                    "mod_sub({a}, {b}) mod {M}"
+                );
+                assert_eq!(
+                    <Zq<M> as ModularArithmetic<M>>::mod_mul(a, b),
+                    ((au * bu) % m) as u64,
+                    "mod_mul({a}, {b}) mod {M}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reductions_at_moduli_just_above_2_63() {
+        check_reductions_against_reference::<18446744073709551557>(); // u64::MAX - 58, prime
+        check_reductions_against_reference::<18446744069414584321>(); // Goldilocks, 2^64 - 2^32 + 1
+        check_reductions_against_reference::<9223372036854775809>(); // 2^63 + 1
+    }
+
+    #[test]
+    fn reductions_at_the_top_and_bottom_of_the_domain() {
+        check_reductions_against_reference::<18446744073709551615>(); // u64::MAX, composite: largest legal q
+        check_reductions_against_reference::<2305843009213693951>(); // 2^61 - 1, Mersenne prime
+        check_reductions_against_reference::<9223372036854775783>(); // largest prime below 2^63
+    }
+
+    /// The pre-fix reduction: one conditional subtract after a `wrapping_add`.
+    /// Kept here so the fixtures above are demonstrably load-bearing rather
+    /// than merely passing.
+    const fn legacy_mod_add(a: u64, b: u64, modulus: u64) -> u64 {
+        let sum = a.wrapping_add(b);
+        if sum >= modulus {
+            sum - modulus
+        } else {
+            sum
+        }
+    }
+
+    #[test]
+    fn carry_out_of_u64_is_what_the_fix_handles() {
+        const M: u64 = 18446744073709551557; // u64::MAX - 58, prime
+        let (a, b) = (M - 1, M - 1);
+        let correct = (((a as u128) + (b as u128)) % (M as u128)) as u64;
+
+        // The fixtures distinguish the two implementations: the legacy form
+        // silently drops the 2^64 carry ...
+        assert_ne!(
+            legacy_mod_add(a, b, M),
+            correct,
+            "test fixture no longer exercises the carry path"
+        );
+        // ... while the shipped one returns the reference value.
+        assert_eq!(
+            <Zq<M> as ModularArithmetic<M>>::mod_add(a, b),
+            correct,
+            "mod_add must fold the carry back as (2^64 mod q)"
+        );
     }
 
     #[test]
