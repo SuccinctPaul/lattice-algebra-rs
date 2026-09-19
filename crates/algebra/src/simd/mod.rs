@@ -22,6 +22,10 @@
 //! agreement against independent scalar references so correctness never
 //! depends on the building CPU.
 
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 /// Element count of the 16×16-bit lane type used by [`wrapping_dot_u16`].
 const U16_LANES: usize = 16;
 

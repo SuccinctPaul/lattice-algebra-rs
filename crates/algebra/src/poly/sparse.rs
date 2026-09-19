@@ -9,7 +9,8 @@ use crate::poly::UniPolynomial;
 use crate::ring::poly_ring::PolyRing;
 use crate::ring::PolynomialQuotientRing;
 use crate::ring::TwoAdicRing;
-use std::marker::PhantomData;
+use alloc::{vec, vec::Vec};
+use core::marker::PhantomData;
 
 use crate::ring::Ring;
 

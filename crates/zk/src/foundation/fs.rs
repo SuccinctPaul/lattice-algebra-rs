@@ -20,6 +20,10 @@ use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Xof;
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::Ring;
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::vec::Vec;
 
 use crate::foundation::encoding::{ring_to_u32, u32s_to_le_bytes};
 

@@ -7,7 +7,7 @@ Two complementary abstractions:
 
 ## Generic polynomials
 
-Ascending coefficients, Horner evaluation, division with remainder (requires `R: Field` — division is a field operation), derivative, scalar product, and an FFT-based fallback multiplication (rustfft) for non-2-adic moduli. SNARK-grade extensions (batch inversion, interpolation) are scheduled.
+Ascending coefficients, Horner evaluation, division with remainder (requires `R: Field` — division is a field operation), derivative, scalar product, and an FFT-based fallback multiplication (an in-tree radix-2 `f64` kernel) for non-2-adic moduli. SNARK-grade extensions (batch inversion, interpolation) are scheduled.
 
 ## The negacyclic ring
 
@@ -20,7 +20,7 @@ flowchart TD
     MUL["a * b : PolyRing&lt;R, N&gt;"] --> N2{"N a power of two?"}
     N2 -- no --> SB["schoolbook + negacyclic fold<br/>O(n²)"]
     N2 -- yes --> TAD{"R: TwoAdicRing and<br/>N ≤ 2^TWO_ADICITY ?"}
-    TAD -- no --> FFT["rustfft generic fallback<br/>O(n log n)"]
+    TAD -- no --> FFT["in-tree radix-2 f64 FFT<br/>O(n log n)"]
     TAD -- yes --> NTT["NttOperator: twist → CT-DIT → ⊙ → GS-DIF → untwist<br/>O(n log n), integer domain"]
     SP["SparsePolynomial * PolyRing"] --> SPARSE["sparse × dense O(τn)"]
 ```

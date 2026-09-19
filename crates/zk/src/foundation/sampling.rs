@@ -42,6 +42,7 @@ use algebra::poly::sparse::SparsePolynomial;
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::PolynomialQuotientRing;
 use algebra::ring::Ring;
+use alloc::{vec, vec::Vec};
 
 /// Converts a centered representative `c ∈ (−q/2, q/2]` to a ring element.
 pub fn from_centered<R: Ring>(c: i64) -> R {

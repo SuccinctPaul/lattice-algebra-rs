@@ -35,6 +35,7 @@ use crate::foundation::sampling::uniform_matrix_from_seed;
 use crate::instance::ring::{Z2Coeff, Z2Ring, D};
 use algebra::ring::traits::CenteredRing;
 use algebra::ring::PolynomialQuotientRing;
+use alloc::vec::Vec;
 
 /// A ±1-entry projection matrix `Π ∈ {±1}^{k × dim}` derived from a seed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,7 +63,7 @@ impl JLProjection {
                     .take(dim)
                     .collect();
                 let pad = dim - flat.len();
-                flat.extend(std::iter::repeat_n(1i32, pad));
+                flat.extend(core::iter::repeat_n(1i32, pad));
                 flat
             })
             .collect();

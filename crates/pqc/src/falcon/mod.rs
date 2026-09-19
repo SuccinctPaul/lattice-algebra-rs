@@ -15,6 +15,7 @@
 //!   but the reference does not claim CT; see the security-status page.
 //! - Falcon-padded is out of scope.
 
+use alloc::{vec, vec::Vec};
 pub mod codec;
 pub mod common;
 pub mod fft;
@@ -49,8 +50,8 @@ pub struct SecretKey {
     logn: u32,
 }
 
-impl std::fmt::Debug for SecretKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for SecretKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SecretKey").finish_non_exhaustive()
     }
 }
@@ -267,6 +268,7 @@ macro_rules! instantiate_falcon {
         /// Falcon API bound to a specific parameter set (degree 2^logn).
         pub mod $mod_name {
             use super::{keygen_internal, sign_internal, verify_internal, PublicKey, SecretKey};
+            use alloc::vec::Vec;
 
             /// Maximum signature size (unencoded message excluded): 2 (len)
             /// + 40 (nonce) + encoded signature. The reference bound for

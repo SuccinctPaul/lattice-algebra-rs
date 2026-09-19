@@ -11,6 +11,7 @@
 //!   that `("ab", "c")` and `("a", "bc")` always squeeze different streams.
 //! - Domain labels live with the scheme parameter sets, not with callers.
 
+use alloc::{vec, vec::Vec};
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::{Shake128, Shake128Reader, Shake256, Shake256Reader};
 

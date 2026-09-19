@@ -17,6 +17,7 @@ use algebra::crypto::sampling::BitStream;
 use algebra::crypto::xof::{Shake128Xof, Xof};
 use algebra::ring::MatrixElement;
 use algebra::ring::PolynomialQuotientRing;
+use alloc::vec::Vec;
 
 /// Gate-count threshold above which the `parallel` feature engages. Below
 /// it, per-task dispatch overhead outweighs the per-gate ring work.
@@ -176,6 +177,7 @@ pub fn gen_toy_instance(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::println;
 
     #[test]
     #[ignore]

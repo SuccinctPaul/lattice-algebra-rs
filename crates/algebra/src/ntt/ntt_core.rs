@@ -8,6 +8,10 @@
 use crate::ntt::params::{bit_reverse_permutation, NttParams};
 use crate::ntt::twiddle::NegacyclicTwiddles;
 use crate::ring::Ring;
+// Only the `#[cfg(test)]` children use this, so the plain lib build reports it
+// unused; deleting it breaks `cargo test`.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 
 /// NTT Operator for performing forward and inverse NTT transformations.
 ///

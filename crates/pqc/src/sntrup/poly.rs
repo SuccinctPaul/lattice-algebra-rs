@@ -4,6 +4,7 @@
 //! `R = Z[x]/(x^p − x − 1)`.
 
 use super::params::SntrupParams;
+use alloc::{vec, vec::Vec};
 
 /// Centered `F_3` value.
 pub type Small = i8;

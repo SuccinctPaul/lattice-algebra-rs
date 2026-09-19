@@ -5,6 +5,7 @@
 
 use super::common::is_short;
 use super::tables::{GMB, IGMB};
+use alloc::vec;
 
 /// The Falcon modulus: q = 12289 = 3·2^12 + 1 (prime, 2-adicity 12), so
 /// negacyclic NTTs of length up to 2^11 exist — enough for n ≤ 1024.

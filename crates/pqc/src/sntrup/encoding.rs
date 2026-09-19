@@ -5,6 +5,7 @@
 
 use super::params::SntrupParams;
 use super::poly::{self, mod_uint14, q12, Fq, Small};
+use alloc::{vec, vec::Vec};
 
 /// Byte-emit threshold of the mixed-radix `Encode`/`Decode` pair: while the
 /// pending radix is at least `2^14`, a whole byte can be flushed.

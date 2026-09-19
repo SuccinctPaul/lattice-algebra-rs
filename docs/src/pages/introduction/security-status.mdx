@@ -51,7 +51,7 @@ tests in `algebra::security`.
 | **Falcon constant time** | ❌ not claimed | The Falcon reference does not claim constant time and this port inherits that: the FFT sampler, the keygen NTRU-solve chain and the signing rejection loop are not constant-time. Hash-to-point and the sampler leak no secret-key-dependent branches by construction, but no CT claim is made for `pqc::falcon`. |
 | **Round-3 alternates constant time** | ❌ not claimed | FrodoKEM, NTRU and sntrup are verbatim reference ports and inherit the references' ct posture: FrodoKEM keeps the reference's constant-time `ct_verify`/`ct_select` rejection select but does not claim full CT; NTRU relies on the reference's constant-time polynomial inversion and `cmov` key selection; sntrup inherits the reference's array-scan decapsulation. All three document this explicitly rather than claim otherwise. `SecretKey`/`SharedSecret` types zeroize on drop across all three modules. |
 | **Estimator refinement** | 📋 | The closed-form conditions are frozen with the published zone-based figures quoted alongside; reproducing the zone-based simulation (sample/column truncation, ℓ∞ shape heuristics) with archived runs under `scripts/params/` remains the refinement item. |
-| **Production hardening** | ❌ out of scope today | No fuzzing harness for the decoders yet, no `no_std` story. Zeroization of `SigningKey` is done; `to_bytes()` output buffers are caller-managed. |
+| **Production hardening** | ❌ out of scope today | No fuzzing harness for the decoders yet. `no_std` is in place (all three crates are `#![no_std]` + `alloc`, with bare-metal targets built in CI). Zeroization of `SigningKey` is done; `to_bytes()` output buffers are caller-managed. |
 
 ## Where this toolchain belongs today
 

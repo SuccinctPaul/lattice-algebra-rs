@@ -1,5 +1,6 @@
 //! Utility functions for NTT operations.
 
+use alloc::vec::Vec;
 /// Computes a^exp mod m using binary exponentiation.
 ///
 /// Time complexity: O(log exp)

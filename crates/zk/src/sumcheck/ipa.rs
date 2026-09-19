@@ -50,6 +50,7 @@ use crate::instance::ring::{Z2Coeff, Z2Ring, D};
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
+use alloc::vec::Vec;
 
 /// Ajtai key for the IPA (`A_com ∈ R^{N×M}`) — the shared
 /// [`AjtaiKey`] under the protocol-historical name.

@@ -41,6 +41,7 @@ use crate::instance::simd::z2_mul;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
+use alloc::{vec, vec::Vec};
 
 /// Commitment key for the folded layer: `A_z ∈ R^{N×M}` covers both the
 /// witness and the quadratic product vector.

@@ -27,6 +27,7 @@
 
 use crate::crypto::xof::Xof;
 use crate::ring::Ring;
+use alloc::{vec, vec::Vec};
 
 /// Bit-reader over an [`Xof`] stream (LSB-first within each byte).
 pub struct BitStream<'a, X: Xof> {
@@ -300,9 +301,9 @@ impl DiscreteGaussian {
             sigma.is_finite() && sigma > 0.0,
             "sigma must be a positive finite number"
         );
-        let tail = ((sigma * 12.0).ceil() as i64).max(1);
+        let tail = (libm::ceil(sigma * 12.0) as i64).max(1);
         // Unnormalized symmetric atom weights w_i = exp(-i²/(2σ²)).
-        let weight = |i: i64| (-(i * i) as f64 / (2.0 * sigma * sigma)).exp();
+        let weight = |i: i64| libm::exp(-(i * i) as f64 / (2.0 * sigma * sigma));
         let total: f64 = weight(0) + 2.0 * (1..=tail).map(weight).sum::<f64>();
 
         // Fixed-point cut points; the `+1` shift keeps entries strictly

@@ -10,6 +10,7 @@
 use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::PolynomialQuotientRing;
 use algebra::ring::Ring;
+use alloc::vec::Vec;
 
 /// Packs a slice of `u32`s into little-endian bytes.
 pub fn u32s_to_le_bytes(values: &[u32]) -> Vec<u8> {

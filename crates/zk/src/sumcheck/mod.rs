@@ -31,8 +31,10 @@
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Xof;
 use algebra::ring::MatrixElement;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
 use rand::RngCore;
-use std::marker::PhantomData;
 
 /// Per-round challenge derivation for the sumcheck loop.
 ///

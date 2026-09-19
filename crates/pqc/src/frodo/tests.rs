@@ -2,6 +2,7 @@
 //! `use super::*` keeps `pub(crate)` helpers reachable.
 
 use super::*;
+use alloc::{vec, vec::Vec};
 
 /// Deterministic pseudo-random byte fill (round-trip tests don't need
 /// statistical randomness — only independence between test cases).

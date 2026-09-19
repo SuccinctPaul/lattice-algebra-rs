@@ -6,6 +6,7 @@
 
 use super::fpr::*;
 use super::tables::PRIMES;
+use alloc::{vec, vec::Vec};
 
 /// Reference `MAX_BL_SMALL[]`: limb counts (31-bit words) per coefficient
 /// of the "small" polynomials (f, g and the level-wise halves) at each RNS

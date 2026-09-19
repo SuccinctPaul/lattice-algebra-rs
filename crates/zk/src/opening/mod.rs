@@ -76,6 +76,10 @@ use crate::instance::simd::z2_mul;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 
 /// Commitment-key dimensions: `A_com ∈ R^{N_COMMIT×M_VARS}`.
 pub const N_COMMIT: usize = 8;
@@ -501,7 +505,7 @@ pub fn verify(
         let rhs = c[i].clone() + z2_mul(&x, &proof.d[i]);
         if ring_to_u32(&azp[i]) != ring_to_u32(&rhs) {
             #[cfg(test)]
-            eprintln!("verify: linear link failed at row {i}");
+            std::eprintln!("verify: linear link failed at row {i}");
             return false;
         }
     }
@@ -521,6 +525,8 @@ pub fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::println;
+
     use crate::instance::r1cs::gen_toy_instance;
     use algebra::crypto::xof::Xof;
 

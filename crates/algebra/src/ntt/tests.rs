@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::ring::zq::Zq;
+use alloc::{vec, vec::Vec};
 
 // Test moduli
 // q = 17: small prime, 17 = 1 + 16 = 1 + 2^4, supports N ≤ 8

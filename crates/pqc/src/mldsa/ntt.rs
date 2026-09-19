@@ -35,6 +35,10 @@ use super::ZqD;
 use algebra::crypto::sampling::{sample_uniform_coeff, BitStream};
 use algebra::crypto::xof::Xof;
 use algebra::ring::Ring;
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::vec::Vec;
 
 /// Primitive 2N-th root of unity mod `q` (FIPS 204, §3.7): `ζ^256 ≡ −1`.
 const ZETA: u64 = 1753;
@@ -224,7 +228,7 @@ mod tests {
 
     fn sample_coeffs(seed: u64) -> [i64; N] {
         let mut state = seed.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1);
-        std::array::from_fn(|_| {
+        core::array::from_fn(|_| {
             state ^= state << 13;
             state ^= state >> 7;
             state ^= state << 17;
@@ -255,7 +259,7 @@ mod tests {
             let f_hat = ntt_coeffs(&f);
             let g_hat = ntt_coeffs(&g);
             // Linearity: ntt(f + g) == ntt(f) + ntt(g) (domain-wise mod q).
-            let sum: [i64; N] = std::array::from_fn(|i| (f[i] + g[i]).rem_euclid(Q));
+            let sum: [i64; N] = core::array::from_fn(|i| (f[i] + g[i]).rem_euclid(Q));
             let sum_hat = ntt_coeffs(&sum);
             let f_plus_g_hat: Vec<u64> = f_hat
                 .iter()

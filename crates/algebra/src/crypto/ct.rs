@@ -23,6 +23,10 @@
 //!    is public (it is part of the signature), and the reference
 //!    implementation has the same shape.
 
+// Only the `#[cfg(test)]` children use this, so the plain lib build reports it
+// unused; deleting it breaks `cargo test`.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 /// Full-width mask for a boolean: `!0u64` when `true`, `0` when `false`.
 #[inline]
 #[must_use]

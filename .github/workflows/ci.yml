@@ -95,6 +95,55 @@ jobs:
         if: matrix.flags == '--all-features'
         run: cargo bench --workspace --all-features --locked --no-run
 
+  portability:
+    # The three library crates are `#![no_std]` + `alloc` unconditionally, so
+    # a bare-metal build is the contract check itself rather than an opt-in
+    # configuration. Building *libs only* needs no linker script, allocator or
+    # panic handler — those belong to whatever binary consumes them.
+    name: no_std target (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # Cortex-M4F: the canonical "no OS, has an FPU" embedded target.
+          - thumbv7em-none-eabihf
+          # Cortex-M3: no FPU at all, so every f64 operation in `security`,
+          # `crypto::sampling` and `poly::fft` must resolve through libm
+          # rather than a hardware instruction the host toolchain would fold
+          # in silently.
+          - thumbv7m-none-eabi
+          # RISC-V machine without the `f`/`d` extensions: a second soft-float
+          # architecture, so the bare-metal wiring is not ARM-specific.
+          - riscv32imac-unknown-none-elf
+          # no_std WebAssembly.
+          - wasm32-unknown-unknown
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build libs (no std, no default features)
+        run: >
+          cargo build --locked --workspace --lib
+          --no-default-features
+          --target ${{ matrix.target }}
+
+      # Feature names must be package-prefixed from a virtual workspace.
+      - name: Build libs with the SIMD kernels enabled
+        run: >
+          cargo build --locked --workspace --lib
+          --no-default-features
+          --features lattice-algebra/simd,lattice-pqc/simd,lattice-zk/simd
+          --target ${{ matrix.target }}
+
   audit:
     # Weekly cadence so new RustSec advisories surface without a PR; also
     # runs per push/PR for immediate feedback.

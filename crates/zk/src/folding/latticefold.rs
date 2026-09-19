@@ -57,6 +57,7 @@ use crate::shortness::balanced::split_balanced;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::MatrixElement;
+use alloc::{vec, vec::Vec};
 
 /// Digit width `b` of the balanced decomposition.
 pub const DIGIT_BITS: u32 = 8;

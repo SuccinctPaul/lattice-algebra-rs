@@ -15,13 +15,19 @@ keywords = ["cryptography", "lattice", "algebra"]
 categories = ["cryptography", "algorithms", "math", "science"]
 
 [workspace.dependencies]
-rand = { version = "0.9.1", features = ["default"] }
-rustfft = "6.4.0"
-serde = { version = "1.0.216", features = ["derive"] }
-sha2 = "0.10"
-sha3 = "0.10"
-zeroize = "1.8"
-serde_json = "1.0.133"
+# Every shared dependency is pulled in its `no_std` shape: the three library
+# crates are `#![no_std]` + `alloc` unconditionally, so nothing here may drag
+# in `std` transitively. `std` re-enters only through dev-dependencies
+# (criterion, serde_json) and the `parallel` feature (rayon).
+rand = { version = "0.9.1", default-features = false, features = ["std_rng"] }
+serde = { version = "1.0.216", default-features = false, features = ["alloc", "derive"] }
+sha2 = { version = "0.10", default-features = false }
+sha3 = { version = "0.10", default-features = false }
+zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
 rayon = "1.10"
-wide = "0.7"
+wide = { version = "0.7", default-features = false }
+# `core` exposes none of the transcendentals (`sqrt`/`exp`/`powf`/`log2`/…), so
+# the float paths go through libm rather than `std`.
+libm = { version = "0.2", default-features = false }
+serde_json = "1.0.133"
 lattice-algebra = { path = "crates/algebra", version = "0.1.0" }

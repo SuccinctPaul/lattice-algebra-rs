@@ -4,6 +4,7 @@
 //! coefficient arithmetic is `u16` wrapping, exactly as the C reference.
 
 use super::params::NtruParams;
+use alloc::{vec, vec::Vec};
 
 /// A polynomial with `n` coefficients in `[0, q)` (or `{0,1,2}` in the
 /// ternary representation).

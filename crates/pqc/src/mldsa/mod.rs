@@ -10,6 +10,7 @@
 //!   outer signature passes fresh randomness as `rnd`.
 //! - Context strings must be shorter than 256 bytes (spec limit).
 
+use alloc::{vec, vec::Vec};
 /// Ceiling division by 8.
 #[inline]
 pub(crate) fn div_ceil8(x: usize) -> usize {
@@ -31,7 +32,7 @@ use algebra::ring::traits::CenteredRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
 use algebra::ring::Ring;
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 const Q_U64: u64 = Q as u64;
 type ZqD = Zq<8380417>;
@@ -71,7 +72,7 @@ fn mat_vec_ntt<const K: usize, const L: usize>(
     a: &[[[u64; N]; L]; K],
     v_ntt: &[[u64; N]; L],
 ) -> [[i64; N]; K] {
-    std::array::from_fn(|r| {
+    core::array::from_fn(|r| {
         let mut acc = [0u64; N];
         for (entry, v) in a[r].iter().zip(v_ntt.iter()) {
             ntt::pointwise_mul_add(&mut acc, entry, v);
@@ -99,7 +100,7 @@ fn expand_s_poly<P: MlDsaParams>(seed: &[u8; 64], idx: u16) -> [i64; N] {
     xof.absorb(seed);
     xof.absorb(&idx.to_le_bytes());
     let mut stream = BitStream::new(&mut xof);
-    std::array::from_fn(|_| sample_rej_bounded_ct::<ZqD>(&mut stream, P::ETA))
+    core::array::from_fn(|_| sample_rej_bounded_ct::<ZqD>(&mut stream, P::ETA))
 }
 
 /// FIPS 204 `ExpandS(ρ)`: `ℓ + k` polynomials with coefficients in
@@ -135,7 +136,7 @@ fn expand_mask<P: MlDsaParams, const L: usize>(
         xof.absorb(seed);
         xof.absorb(&((kappa + r) as u16).to_le_bytes());
         let v = xof.squeeze_vec(32 * c);
-        let coeffs: [i64; N] = std::array::from_fn(|i| {
+        let coeffs: [i64; N] = core::array::from_fn(|i| {
             let pos = i * c;
             let mut chunk = 0u64;
             for b in 0..c {
@@ -235,8 +236,8 @@ pub struct SigningKey<P: MlDsaParams> {
     _p: PhantomData<P>,
 }
 
-impl<P: MlDsaParams> std::fmt::Debug for SigningKey<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: MlDsaParams> core::fmt::Debug for SigningKey<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SigningKey").finish_non_exhaustive()
     }
 }
@@ -343,7 +344,7 @@ pub fn keygen_core<P: MlDsaParams, const K: usize, const L: usize>(
     let a_hat: [[[u64; N]; L]; K] = ntt::expand_a::<Shake128Xof, K, L>(&rho);
     let (s1, s2) = expand_s::<P, L, K>(&rho_prime);
 
-    let s1_ntt: [[u64; N]; L] = std::array::from_fn(|i| ntt::ntt_coeffs(&s1[i]));
+    let s1_ntt: [[u64; N]; L] = core::array::from_fn(|i| ntt::ntt_coeffs(&s1[i]));
     let t_rows = mat_vec_ntt::<K, L>(&a_hat, &s1_ntt);
     let t: Vec<[i64; N]> = t_rows
         .into_iter()
@@ -514,7 +515,7 @@ pub fn sign_mu<P: MlDsaParams, const K: usize, const L: usize>(
         // y ← ExpandMask(ρ'', κ)
         let y: ModuleVector<ZqD, L, N> = expand_mask::<P, L>(&y_seed, kappa);
         // w ← NTT⁻¹(Â∘NTT(y))
-        let y_ntt: [[u64; N]; L] = std::array::from_fn(|i| poly_to_ntt(y.get(i)));
+        let y_ntt: [[u64; N]; L] = core::array::from_fn(|i| poly_to_ntt(y.get(i)));
         let w_rows: [[i64; N]; K] = mat_vec_ntt::<K, L>(&a_hat, &y_ntt);
         let w1 = high_bits_of::<P, K>(&w_rows);
         let c_tilde = h_n(&[mu, &w1_encode(&w1, w_max as u64)], P::C_TILDE_BYTES);
@@ -691,10 +692,10 @@ pub fn verify_mu<P: MlDsaParams, const K: usize, const L: usize>(
     let a_hat: [[[u64; N]; L]; K] = ntt::expand_a::<Shake128Xof, K, L>(&vk.rho);
     let c = sample_challenge::<P>(c_tilde);
 
-    let z_ntt: [[u64; N]; L] = std::array::from_fn(|i| poly_to_ntt(z_vec.get(i)));
+    let z_ntt: [[u64; N]; L] = core::array::from_fn(|i| poly_to_ntt(z_vec.get(i)));
     let c_hat = poly_to_ntt(&c);
-    let t1_ntt: [[u64; N]; K] = std::array::from_fn(|i| {
-        let coeffs: [i64; N] = std::array::from_fn(|j| {
+    let t1_ntt: [[u64; N]; K] = core::array::from_fn(|i| {
+        let coeffs: [i64; N] = core::array::from_fn(|j| {
             // t1·2^d (mod q)
             ((vk.t1[i][j] as u128 * (1u128 << D)) % Q as u128) as i64
         });
@@ -732,6 +733,7 @@ macro_rules! instantiate_mldsa {
         #[doc = concat!("ML-DSA API bound to [`", stringify!($params), "`].")]
         pub mod $mod_name {
             pub use super::{SigningKey, VerifyingKey};
+            use alloc::vec::Vec;
 
             /// FIPS 204 `ML-DSA.KeyGen(ξ)`.
             pub fn keygen(
