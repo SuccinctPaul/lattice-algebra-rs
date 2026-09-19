@@ -16,6 +16,7 @@
 //! failure of `R3_recip` the reference resamples — here [`keygen`]
 //! returns `None` and the caller resamples.
 
+use alloc::{vec, vec::Vec};
 pub mod encoding;
 pub mod params;
 pub mod poly;
@@ -25,10 +26,10 @@ pub use params::{
 };
 
 use crate::error::{InvalidInput, SchemeResult};
+use core::marker::PhantomData;
 use encoding::small_encode;
 use poly::{r3_from_rq, r3_mult, r3_recip, round3, rq_mult3, rq_mult_small, rq_recip3};
 use sha2::Digest;
-use std::marker::PhantomData;
 use zeroize::Zeroize;
 
 use poly::{Fq, Small};
@@ -58,8 +59,8 @@ impl<P: SntrupParams> PartialEq for PublicKey<P> {
     }
 }
 
-impl<P: SntrupParams> std::fmt::Debug for PublicKey<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: SntrupParams> core::fmt::Debug for PublicKey<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("PublicKey").finish_non_exhaustive()
     }
 }
@@ -88,8 +89,8 @@ pub struct SecretKey<P: SntrupParams> {
     _p: PhantomData<P>,
 }
 
-impl<P: SntrupParams> std::fmt::Debug for SecretKey<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: SntrupParams> core::fmt::Debug for SecretKey<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SecretKey").finish_non_exhaustive()
     }
 }
@@ -139,8 +140,8 @@ impl SharedSecret {
     }
 }
 
-impl std::fmt::Debug for SharedSecret {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for SharedSecret {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SharedSecret").finish_non_exhaustive()
     }
 }
@@ -188,8 +189,8 @@ impl<P: SntrupParams> AsMut<[u8]> for Ciphertext<P> {
         &mut self.bytes
     }
 }
-impl<P: SntrupParams> std::fmt::Debug for Ciphertext<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: SntrupParams> core::fmt::Debug for Ciphertext<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ciphertext").finish_non_exhaustive()
     }
 }
@@ -429,6 +430,10 @@ macro_rules! instantiate_sntrup {
         #[doc = $doc]
         pub mod $mod_name {
             pub use super::{Ciphertext, PublicKey, SecretKey, SharedSecret};
+            // Every parameter set expands this module; only the `parallel`/`simd` batch
+            // APIs use `Vec`, so the scalar default build sees the import as unused.
+            #[allow(unused_imports)]
+            use alloc::vec::Vec;
 
             /// SNTRU key generation.
             ///

@@ -52,7 +52,7 @@ impl fmt::Display for InvalidInput {
     }
 }
 
-impl std::error::Error for InvalidInput {}
+impl core::error::Error for InvalidInput {}
 
 /// Convenience alias for scheme results over [`InvalidInput`].
 pub type SchemeResult<T> = core::result::Result<T, InvalidInput>;

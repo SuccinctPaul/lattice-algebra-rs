@@ -3,6 +3,7 @@
 //! `PARAMS_EXTRACTED_BITS`-bit key encoding added to the ciphertext
 //! (`frodo_key_encode` / `frodo_key_decode`).
 
+use alloc::{vec, vec::Vec};
 /// Pack the low `lsb` bits of each `u16` of `input` into `output`
 /// (most-significant bits first — the reference `frodo_pack`).
 pub fn pack(output: &mut [u8], input: &[u16], lsb: u32) {

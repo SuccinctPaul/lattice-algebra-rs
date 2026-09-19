@@ -5,6 +5,7 @@ macro_rules! vector_tests {
         #[cfg(test)]
         mod tests {
             use super::*;
+            use alloc::{vec, vec::Vec};
             use $crate::matrix::vector::GenericVector;
             use $crate::ring::MatrixElement;
 

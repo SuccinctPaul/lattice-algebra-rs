@@ -1,5 +1,6 @@
 //! ML-DSA wire-format encodings (FIPS 204 §7).
 
+use alloc::{vec, vec::Vec};
 /// Ceiling division by 8.
 #[inline]
 pub(crate) fn div_ceil8(x: usize) -> usize {
@@ -152,7 +153,7 @@ mod tests {
     #[test]
     fn bit_pack_roundtrip_eta() {
         // η = 4: values in [−4, 4], bitlen(8) = 4 bits.
-        let w: [i64; N] = std::array::from_fn(|i| (i as i64 % 9) - 4);
+        let w: [i64; N] = core::array::from_fn(|i| (i as i64 % 9) - 4);
         let packed = bit_pack(&w, 4, 4);
         assert_eq!(packed.len(), 128);
         assert_eq!(bit_unpack(&packed, 4, 4), w);

@@ -20,7 +20,7 @@ use crate::ring::poly_ring::PolyRing;
 use crate::ring::traits::{CenteredRing, TwoAdicRing};
 use crate::ring::PolynomialQuotientRing;
 use crate::ring::Ring;
-use std::ops::{Add, Neg, Sub};
+use core::ops::{Add, Neg, Sub};
 
 // ===========================================================================
 // Module vectors (coefficient domain)
@@ -41,7 +41,7 @@ impl<R: Ring, const K: usize, const N: usize> ModuleVector<R, K, N> {
     /// Builds a vector by applying `f` to each index.
     pub fn from_fn(f: impl FnMut(usize) -> PolyRing<R, N>) -> Self {
         Self {
-            polys: std::array::from_fn(f),
+            polys: core::array::from_fn(f),
         }
     }
 
@@ -96,7 +96,7 @@ impl<R: Ring, const K: usize, const N: usize> ModuleVector<R, K, N> {
         R: TwoAdicRing,
     {
         ModuleVectorNtt {
-            polys: std::array::from_fn(|i| self.polys[i].to_ntt(op)),
+            polys: core::array::from_fn(|i| self.polys[i].to_ntt(op)),
         }
     }
 }
@@ -121,7 +121,7 @@ impl<R: Ring, const K: usize, const N: usize> Add for ModuleVector<R, K, N> {
     fn add(self, rhs: Self) -> Self {
         let mut iter = self.polys.into_iter().zip(rhs.polys).map(|(x, y)| x + y);
         Self {
-            polys: std::array::from_fn(|_| iter.next().unwrap()),
+            polys: core::array::from_fn(|_| iter.next().unwrap()),
         }
     }
 }
@@ -131,7 +131,7 @@ impl<R: Ring, const K: usize, const N: usize> Sub for ModuleVector<R, K, N> {
     fn sub(self, rhs: Self) -> Self {
         let mut iter = self.polys.into_iter().zip(rhs.polys).map(|(x, y)| x - y);
         Self {
-            polys: std::array::from_fn(|_| iter.next().unwrap()),
+            polys: core::array::from_fn(|_| iter.next().unwrap()),
         }
     }
 }
@@ -141,7 +141,7 @@ impl<R: Ring, const K: usize, const N: usize> Neg for ModuleVector<R, K, N> {
     fn neg(self) -> Self {
         let mut iter = self.polys.into_iter().map(|x| -x);
         Self {
-            polys: std::array::from_fn(|_| iter.next().unwrap()),
+            polys: core::array::from_fn(|_| iter.next().unwrap()),
         }
     }
 }
@@ -166,7 +166,7 @@ impl<R: TwoAdicRing, const K: usize, const N: usize> ModuleVectorNtt<R, K, N> {
     #[must_use]
     pub fn add(&self, rhs: &Self) -> Self {
         Self {
-            polys: std::array::from_fn(|i| self.polys[i].add(&rhs.polys[i])),
+            polys: core::array::from_fn(|i| self.polys[i].add(&rhs.polys[i])),
         }
     }
 
@@ -174,7 +174,7 @@ impl<R: TwoAdicRing, const K: usize, const N: usize> ModuleVectorNtt<R, K, N> {
     #[must_use]
     pub fn sub(&self, rhs: &Self) -> Self {
         Self {
-            polys: std::array::from_fn(|i| self.polys[i].sub(&rhs.polys[i])),
+            polys: core::array::from_fn(|i| self.polys[i].sub(&rhs.polys[i])),
         }
     }
 
@@ -182,7 +182,7 @@ impl<R: TwoAdicRing, const K: usize, const N: usize> ModuleVectorNtt<R, K, N> {
     pub fn from_ntt(self, op: &NttOperatorOptimized<R, N>) -> ModuleVector<R, K, N> {
         let mut iter = self.polys.into_iter().map(|p| PolyRing::from_ntt(p, op));
         ModuleVector {
-            polys: std::array::from_fn(|_| iter.next().unwrap()),
+            polys: core::array::from_fn(|_| iter.next().unwrap()),
         }
     }
 }
@@ -201,7 +201,7 @@ impl<R: Ring, const K: usize, const L: usize, const N: usize> ModuleMatrix<R, K,
     /// Builds a matrix entry-by-entry (`f(row, col)`).
     pub fn from_fn(mut f: impl FnMut(usize, usize) -> PolyRing<R, N>) -> Self {
         Self {
-            entries: std::array::from_fn(|i| std::array::from_fn(|j| f(i, j))),
+            entries: core::array::from_fn(|i| core::array::from_fn(|j| f(i, j))),
         }
     }
 
@@ -231,8 +231,8 @@ impl<R: Ring, const K: usize, const L: usize, const N: usize> ModuleMatrix<R, K,
         R: TwoAdicRing,
     {
         ModuleMatrixNtt {
-            entries: std::array::from_fn(|i| {
-                std::array::from_fn(|j| self.entries[i][j].to_ntt(op))
+            entries: core::array::from_fn(|i| {
+                core::array::from_fn(|j| self.entries[i][j].to_ntt(op))
             }),
         }
     }
@@ -248,7 +248,7 @@ impl<R: TwoAdicRing, const K: usize, const L: usize, const N: usize> ModuleMatri
     /// Builds a matrix entry-by-entry in the NTT domain (`f(row, col)`).
     pub fn from_fn(mut f: impl FnMut(usize, usize) -> NttDomain<R, N>) -> Self {
         Self {
-            entries: std::array::from_fn(|i| std::array::from_fn(|j| f(i, j))),
+            entries: core::array::from_fn(|i| core::array::from_fn(|j| f(i, j))),
         }
     }
 
@@ -257,7 +257,7 @@ impl<R: TwoAdicRing, const K: usize, const L: usize, const N: usize> ModuleMatri
     #[must_use]
     pub fn mul_vec_ntt(&self, v: &ModuleVectorNtt<R, L, N>) -> ModuleVectorNtt<R, K, N> {
         ModuleVectorNtt {
-            polys: std::array::from_fn(|i| {
+            polys: core::array::from_fn(|i| {
                 let mut acc: Option<NttDomain<R, N>> = None;
                 for (a, b) in self.entries[i].iter().zip(v.polys().iter()) {
                     acc = Some(match acc {
@@ -290,7 +290,7 @@ impl<R: TwoAdicRing, const K: usize, const L: usize, const N: usize> ModuleMatri
 pub fn sample_coeffs_from_xof<X: Xof, R: Ring, const N: usize>(xof: X) -> [R; N] {
     let mut xof = xof;
     let mut stream = BitStream::new(&mut xof);
-    std::array::from_fn(|_| sample_uniform_coeff::<R>(&mut stream))
+    core::array::from_fn(|_| sample_uniform_coeff::<R>(&mut stream))
 }
 
 impl<R: TwoAdicRing, const K: usize, const L: usize, const N: usize> ModuleMatrixNtt<R, K, L, N> {

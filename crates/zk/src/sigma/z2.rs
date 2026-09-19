@@ -38,6 +38,7 @@ use crate::instance::ring::{infinity_norm, Z2Coeff, Z2Ring, D};
 use algebra::crypto::sampling::BitStream;
 use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::{Shake256Xof, Xof};
+use alloc::vec::Vec;
 
 /// Witness coefficient bound `‖w‖∞ ≤ B_W`.
 pub const B_W: u64 = 1 << 8;

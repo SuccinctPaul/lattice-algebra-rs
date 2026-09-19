@@ -4,6 +4,10 @@
 
 use super::params::NtruParams;
 use super::poly::Poly;
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 
 /// `int32_MINMAX`: branchless min-max from the supercop integer-sort
 /// reference — returns `(min, max)`.

@@ -9,7 +9,7 @@ afternoon. Everything here is verified by the workspace's own tests.
 
 | Crate | Gives you | Depends on |
 | --- | --- | --- |
-| `lattice-algebra` | rings, NTT, polynomials, module lattices, XOF/sampling | `rand`, `rustfft`, `serde`, `sha3`, optional `rayon` |
+| `lattice-algebra` | rings, NTT, polynomials, module lattices, XOF/sampling | `rand`, `serde`, `sha3`, `libm`, optional `rayon` |
 | `lattice-pqc` | ML-KEM (FIPS 203), ML-DSA (FIPS 204) | `lattice-algebra`, plus `sha3` (fixed-length SHA3-256/512, FIPS 203 §4.1) and `zeroize` |
 | `lattice-zk` | Ajtai commitments, Σ-protocols, batched opening, sumcheck, IPA, folding | `lattice-algebra` only |
 
@@ -46,7 +46,12 @@ cargo check -p lattice-algebra --no-default-features # opt out
   `pqc::…`, `zk::…`) — the historical single-crate facade
   (`lattice-algebra-rs`) has been removed.
 - **`unsafe`**: the workspace contains zero `unsafe` blocks.
-- **`no_std`**: not yet (`sha3` and allocator use); tracked on the roadmap.
+- **`no_std`**: all three crates are `#![no_std]` and link `alloc`, so an
+  allocator is required but `std` is not. `libm` covers the transcendentals
+  (`core` exposes none), and Falcon's field arithmetic is already soft-float.
+  The `std` feature is opt-out-able and only gates `parallel` (rayon); CI
+  builds the libs for `thumbv7em`/`thumbv7m`/`riscv32imac`/`wasm32` on every
+  push.
 
 ## API conventions (the same in every crate)
 

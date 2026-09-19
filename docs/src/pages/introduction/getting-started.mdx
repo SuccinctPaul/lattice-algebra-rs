@@ -10,7 +10,8 @@ background and the symbol table; the snippets below only assume Rust.
 
 - Rust ≥ 1.85 (MSRV, verified in the CI matrix)
 - Runtime dependencies of the foundation: `rand 0.9`, `sha3` (SHAKE),
-  `rustfft` (generic FFT fallback), `serde`
+  `libm` (transcendentals the `no_std` `core` does not expose), `serde`.
+  The crates are `#![no_std]` + `alloc`; see [Integrating](/introduction/integrating).
 
 ## Which crate do I need?
 

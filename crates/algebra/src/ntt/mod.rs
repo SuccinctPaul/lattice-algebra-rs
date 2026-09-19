@@ -38,6 +38,10 @@
 //! instead specifies an incomplete, layered NTT. Gate dimension choices
 //! with [`is_ntt_friendly`].
 
+// Only the `#[cfg(test)]` children use this, so the plain lib build reports it
+// unused; deleting it breaks `cargo test`.
+#[allow(unused_imports)]
+use alloc::vec;
 mod ntt_core;
 mod ntt_domain;
 mod params;

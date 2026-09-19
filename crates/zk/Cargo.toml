@@ -19,13 +19,20 @@ rand.workspace = true
 rayon = { version = "1.10", optional = true }
 
 [features]
-parallel = ["dep:rayon"]
+default = ["std"]
+# `#![no_std]` + `alloc` unconditionally; `std` is the hook for std-only extras
+# and is required by `parallel` (see the `algebra` crate for the same shape).
+std = ["lattice-algebra/std"]
+parallel = ["dep:rayon", "std"]
 # Lane kernels for the Z2 ring (see `instance::simd`), built on
 # `algebra::simd`'s wrapping 32-bit dots — safe on every supported CPU
 # (baseline ISA decomposition), scalar fallback without the feature.
 simd = ["lattice-algebra/simd"]
 
 [dev-dependencies]
+# Tests may use std freely: the crate roots pull `extern crate std` under
+# `#[cfg(test)]`.
+rand = { version = "0.9.1" }
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]

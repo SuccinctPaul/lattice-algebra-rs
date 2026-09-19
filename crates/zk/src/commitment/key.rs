@@ -14,6 +14,10 @@
 use crate::foundation::sampling::uniform_matrix_from_seed;
 use crate::instance::simd::z2_mul;
 use algebra::ring::MatrixElement;
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 
 use crate::instance::ring::{Z2Coeff, Z2Ring, D};
 

@@ -10,6 +10,7 @@
 use super::common::is_short_half;
 use super::fpr::*;
 use super::prng::Prng;
+use alloc::vec;
 
 /// Reference `smallints_to_fpr`.
 fn smallints_to_fpr(r: &mut [Fpr], t: &[i8]) {

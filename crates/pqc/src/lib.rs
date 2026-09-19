@@ -1,7 +1,12 @@
+#![no_std]
 #![allow(clippy::module_inception)]
 #![deny(missing_docs)]
 //! Post-quantum cryptography schemes built on the `algebra` foundation
 //! (crate `lattice-algebra`).
+//!
+//! The crate is `#![no_std]` and links `alloc`. Falcon's field arithmetic runs
+//! through the soft-float [`falcon::fpr`] kernels rather than `libm`, so no
+//! floating-point libc dependency reaches the scheme code.
 //!
 //! - [`falcon`]: Falcon (round-3 spec; the future FN-DSA / FIPS 206) —
 //!   keygen, sign and verify for Falcon-512 and Falcon-1024.
@@ -35,6 +40,12 @@
 //!   `mlkem_512`/`mldsa_44` for the hyphenated FIPS names, `falcon512`/
 //!   `frodo640`/`ntruhps2048677`/`sntrup761` for the concatenated
 //!   submission names.
+
+extern crate alloc;
+// Tests link std so they can keep using `Instant`, `eprintln!` and the
+// thread RNG; the library proper never sees it.
+#[cfg(test)]
+extern crate std;
 
 pub mod error;
 pub mod falcon;

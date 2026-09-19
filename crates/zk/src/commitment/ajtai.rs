@@ -15,7 +15,11 @@ use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
 use algebra::ring::Ring;
-use std::marker::PhantomData;
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
+use core::marker::PhantomData;
 
 /// Ring shared by the Z1 instances: the ML-DSA ring.
 pub type Z1Ring = Zq<8380417>;

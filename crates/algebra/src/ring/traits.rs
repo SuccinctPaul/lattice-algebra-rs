@@ -13,9 +13,10 @@
 //! See `docs/src/pages/design/scalar-ring.mdx` for the design rationale.
 
 use crate::poly::UniPolynomial;
-use std::fmt::{Debug, Display};
-use std::iter::Sum;
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
+use alloc::vec::Vec;
+use core::fmt::{Debug, Display};
+use core::iter::Sum;
+use core::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A commutative ring with unity, `Z_q` for `q >= 2`.
 ///

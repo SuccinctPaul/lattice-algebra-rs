@@ -4,6 +4,7 @@
 //! fields (ML-KEM 12-bit public keys, ML-DSA 13/18/20-bit signature parts).
 //! Bit order is little-endian within bytes, matching the specifications.
 
+use alloc::vec::Vec;
 /// Ceiling division by 8.
 #[inline]
 pub(crate) fn div_ceil8(x: usize) -> usize {

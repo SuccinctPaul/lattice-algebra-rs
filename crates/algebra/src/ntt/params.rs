@@ -6,6 +6,10 @@
 //! [`crate::ring::number_theory`] and is re-exported here for convenience.
 
 use crate::ring::Ring;
+// Only the `#[cfg(test)]` children use this, so the plain lib build reports it
+// unused; deleting it breaks `cargo test`.
+#[allow(unused_imports)]
+use alloc::vec;
 
 pub use crate::ring::number_theory::{find_primitive_root, prime_factors, primitive_root};
 

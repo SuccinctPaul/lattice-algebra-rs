@@ -14,8 +14,13 @@ categories.workspace = true
 name = "algebra"
 
 [features]
-default = []
-parallel = ["dep:rayon"]
+default = ["std"]
+# This crate is `#![no_std]` unconditionally and always needs `alloc` (its
+# public types own `Vec` buffers). `std` therefore does not switch the core on
+# or off — it is the hook for the std-only extras and is required by `parallel`
+# (rayon cannot build without std).
+std = []
+parallel = ["dep:rayon", "std"]
 # Safe explicit SIMD (via the `wide` crate; no `unsafe` in this workspace).
 # On x86_64 the 256-bit paths are gated at runtime on AVX2; aarch64 uses the
 # baseline NEON mapping. Scalar fallbacks always exist and are always tested.
@@ -23,13 +28,16 @@ simd = ["dep:wide"]
 
 [dependencies]
 rand.workspace = true
-rustfft.workspace = true
 serde.workspace = true
 sha3.workspace = true
+libm.workspace = true
 rayon = { workspace = true, optional = true }
 wide = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Tests may use std freely: the crate roots pull `extern crate std` under
+# `#[cfg(test)]`. Entropy comes from the default `rand` build here.
+rand = { version = "0.9.1" }
 criterion = { version = "0.5", features = ["html_reports"] }
 serde_json.workspace = true
 

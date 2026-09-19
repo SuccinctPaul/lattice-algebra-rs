@@ -74,7 +74,7 @@ provenance — the KAT-first rule above starts there.
   tests — if you rename what they use, update the docs page too.
 - **No `unsafe`** in any workspace crate.
 - **No new dependencies in `crates/algebra`** without discussion
-  (`rand`, `rustfft`, `serde`, `sha3` are the ceiling).
+  (`rand`, `serde`, `sha3`, `libm` are the ceiling).
 - Commit messages follow the
   [conventional commits](https://www.conventionalcommits.org/) style
   (git-cliff groups them into the CHANGELOG).

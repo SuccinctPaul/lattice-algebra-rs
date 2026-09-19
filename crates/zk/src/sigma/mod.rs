@@ -54,6 +54,7 @@ use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::traits::CenteredRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
+use alloc::vec::Vec;
 
 /// Errors surfaced by the protocol (ADR-7: typed rejection, no panics on
 /// secret-dependent paths).

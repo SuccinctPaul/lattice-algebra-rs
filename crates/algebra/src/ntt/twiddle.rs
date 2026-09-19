@@ -5,6 +5,7 @@
 
 use crate::ntt::params::{bit_reverse, NttParams};
 use crate::ring::Ring;
+use alloc::{vec, vec::Vec};
 
 /// Precomputed twiddle factors for NTT operations.
 ///

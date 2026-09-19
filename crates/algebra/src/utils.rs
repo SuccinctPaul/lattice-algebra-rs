@@ -1,3 +1,7 @@
+// Only the `#[cfg(test)]` children use this, so the plain lib build reports it
+// unused; deleting it breaks `cargo test`.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 /// Expands bytes into bits in little-endian bit order per byte.
 ///
 /// Example: `11 = 0b0000_1011` expands to `[1,1,0,1, 0,0,0,0]`.

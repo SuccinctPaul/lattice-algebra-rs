@@ -18,12 +18,16 @@ use crate::ntt::{is_ntt_friendly, NttOperatorOptimized};
 use crate::poly::UniPolynomial;
 use crate::ring::MatrixElement;
 use crate::ring::{PolynomialQuotientRing, Ring};
+// Only the `#[cfg(test)]` children use this, so the plain lib build reports it
+// unused; deleting it breaks `cargo test`.
+#[allow(unused_imports)]
+use alloc::{format, vec, vec::Vec};
+use core::fmt;
+use core::fmt::{Debug, Display, Formatter};
+use core::iter::Sum;
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::fmt::{Debug, Display, Formatter};
-use std::iter::Sum;
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A polynomial ring `R[x]/(x^n+1)` where R is a base ring and n is the degree bound.
 ///

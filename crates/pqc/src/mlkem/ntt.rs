@@ -287,7 +287,7 @@ mod tests {
 
     fn sample_coeffs(seed: u64) -> [i64; N] {
         let mut state = seed.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1);
-        std::array::from_fn(|_| {
+        core::array::from_fn(|_| {
             state ^= state << 13;
             state ^= state >> 7;
             state ^= state << 17;

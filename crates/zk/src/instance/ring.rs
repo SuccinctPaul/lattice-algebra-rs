@@ -16,6 +16,7 @@ use algebra::ring::traits::CenteredRing;
 use algebra::ring::zq::Zq;
 use algebra::ring::PolynomialQuotientRing;
 use algebra::ring::Ring;
+use alloc::{vec, vec::Vec};
 
 /// The Z2 ring: `Z_{2^32}[X]/(X^64+1)`.
 pub type Z2Ring = PolyRing<Zq<4294967296>, 64>;
@@ -241,7 +242,7 @@ mod tests {
             c
         });
         let prod = a.clone() * b.clone();
-        let ms = |r: &Z2Ring| modswitch_ring::<65536, D>(std::slice::from_ref(r)).remove(0);
+        let ms = |r: &Z2Ring| modswitch_ring::<65536, D>(core::slice::from_ref(r)).remove(0);
         let lhs = ms(&prod);
         let rhs = ms(&a) * ms(&b);
         assert_eq!(lhs.coefficients(), rhs.coefficients());

@@ -30,10 +30,13 @@
 /// `δ(µ) = ((πµ)^(1/µ) · µ / (2πe))^(1/(2(µ−1)))`
 #[must_use]
 pub fn root_hermite(mu: f64) -> f64 {
-    let pi = std::f64::consts::PI;
-    let e = std::f64::consts::E;
+    let pi = core::f64::consts::PI;
+    let e = core::f64::consts::E;
     assert!(mu >= 2.0, "block size must be ≥ 2");
-    ((pi * mu).powf(1.0 / mu) * mu / (2.0 * pi * e)).powf(1.0 / (2.0 * (mu - 1.0)))
+    libm::pow(
+        libm::pow(pi * mu, 1.0 / mu) * mu / (2.0 * pi * e),
+        1.0 / (2.0 * (mu - 1.0)),
+    )
 }
 
 /// Cost exponent for a single **classical** SVP call in dimension `µ`
@@ -133,11 +136,11 @@ fn smallest_block_size(success: impl Fn(u32) -> bool) -> Option<u32> {
 pub fn lwe_primal_block_size(inst: &LweInstance) -> Option<u32> {
     let c = (inst.n_secret + inst.n_samples + 1) as f64;
     let na = inst.n_secret as f64;
-    let q_target = (inst.q as f64).powf(na / c);
+    let q_target = libm::pow(inst.q as f64, na / c);
     smallest_block_size(|mu| {
         let muf = f64::from(mu);
-        let rhs = root_hermite(muf).powf(2.0 * muf - c) * q_target;
-        inst.sigma * muf.sqrt() <= rhs
+        let rhs = libm::pow(root_hermite(muf), 2.0 * muf - c) * q_target;
+        inst.sigma * libm::sqrt(muf) <= rhs
     })
 }
 
@@ -152,10 +155,10 @@ pub fn lwe_dual_block_size(inst: &LweInstance) -> Option<u32> {
     let q = inst.q as f64;
     smallest_block_size(|mu| {
         let muf = f64::from(mu);
-        let tau = root_hermite(muf).powf(c - 1.0) * q.powf(nb / c) * inst.sigma / q;
-        let advantage = -2.0 * std::f64::consts::PI * std::f64::consts::PI * tau * tau;
+        let tau = libm::pow(root_hermite(muf), c - 1.0) * libm::pow(q, nb / c) * inst.sigma / q;
+        let advantage = -2.0 * core::f64::consts::PI * core::f64::consts::PI * tau * tau;
         // ln(2^(−0.2075µ)/2) = −0.2075µ·ln2 − ln2
-        let distinguishable = -0.2075 * muf * std::f64::consts::LN_2 - std::f64::consts::LN_2;
+        let distinguishable = -0.2075 * muf * core::f64::consts::LN_2 - core::f64::consts::LN_2;
         advantage >= distinguishable
     })
 }
@@ -179,13 +182,13 @@ pub fn lwe_block_size(inst: &LweInstance) -> Option<u32> {
 /// the attack succeeds when `length/√(n_rows + n_cols) ≤ bound_inf`.
 #[must_use]
 pub fn sis_block_size(inst: &SisInstance) -> Option<u32> {
-    let log2q = (inst.q as f64).log2();
+    let log2q = libm::log2(inst.q as f64);
     let dim = (inst.n_rows + inst.n_cols) as f64;
     let na = inst.n_rows as f64;
     smallest_block_size(|mu| {
-        let log2_delta = root_hermite(f64::from(mu)).log2();
-        let length = (2.0 * (na * log2q * log2_delta).sqrt()).exp2();
-        length / dim.sqrt() <= inst.bound_inf
+        let log2_delta = libm::log2(root_hermite(f64::from(mu)));
+        let length = libm::exp2(2.0 * libm::sqrt(na * log2q * log2_delta));
+        length / libm::sqrt(dim) <= inst.bound_inf
     })
 }
 
@@ -206,7 +209,7 @@ pub fn sis_security(inst: &SisInstance) -> Option<CoreSvpBits> {
 #[must_use]
 pub fn uniform_sigma(eta: u32) -> f64 {
     let e = f64::from(eta);
-    (e * (e + 1.0) / 3.0).sqrt()
+    libm::sqrt(e * (e + 1.0) / 3.0)
 }
 
 /// Full attack picture for an ML-DSA-style parameter set.

@@ -62,6 +62,10 @@ use algebra::crypto::transcript::Transcript;
 use algebra::crypto::xof::Shake128Xof;
 use algebra::ring::traits::CenteredRing;
 use algebra::ring::{PolynomialQuotientRing, Ring};
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 
 /// Ajtai commitment key for shortness arguments: `A ∈ R^{N×M}` derived from
 /// a seed — the shared [`AjtaiKey`] under the protocol-historical name.

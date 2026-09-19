@@ -17,6 +17,7 @@
 //! - All three parameter sets (ML-KEM-512/768/1024) are provided as
 //!   zero-sized types behind [`MlKemParams`].
 
+use alloc::{vec, vec::Vec};
 pub mod encoding;
 pub mod ntt;
 pub mod params;
@@ -29,9 +30,9 @@ mod simd_ntt;
 pub use params::{MlKem1024, MlKem512, MlKem768, MlKemParams, N, Q};
 
 use algebra::crypto::xof::shortcuts::shake256_parts;
+use core::marker::PhantomData;
 use sha3::digest::Digest;
 use sha3::{Sha3_256, Sha3_512};
-use std::marker::PhantomData;
 
 use algebra::crypto::xof::Shake128Xof;
 
@@ -337,8 +338,8 @@ impl<P: MlKemParams> AsMut<[u8]> for Ciphertext<P> {
         &mut self.bytes
     }
 }
-impl<P: MlKemParams> std::fmt::Debug for Ciphertext<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: MlKemParams> core::fmt::Debug for Ciphertext<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ciphertext").finish_non_exhaustive()
     }
 }
@@ -353,8 +354,8 @@ impl SharedSecret {
     }
 }
 
-impl std::fmt::Debug for SharedSecret {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for SharedSecret {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SharedSecret").finish_non_exhaustive()
     }
 }
@@ -427,8 +428,8 @@ impl<P: MlKemParams> EncapsulationKey<P> {
     }
 }
 
-impl<P: MlKemParams> std::fmt::Debug for EncapsulationKey<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: MlKemParams> core::fmt::Debug for EncapsulationKey<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("EncapsulationKey").finish_non_exhaustive()
     }
 }
@@ -503,8 +504,8 @@ impl<P: MlKemParams> DecapsulationKey<P> {
     }
 }
 
-impl<P: MlKemParams> std::fmt::Debug for DecapsulationKey<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: MlKemParams> core::fmt::Debug for DecapsulationKey<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DecapsulationKey").finish_non_exhaustive()
     }
 }
@@ -592,6 +593,10 @@ macro_rules! instantiate_mlkem {
         #[doc = concat!("ML-KEM API bound to [`", stringify!($params), "`].")]
         pub mod $mod_name {
             pub use super::{Ciphertext, DecapsulationKey, EncapsulationKey, SharedSecret};
+            // Every parameter set expands this module; only the `parallel`/`simd` batch
+            // APIs use `Vec`, so the scalar default build sees the import as unused.
+            #[allow(unused_imports)]
+            use alloc::vec::Vec;
 
             /// FIPS 203 `ML-KEM.KeyGen(d, z)`.
             pub fn keygen(

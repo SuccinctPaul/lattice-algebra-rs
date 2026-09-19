@@ -31,7 +31,7 @@ assert!(ZqD::new(16).leq_infinity(16));
 | Barrett with precomputed μ, lazy reduction | small `q` (e.g. 3329) | 📋 ML-KEM hot paths |
 | Montgomery | odd `q`, batch work (SNARK parameters) | 📋 |
 | Shoup precomputed twiddles | NTT internals | 📋 |
-| rustfft generic FFT | non-2-adic `q` (L2 fallback) | ✅ |
+| In-tree radix-2 `f64` FFT | non-2-adic `q` (L2 fallback) | ✅ |
 
 Strategy choice is an implementation detail and never enters trait semantics.
 

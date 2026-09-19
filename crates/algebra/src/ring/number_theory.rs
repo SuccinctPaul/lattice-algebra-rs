@@ -5,6 +5,10 @@
 //! the layering rules (see docs: L0 depends on nothing).
 
 use crate::ring::Ring;
+// Only the `#[cfg(test)]` children use this, so the plain lib build reports it
+// unused; deleting it breaks `cargo test`.
+#[allow(unused_imports)]
+use alloc::{vec, vec::Vec};
 
 /// Deterministic Miller-Rabin primality test for `u64`.
 ///

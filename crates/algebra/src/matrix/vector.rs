@@ -8,8 +8,9 @@
 
 use crate::ring::poly_ring::PolyRing;
 use crate::ring::MatrixElement;
+use alloc::{vec, vec::Vec};
+use core::ops::{Add, Mul, Sub};
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Mul, Sub};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -81,13 +82,13 @@ impl<T: MatrixElement> GenericVector<T> {
 
     /// Returns an iterator over the vector elements.
     #[inline]
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.elements.iter()
     }
 
     /// Returns a mutable iterator over the vector elements.
     #[inline]
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+    pub fn iter_mut(&mut self) -> core::slice::IterMut<'_, T> {
         self.elements.iter_mut()
     }
 

@@ -14,9 +14,12 @@ categories.workspace = true
 name = "pqc"
 
 [features]
-default = []
+default = ["std"]
+# `#![no_std]` + `alloc` unconditionally; `std` is the hook for std-only extras
+# and is required by `parallel` (see the `algebra` crate for the same shape).
+std = ["lattice-algebra/std"]
 # Multi-threaded batch APIs and row/block parallelism (rayon).
-parallel = ["dep:rayon"]
+parallel = ["dep:rayon", "std"]
 # Umbrella: every SIMD-accelerated kernel below. The lane paths are written
 # on `wide` fixed-width types (no `unsafe`), which execute safely on every
 # supported CPU — they lower to AVX2 under `target-feature=+avx2` and
@@ -41,6 +44,9 @@ rayon = { workspace = true, optional = true }
 wide = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Tests may use std freely: the crate roots pull `extern crate std` under
+# `#[cfg(test)]`.
+rand = { version = "0.9.1" }
 criterion = { version = "0.5", features = ["html_reports"] }
 serde_json.workspace = true
 

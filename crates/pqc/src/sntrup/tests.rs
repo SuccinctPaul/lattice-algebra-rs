@@ -1,6 +1,7 @@
 //! Unit tests for this scheme, split out of `mod.rs`.
 
 use super::*;
+use alloc::vec::Vec;
 
 /// Deterministic pseudo-random byte fill (round-trip tests don't need
 /// statistical randomness — only independence between test cases).

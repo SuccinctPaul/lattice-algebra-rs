@@ -20,6 +20,7 @@
 //! three parts, [`encapsulate`] takes the fresh `μ` — the same values the
 //! reference draws from one `randombytes` call.
 
+use alloc::{vec, vec::Vec};
 pub mod aes;
 pub mod encoding;
 pub mod params;
@@ -34,7 +35,7 @@ pub use params::{
 
 use crate::error::{InvalidInput, SchemeResult};
 use algebra::crypto::xof::shortcuts::{shake128_parts, shake256_parts};
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 use self::simd::{axpy16, dot16};
 
@@ -331,8 +332,8 @@ impl<P: FrodoParams> PartialEq for PublicKey<P> {
     }
 }
 
-impl<P: FrodoParams> std::fmt::Debug for PublicKey<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: FrodoParams> core::fmt::Debug for PublicKey<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("PublicKey").finish_non_exhaustive()
     }
 }
@@ -377,8 +378,8 @@ pub struct SecretKey<P: FrodoParams> {
     pkh: Vec<u8>,
 }
 
-impl<P: FrodoParams> std::fmt::Debug for SecretKey<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: FrodoParams> core::fmt::Debug for SecretKey<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SecretKey").finish_non_exhaustive()
     }
 }
@@ -463,8 +464,8 @@ impl<P: FrodoParams> AsMut<[u8]> for Ciphertext<P> {
         &mut self.bytes
     }
 }
-impl<P: FrodoParams> std::fmt::Debug for Ciphertext<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<P: FrodoParams> core::fmt::Debug for Ciphertext<P> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ciphertext").finish_non_exhaustive()
     }
 }
@@ -479,8 +480,8 @@ impl SharedSecret {
     }
 }
 
-impl std::fmt::Debug for SharedSecret {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for SharedSecret {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SharedSecret").finish_non_exhaustive()
     }
 }
@@ -705,6 +706,10 @@ macro_rules! instantiate_frodo {
         #[doc = $doc]
         pub mod $mod_name {
             pub use super::{Ciphertext, PublicKey, SecretKey, SharedSecret};
+            // Every parameter set expands this module; only the `parallel`/`simd` batch
+            // APIs use `Vec`, so the scalar default build sees the import as unused.
+            #[allow(unused_imports)]
+            use alloc::vec::Vec;
 
             /// FrodoKEM key generation from the reference's keygen
             /// randomness split as `(s ‖ seedSE ‖ z)` — `s`/`seedSE` are

@@ -1,6 +1,12 @@
+#![no_std]
 #![allow(clippy::module_inception)]
 #![deny(missing_docs)]
 //! L0-L4 algebraic foundation for lattice-based cryptography.
+//!
+//! The crate is `#![no_std]` and links `alloc`: every public type owns its
+//! buffers through `Vec`, so an allocator is required but `std` is not. The
+//! `std` feature adds no code paths of its own today — it is the hook that
+//! `parallel` (rayon) depends on.
 //!
 //! This crate is the shared substrate that the `lattice-pqc` (NIST PQC
 //! schemes) and `lattice-zk` (zkSNARK building blocks) crates build on:
@@ -20,6 +26,12 @@
 //! - [`matrix`]: generic matrices/vectors of ring elements.
 //! - [`utils`]: small shared bit/byte conversion helpers (little-endian bit
 //!   order, bit normalization).
+
+extern crate alloc;
+// Tests link std so they can keep using `Instant`, `eprintln!` and the
+// thread RNG; the library proper never sees it.
+#[cfg(test)]
+extern crate std;
 
 pub mod crypto;
 /// Generic matrices/vectors of ring elements with row-major storage.

@@ -2,6 +2,7 @@
 //! `use super::*` keeps `pub(crate)` helpers reachable.
 
 use super::*;
+use alloc::vec;
 
 pub(crate) const MSG: &[u8] = b"the quick brown fox jumps over the lazy dog";
 pub(crate) const CTX: &[u8] = b"test-context";

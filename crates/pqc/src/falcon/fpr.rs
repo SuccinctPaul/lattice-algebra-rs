@@ -8,6 +8,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tables::{FPR_GM_TAB, FPR_P2_TAB};
+use alloc::{format, string::String, vec::Vec};
 
 /// A real number as its raw IEEE-754 binary64 bit pattern, carried in a
 /// `u64` and never routed through `f64` arithmetic (integer soft-float, so
@@ -622,7 +623,7 @@ mod tests {
         assert_eq!(f64::from_bits(FPR_ONE), 1.0);
         assert_eq!(f64::from_bits(FPR_TWO), 2.0);
         assert_eq!(f64::from_bits(FPR_ONEHALF), 0.5);
-        assert_eq!(f64::from_bits(FPR_LOG2), std::f64::consts::LN_2);
+        assert_eq!(f64::from_bits(FPR_LOG2), core::f64::consts::LN_2);
         assert_eq!(
             f64::from_bits(FPR_INV_2SQRSIGMA0),
             1.0 / (2.0 * 1.8205_f64.powi(2))

@@ -10,6 +10,7 @@
 
 use super::params::N;
 use super::params::Q;
+use alloc::{vec, vec::Vec};
 
 /// FIPS 203 `ByteEncode_d`: serializes 256 coefficients in `[0, 2^d)` into
 /// `32·d` bytes, LSB-first.

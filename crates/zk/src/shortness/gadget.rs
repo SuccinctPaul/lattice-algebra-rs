@@ -11,6 +11,10 @@
 
 use crate::foundation::encoding::ring_to_u32;
 use crate::instance::ring::{Z2Ring, D};
+// Needed only under some `cfg` (test or feature); the plain lib build
+// does not use it, so the lint cannot be satisfied by deleting it.
+#[allow(unused_imports)]
+use alloc::vec::Vec;
 
 /// Gadget split: `v = high·2^drop + low`, with `low` re-centered into
 /// `(−2^{drop−1}, 2^{drop−1}]` and the remainder tracked as slack.

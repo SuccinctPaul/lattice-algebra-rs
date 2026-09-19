@@ -10,6 +10,7 @@
 //! docs (`design/hash-fiat-shamir`) for the labeling protocol.
 
 use crate::crypto::xof::Xof;
+use alloc::vec::Vec;
 
 /// Fiat–Shamir transcript over an [`Xof`].
 #[derive(Clone)]

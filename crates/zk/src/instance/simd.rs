@@ -86,7 +86,7 @@ mod tests {
 
     fn ring_from_seed(seed: u64) -> Z2Ring {
         let mut rng = Rng(seed);
-        let coeffs: [u32; D] = std::array::from_fn(|_| rng.next() as u32);
+        let coeffs: [u32; D] = core::array::from_fn(|_| rng.next() as u32);
         ring_from_u32(&coeffs)
     }
 

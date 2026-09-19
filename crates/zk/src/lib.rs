@@ -1,8 +1,11 @@
+#![no_std]
 #![allow(clippy::module_inception)]
 #![deny(missing_docs)]
 //! Lattice-based zero-knowledge proof building blocks on the [`algebra`]
 //! foundation, organized by **domain**: each directory is one domain, and
 //! the layering is strict —
+//!
+//! The crate is `#![no_std]` and links `alloc`.
 //!
 //! ```text
 //! foundation ──▶ instance ──▶ commitment ──▶ sigma / opening / sumcheck / shortness / folding
@@ -33,6 +36,12 @@
 //! (`crates/zk/docs/survey-lattice-zksnarks.md`).
 //!
 //! [`algebra`]: algebra
+
+extern crate alloc;
+// Tests link std so they can keep using `Instant`, `eprintln!` and the
+// thread RNG; the library proper never sees it.
+#[cfg(test)]
+extern crate std;
 
 pub mod commitment;
 pub mod folding;
