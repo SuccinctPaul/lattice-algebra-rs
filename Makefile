@@ -39,6 +39,23 @@ gate: # The full merge gate: fmt + clippy + tests (what CI runs).
 	cargo clippy --workspace --all-targets --no-deps -- --deny warnings
 	cargo test --workspace
 
+##@ Coverage (needs: brew install cargo-llvm-cov)
+.PHONY: coverage
+coverage: # Line/region coverage table for the whole workspace.
+	cargo llvm-cov --workspace --all-features --summary-only
+
+.PHONY: coverage-missing
+coverage-missing: # Same run, plus the exact uncovered line numbers per file.
+	cargo llvm-cov --workspace --all-features --show-missing-lines
+
+.PHONY: coverage-gate
+coverage-gate: # Fail below the line-coverage floor (set FLOOR to adjust).
+	cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines $(or $(FLOOR),80)
+
+.PHONY: coverage-html
+coverage-html: # Browsable HTML report (target/llvm-cov/html) for one crate.
+	cargo llvm-cov -p lattice-algebra --all-features --html
+
 ##@ Benchmarks & docs
 .PHONY: bench
 bench: # Run all criterion benchmarks.
