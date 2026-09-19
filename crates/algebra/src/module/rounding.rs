@@ -183,12 +183,12 @@ mod probe {
     const G: i64 = 261_888;
 
     #[test]
-    fn probe_hint_direction() {
-        // property A: UseHint(MakeHint(z, r), r) == HighBits(r + z)
-        // property B: UseHint(MakeHint(z, r), r + z) == HighBits(r)
-        let mut a_ok = 0;
-        let mut b_ok = 0;
-        let mut total = 0;
+    fn hint_identities_hold_in_both_directions() {
+        // The two readings of the hint identity, asserted rather than printed:
+        //   A: UseHint(MakeHint(z, r), r)      == HighBits(r + z)
+        //   B: UseHint(MakeHint(z, r), r + z)  == HighBits(r)
+        // Both are guaranteed only while the perturbation stays inside the
+        // FIPS 204 decoding bound |z| <= γ2 - 1, so the sweep respects it.
         for r in [
             0i64,
             100_000,
@@ -198,16 +198,19 @@ mod probe {
             8_000_000,
             Q - 1,
         ] {
-            for z in [-261_888i64, -100_000, -1, 1, 100_000, 261_887] {
+            for z in [-(G - 1), -100_000, -1, 1, 100_000, G - 1] {
                 let h = make_hint(z, r, G, Q);
-                let a = use_hint(r, h, G, Q) == high_bits(r + z, G, Q);
-                let b = use_hint(r + z, h, G, Q) == high_bits(r, G, Q);
-                a_ok += a as usize;
-                b_ok += b as usize;
-                total += 1;
+                assert_eq!(
+                    use_hint(r + z, h, G, Q),
+                    high_bits(r, G, Q),
+                    "B failed for z = {z}, r = {r}"
+                );
+                assert_eq!(
+                    use_hint(r, h, G, Q),
+                    high_bits(r + z, G, Q),
+                    "A failed for z = {z}, r = {r}"
+                );
             }
         }
-        println!("property A (UseHint(h,r)==HighBits(r+z)): {a_ok}/{total}");
-        println!("property B (UseHint(h,r+z)==HighBits(r)): {b_ok}/{total}");
     }
 }
