@@ -32,6 +32,32 @@ Inner-product argument on Ajtai-committed vectors: given `c = A_com·α` and pub
 - `X` non-unit blocks the adaptive-`t*` division attack.
 - `ipa_gadget_open` + `approx_slack_bound(drop)`: the response can be opened **approximately** through a gadget split (`α' = 2^drop·hi + lo`, `|lo| ≤ 2^{drop−1}`) with the provable per-coefficient slack `D·2^{drop−1}` — the mechanism the full LaBRADOR recursion uses to keep opened values short.
 
+## Multi-assertion batching + vanishing range claims (`sumcheck::batch`, `sumcheck::range`)
+
+The Π_batch shape (LatticeFold's batched sumcheck): `K` claims over the same
+hypercube merge into **one** round structure —
+
+1. the challenger derives a batch weight `γ` after the statement is absorbed;
+2. claims fold as `T* = Σᵢ γⁱ·wᵢ·Tᵢ` (weight `wᵢ` = all-ones or `eq(βᵢ, ·)`),
+   claimed sum `v* = Σᵢ γⁱ·vᵢ`;
+3. one sumcheck runs on `T*`; the single final evaluation ties the batch back
+   to public data (transparent mode recomputes `combined_table`; a committed
+   deployment swaps the tables for PCS openings — unchanged round structure).
+
+Batch soundness adds a Schwartz–Zippel factor over `γ` (`≤ K/|R|`) on top of
+the per-round ring bound. The vanishing-polynomial checks plug in as extra
+claims: the digit-range claim applies `g_b(X) = ∏_{i=0..b}(X−i)(X+i)` (zero
+set exactly `[−b, b]`) position-wise — "a sumcheck over the ℓ variables
+proves every digit is in range" — and the Booleanity claim applies `X² − X`.
+Over a prime ring both are **exact** for canonical representatives (a factor
+`w₀² ≡ i² (mod q)` forces `w₀ ≡ ±i`; the alternative root `q − i` falls
+outside the centered range once `2b < q`), and unsound over `2^k` rings —
+the range/bit checks assert primality, the 2-adic line keeps its norm gates.
+
+The NTT-diagonal strong-sampling set for the round challenges over prime
+rings lands with `foundation::sampling::diagonal_set_poly` (nonzero
+constants — distinct draws differ by a unit).
+
 ## Z2 × Z3 cross-check
 
 Same toy R1CS instance (1024 squaring gates, same witness) through both proof paths:
@@ -51,6 +77,9 @@ Both paths assert acceptance on the identical instance/witness pair — the cros
 - `wrong_claim_is_rejected`, `tampered_round_message_is_rejected`, `challenge_divergence_detected`;
 - `ipa` prove/verify, gadget opening bounds;
 - `z2_z3_crosscheck_and_benchmarks`: both paths accept the same instance; sizes asserted (3072 B / 5376 B); timings printed.
+- `batch`: honest K-claim batch with one round structure + final-eval tie-back; eq(β)-weighted claims; forged tables caught at round 1 and (self-consistent forgery) at the tie-back; γ binds the absorbed statement;
+- `range`: exact bit/range checks over the prime ring (in-range and boundary values, near-modulus representatives); range-claim table sums to zero iff all digits in range; non-prime rings refused;
+- `batched_sumcheck_merges_data_claims_and_range_claim` (contract test): data + eq(β) + range claims in one proof, single out-of-range digit rejected.
 
 ## What Z3 does *not* claim
 

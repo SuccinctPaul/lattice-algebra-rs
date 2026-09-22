@@ -48,6 +48,7 @@ export default defineConfig({
         { text: 'Z4/Z5 · Folding & IVC', link: '/schemes/z4-folding' },
         { text: 'Z5 · Shortness Arguments', link: '/schemes/z5-shortness' },
         { text: 'Z6 · Blinded Σ & Helpers', link: '/schemes/z6-blinded-sigma' },
+        { text: 'Z7 · Polynomial Commitment', link: '/schemes/z7-pcs' },
       ],
     },
     {

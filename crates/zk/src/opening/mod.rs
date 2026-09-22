@@ -56,6 +56,31 @@
 //! Z3 sumcheck path replaces this single combination with round-by-round
 //! challenges.
 //!
+//! # Why the amortized compression is not a local change
+//!
+//! The natural compression — replacing the revelation of `m, q` by a
+//! second-level Σ-response `z_m = y_m + X₂·m` under the recursion key —
+//! does **not** preserve the soundness upgrade (attempted and analyzed):
+//!
+//! - Bridging the hidden per-gate terms to the revealed `t*` multiplies
+//!   through the level-2 challenge: consistency reduces to
+//!   `X₂·(t* − ⟨γ, m⟩) = 0`. `X₂` must stay a **non-unit** (a unit
+//!   level-2 challenge lets a forger solve the links post-hoc), and a
+//!   non-unit of `Z_{2^32}[X]/(X^64+1)` is a zero divisor with a
+//!   nontrivial annihilator — the bridge re-admits exactly the
+//!   ½-per-grind slack the recursion was built to close.
+//! - Dropping the per-gate responses entirely makes the check vacuous:
+//!   the recursion key `A₂ ∈ R^{4×GATES}` has full row rank, so any
+//!   claimed combined response solves `A₂·Z = RHS` for an arbitrary
+//!   claimed `t*`.
+//!
+//! The sound compression therefore needs the full LaBRADOR
+//! amortized-openings machinery: per-gate commitments folded pairwise
+//! (Ajtai linearity `A·(s + γs′) = A·s + γ·A·s′` moves the challenge to
+//! the commitment side where it is verifier-computable), with
+//! JL-projection norm checks closing the relaxed extraction — tracked as
+//! the Z2/Z3 size-optimization milestone (survey rows 19/24).
+//!
 //! # Approximate shortness (gadget layer)
 //!
 //! [`gadget_split`] decomposes coefficients into high digits plus a centered
@@ -98,12 +123,12 @@ pub const N_RECURSION: usize = 4;
 /// Derives the recursion commitment key for a gate count (runtime shaped:
 /// one column per gate, derived from the same seed as `A_com` under a
 /// distinct domain label).
-fn recursion_key(seed: &[u8; 32], gates: usize) -> Vec<Vec<Z2Ring>> {
+pub(crate) fn recursion_key(seed: &[u8; 32], gates: usize) -> Vec<Vec<Z2Ring>> {
     uniform_matrix_from_seed::<Z2Coeff, D>(b"z2-recursion", seed, N_RECURSION, gates)
 }
 
 /// `A₂·v` for the runtime-shaped recursion key.
-fn commit_masked(a2: &[Vec<Z2Ring>], v: &[Z2Ring]) -> Vec<Z2Ring> {
+pub(crate) fn commit_masked(a2: &[Vec<Z2Ring>], v: &[Z2Ring]) -> Vec<Z2Ring> {
     (0..N_RECURSION)
         .map(|i| {
             let mut acc = Z2Ring::zero();
@@ -361,7 +386,7 @@ impl Z2Proof {
 /// `Z_{2^32}[X]/(X^64+1)` (see the module-level soundness notes: the
 /// monomial `X` alone is always a unit, which would make the verifier
 /// equation vacuous).
-fn challenges(
+pub(crate) fn challenges(
     key_seed: &[u8; 32],
     r1cs_seed: &[u8; 32],
     c: &[Z2Ring],
@@ -383,7 +408,7 @@ fn challenges(
 
 /// Per-gate masked constraint terms on the honest witness and mask:
 /// `m_k = 2(A_k·z)(A_k·y) − U_k·y_sel` and `q_k = (A_k·y)²`.
-fn masked_constraint_terms(
+pub(crate) fn masked_constraint_terms(
     r1cs: &ToyR1cs,
     z: &[Z2Ring],
     y: &[Z2Ring],
@@ -435,7 +460,7 @@ pub fn constraint_residuals(r1cs: &ToyR1cs, zp: &[Z2Ring]) -> Vec<Z2Ring> {
 }
 
 /// Random linear combination `Σ γ^k · v_k` (Horner).
-fn ring_combine(v: &[Z2Ring], gamma: &Z2Ring) -> Z2Ring {
+pub(crate) fn ring_combine(v: &[Z2Ring], gamma: &Z2Ring) -> Z2Ring {
     let mut acc = Z2Ring::zero();
     for v_k in v.iter().rev() {
         acc = z2_mul(&acc, gamma) + v_k.clone();

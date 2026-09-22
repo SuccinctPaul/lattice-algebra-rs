@@ -206,5 +206,154 @@ fn bench_fold(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_sigma, bench_z2, bench_sumcheck, bench_fold);
+fn bench_pcs(c: &mut Criterion) {
+    let mut group = c.benchmark_group("pcs_z7");
+    use zk::foundation::sampling::from_centered;
+    use zk::pcs::{self, greyhound};
+
+    let key = greyhound::GreyhoundKey::setup(&seed32(b"zk-bench-pcs"));
+    let f: Vec<pcs::RingElt> = (0..pcs::N_DEG)
+        .map(|i| {
+            let coeffs: Vec<_> = (0..pcs::DIM)
+                .map(|j| from_centered::<pcs::Z1Coeff>(((i * 7 + j) % 9) as i64 - 4))
+                .collect();
+            pcs::RingElt::from_coefficients(coeffs)
+        })
+        .collect();
+    let mut x_coeffs = [0u32; pcs::DIM];
+    x_coeffs[0] = 424_242;
+    let x = ring_from_u32::<pcs::Z1Coeff, { pcs::DIM }>(&x_coeffs);
+    let com = greyhound::commit(&key, &f).expect("canonical length");
+    let (y, proof) = greyhound::open(&key, &f, &x).expect("canonical length");
+    assert!(greyhound::verify(&key, &com, &x, &y, &proof).is_ok());
+
+    group.bench_function("commit_n64", |bench| {
+        bench.iter(|| greyhound::commit(black_box(&key), black_box(&f)).expect("canonical length"))
+    });
+    group.bench_function("open_n64", |bench| {
+        bench.iter(|| {
+            greyhound::open(black_box(&key), black_box(&f), black_box(&x))
+                .expect("canonical length")
+        })
+    });
+    group.bench_function("verify_n64", |bench| {
+        bench.iter(|| {
+            assert!(greyhound::verify(
+                black_box(&key),
+                black_box(&com),
+                black_box(&x),
+                black_box(&y),
+                black_box(&proof)
+            )
+            .is_ok())
+        })
+    });
+
+    // Batched opening: four polynomials at one shared point.
+    use zk::pcs::batched;
+    let polys: Vec<Vec<pcs::RingElt>> = (0..4)
+        .map(|p| {
+            (0..pcs::N_DEG)
+                .map(|i| {
+                    let coeffs: Vec<_> = (0..pcs::DIM)
+                        .map(|j| {
+                            from_centered::<pcs::Z1Coeff>(
+                                ((p as i64 * 11 + i as i64 * 7 + j as i64) % 9) - 4,
+                            )
+                        })
+                        .collect();
+                    pcs::RingElt::from_coefficients(coeffs)
+                })
+                .collect()
+        })
+        .collect();
+    let refs: Vec<&[pcs::RingElt]> = polys.iter().map(|f| f.as_slice()).collect();
+    let coms: Vec<greyhound::PolyCommitment> = polys
+        .iter()
+        .map(|f| greyhound::commit(&key, f).expect("canonical length"))
+        .collect();
+    let (ys, batched_proof) = batched::open_batch(&key, &refs, &x).expect("canonical length");
+    assert!(batched::verify_batch(&key, &coms, &x, &ys, &batched_proof).is_ok());
+
+    group.bench_function("batched_open_k4", |bench| {
+        bench.iter(|| {
+            batched::open_batch(black_box(&key), black_box(&refs), black_box(&x))
+                .expect("canonical length")
+        })
+    });
+    group.bench_function("batched_verify_k4", |bench| {
+        bench.iter(|| {
+            assert!(batched::verify_batch(
+                black_box(&key),
+                black_box(&coms),
+                black_box(&x),
+                black_box(&ys),
+                black_box(&batched_proof)
+            )
+            .is_ok())
+        })
+    });
+
+    group.finish();
+}
+
+fn bench_batched_sumcheck(c: &mut Criterion) {
+    let mut group = c.benchmark_group("pi_batch_z3");
+    use algebra::ring::MatrixElement;
+    use zk::sumcheck::batch::{prove_batched, verify_batched, BatchClaim};
+    use zk::sumcheck::FsChallenger;
+
+    const G: usize = 10;
+    type Rq = Zq<8380417>;
+
+    let tables: Vec<Vec<Rq>> = (0..4)
+        .map(|k| {
+            (0..1 << G)
+                .map(|i| Rq::from((k as u64 * 1000 + (i * 37 % 97) as u64) % 8_380_417))
+                .collect()
+        })
+        .collect();
+    let claims: Vec<BatchClaim<'_, Rq, G>> = tables
+        .iter()
+        .map(|t| BatchClaim {
+            table: t,
+            eq_point: None,
+            claimed: t.iter().fold(Rq::zero(), |a, b| a + *b),
+        })
+        .collect();
+    let claimed_list: Vec<Rq> = claims.iter().map(|c| c.claimed).collect();
+
+    let mut ch = FsChallenger::<Shake128Xof, Rq>::new(b"zk-bench-pi-batch");
+    let proof = prove_batched::<Rq, G>(&claims, &mut ch);
+    let mut chv = FsChallenger::<Shake128Xof, Rq>::new(b"zk-bench-pi-batch");
+    assert!(verify_batched::<Rq, G>(&proof, &claimed_list, &mut chv).is_some());
+
+    group.bench_function("prove_k4_g10", |bench| {
+        bench.iter(|| {
+            let mut ch = FsChallenger::<Shake128Xof, Rq>::new(b"zk-bench-pi-batch");
+            prove_batched::<Rq, G>(black_box(&claims), &mut ch)
+        })
+    });
+    group.bench_function("verify_k4_g10", |bench| {
+        bench.iter(|| {
+            let mut ch = FsChallenger::<Shake128Xof, Rq>::new(b"zk-bench-pi-batch");
+            assert!(
+                verify_batched::<Rq, G>(black_box(&proof), black_box(&claimed_list), &mut ch)
+                    .is_some()
+            )
+        })
+    });
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_sigma,
+    bench_z2,
+    bench_sumcheck,
+    bench_fold,
+    bench_pcs,
+    bench_batched_sumcheck
+);
 criterion_main!(benches);

@@ -31,6 +31,9 @@
 //! - [`uniform_ring_from_seed`] / [`uniform_vec_from_seed`] /
 //!   [`uniform_matrix_from_seed`]: seed-driven expansion with domain
 //!   separation, for commitment keys and masks.
+//! - [`diagonal_set_poly`]: the NTT-slot diagonal challenge set for prime
+//!   rings — nonzero constants, whose differences are always units (the
+//!   prime-ring counterpart of [`odd_sum_poly`]).
 //! - [`from_centered`] / [`poly_from_centered`]: centered representatives →
 //!   ring elements (witness construction, test vectors).
 
@@ -337,6 +340,44 @@ pub fn nonunit_linear_poly<R: Ring, X: Xof, const N: usize>(xof: &mut X) -> Poly
     coeffs[0] = R::from(R::MODULUS - a);
     coeffs[1] = R::ONE;
     PolyRing::from_coefficients(coeffs)
+}
+
+/// Draws a **strong-sampling-set** challenge for prime rings whose NTT
+/// splits: a nonzero **constant** polynomial — the NTT-slot diagonal set
+/// (under CRT `R_q ≅ F_q^d`, constants are exactly the elements with all
+/// slots equal). Any two distinct draws differ in a nonzero constant, and
+/// nonzero constants are units of `R_q` for prime `q`, so differences are
+/// *always* invertible — the prime-ring counterpart of [`odd_sum_poly`],
+/// and the challenge set LatticeFold uses "`C = Z_q` when the NTT splits
+/// fully".
+///
+/// The challenge space is `|C| = q − 1`: re-size the ring until that meets
+/// the soundness target before any security claim (the toy rings are for
+/// tests).
+///
+/// # Panics
+/// If the ring is not prime (the 2-adic counterpart is [`odd_sum_poly`]).
+pub fn diagonal_set_poly<R: Ring, X: Xof, const N: usize>(xof: &mut X) -> PolyRing<R, N> {
+    assert!(
+        R::IS_PRIME,
+        "the NTT-diagonal challenge set needs a prime ring that splits X^N + 1"
+    );
+    let nbytes = (R::MODULUS.ilog2() as usize) / 8 + 1;
+    let mut buf = [0u8; 8];
+    loop {
+        xof.squeeze(&mut buf[..nbytes]);
+        let mut a = 0u64;
+        for (i, &b) in buf[..nbytes].iter().enumerate() {
+            a |= (b as u64) << (8 * i);
+        }
+        let c = a % R::MODULUS;
+        if c != 0 {
+            let mut coeffs = Vec::with_capacity(N);
+            coeffs.push(R::from(c));
+            coeffs.resize(N, R::ZERO);
+            return PolyRing::from_coefficients(coeffs);
+        }
+    }
 }
 
 /// Draws a `k`-element challenge vector from the restricted ball
@@ -677,5 +718,47 @@ mod tests {
         let p = poly_from_centered::<R17, 4>(&[1, -1, 8, -8]);
         let expected: Vec<R17> = [1, 16, 8, 9].iter().map(|&v| R17::from(v)).collect();
         assert_eq!(p.coefficients(), expected);
+    }
+
+    #[test]
+    fn diagonal_set_draws_are_nonzero_constants_and_units() {
+        use crate::foundation::encoding::ring_to_u32;
+
+        let draw = |seed: &[u8]| {
+            let mut x = Shake256Xof::new(&[]);
+            x.absorb(seed);
+            diagonal_set_poly::<Rq, Shake256Xof, 64>(&mut x)
+        };
+        let c1 = draw(b"diagonal-a");
+        let c2 = draw(b"diagonal-b");
+        for (name, c) in [("c1", &c1), ("c2", &c2)] {
+            // constant shape: only the constant coefficient is nonzero
+            let coeffs = ring_to_u32::<Rq, 64>(c);
+            assert!(coeffs[0] != 0, "{name} must be nonzero");
+            assert!(
+                coeffs[1..].iter().all(|&v| v == 0),
+                "{name} must be an NTT-slot diagonal (constant)"
+            );
+        }
+        assert_ne!(c1, c2, "distinct draws must differ (probabilistic)");
+
+        // strong sampling set: the difference of distinct draws is a unit —
+        // a nonzero constant, invertible over the prime scalar ring
+        let diff = c1.clone() - c2.clone();
+        let a = ring_to_u32::<Rq, 64>(&diff)[0];
+        assert!(Rq::from(u64::from(a)).inverse().is_some());
+
+        // determinism
+        assert_eq!(draw(b"diagonal-a"), c1);
+    }
+
+    #[test]
+    fn diagonal_set_rejects_non_prime_ring() {
+        let result = std::panic::catch_unwind(|| {
+            let mut x = Shake256Xof::new(&[]);
+            x.absorb(b"two-adic");
+            let _ = diagonal_set_poly::<R32, Shake256Xof, 64>(&mut x);
+        });
+        assert!(result.is_err(), "2-adic rings must use odd_sum_poly");
     }
 }

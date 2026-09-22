@@ -1,0 +1,99 @@
+# Z7 · Polynomial Commitment (Greyhound Core)
+
+**Status: implemented, core protocol** (`src/pcs::greyhound`,
+`src/pcs::gadget`) — the first *committed* evaluation in the crate: commit
+to a polynomial `f`, later open it at a point `x` with a proof of
+`y = f(x)`. The scheme is the core of Nguyen–Seiler, *Greyhound: Fast
+Polynomial Commitments from Lattices* (CRYPTO 2024,
+[eprint 2024/1293](https://eprint.iacr.org/2024/1293)). Not layered on
+yet: the LaBRADOR recursion that compresses the O(√N) core proof down to
+polylog(N).
+
+## Two-layer commitment (no Merkle tree)
+
+The polynomial `f = Σᵢ X^{im}·fᵢ` (`N = m·r` ring-element coefficients)
+is committed with two stacked Ajtai commitments — the outer layer *is*
+the batching of the inner ones, which is what removes the Merkle layer of
+Brakedown/Ligero:
+
+```text
+sᵢ = G_m⁻¹(fᵢ)                       binary digits,  ‖sᵢ‖∞ = 1
+tᵢ = A·sᵢ                            inner Ajtai (per column)
+t̂ᵢ = G_n⁻¹(tᵢ)                       digits again (tᵢ is not short enough)
+u  = B·(t̂₁ ∥ … ∥ t̂_r)                outer Ajtai — the commitment, O(1)
+```
+
+`G_ℓ = I_ℓ ⊗ [1, 2, …, 2^{δ−1}]` is the gadget matrix; `G⁻¹` is the exact
+base-2 decomposition (`pcs::gadget`, δ = ⌈log₂ q⌉ = 23 for the Z1 prime).
+
+## Evaluation protocol (√N split, FS-compiled)
+
+With `a(x) = (1, x, …, x^{m−1})` and `b(x) = (1, x^m, …, x^{m(r−1)})`,
+the evaluation factors as `f(x) = a(x)ᵀ·F·b(x)` — the square-root split
+that keeps the verifier at O(√N) ring operations:
+
+```text
+w  = a(x)ᵀ·F                      row combination (r ring elements)
+ŵ  = G_r⁻¹(w),  v = D·ŵ           committed before the challenge
+c  ← ternary challenges           derived from H(key, u, x, y, v)
+z  = Σᵢ cᵢ·sᵢ                     folded opening
+
+checks:  1. D·ŵ == v                2. w := G_r(ŵ);  wᵀ·b(x) == y
+         3. cᵀ·w == a(x)ᵀ·G_m(z)    4. A·z == Σᵢ cᵢ·(G_n t̂ᵢ)
+         5. B·(t̂₁∥…∥t̂_r) == u      6. ‖ŵ‖∞, ‖t̂‖∞ ≤ 1,  ‖z‖∞ ≤ r·d
+```
+
+Check 3 is the quadratic-to-linear pinning of the claimed row
+combination; check 6 is load-bearing, not hygiene — knowledge extraction
+reduces a second opening to a short kernel vector whose bound *is* the
+gated norm, the approximate Module-SIS instance. A verifier that drops
+the gates accepts transcripts outside that bound.
+
+## Security status
+
+- Transparent setup (all keys ExpandA from one public seed); binding of
+  `u`/`v` is Module-SIS, knowledge soundness of the opening is aMSIS with
+  slack (same pair as LaBRADOR).
+- **Not zero-knowledge** — transcripts are a deterministic function of
+  the witness, exactly like the paper's proof-of-knowledge status.
+- Challenge differences `cᵢ − cⱼ` (ternary, distinct draws) are
+  invertible except with negligible probability — the same resultant
+  heuristic LaBRADOR/Greyhound rely on.
+- The shipped dimensions (`n = 4, m = r = 8`, N = 64) are **toy**, sized
+  for tests: re-derive every parameter against the Core-SVP estimator
+  (`algebra::security`) before any security claim.
+- The three Ajtai keys live in a heap-backed container rather than the
+  `commitment::ajtai` inline-array key: a PCS key holds `O(r·n·δ)`
+  entries (megabytes), which must not sit on the stack, and entry
+  indices beyond 256 need two-byte encoding (the shared `ExpandA` helper
+  saturates single-byte indices).
+
+## Packed mode (σ-automorphism packing)
+
+`pcs::packing` + `pcs::{commit_packed, open_packed, verify_packed}`: the
+scalar-coefficient polynomial `f` of degree `< N·d` is packed into the `N`
+ring elements (`d = 256` coefficients each) and committed with the same
+two-layer Ajtai pipeline — so the commitment and O(√N) proof carry `d`×
+more scalar coefficients. The evaluation claim becomes a **scalar**
+`y = f(x)`, bound through the coefficient-reversal automorphism
+`σ: X ↦ X^{−1}`:
+
+```text
+const( g · σ(h) ) = Σ_k g_k·h_k         (pairing identity)
+
+w = Σ_j ξ^j·F[·,j]  (ξ = x^d)            scalar-weighted rows
+y = Σ_i ξ^{i·m}·const(w_i·σ(p)),  p = (1, x, …, x^{d−1})
+```
+
+Checks 1/3/4/5/6 (commitment links, digit folds, norm gates) carry over
+unchanged — with scalar `a_j` the eq-3 identity holds by commutativity —
+and check 2 binds `y` through the pairing. The identity is exact algebra
+(unit-tested against both the direct inner product and a full scalar
+Horner fold over 16384 coefficients), not a heuristic.
+
+## Try it
+
+```bash
+cargo run -p lattice-zk --example greyhound_pcs
+cargo bench -p lattice-zk -- pcs_z7
+```

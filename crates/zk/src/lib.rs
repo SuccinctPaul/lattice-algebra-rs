@@ -8,7 +8,7 @@
 //! The crate is `#![no_std]` and links `alloc`.
 //!
 //! ```text
-//! foundation ──▶ instance ──▶ commitment ──▶ sigma / opening / sumcheck / shortness / folding
+//! foundation ──▶ instance ──▶ commitment ──▶ sigma / opening / pcs / sumcheck / shortness / folding
 //! (utils)       (rings,       (Ajtai keys)   (protocol domains; they may compose with
 //!                R1CS)                        each other but only downward in this list)
 //! ```
@@ -24,7 +24,14 @@
 //! - [`sigma`]: Lyubashevsky-style approximate-knowledge Sigma-protocol
 //!   with Fiat–Shamir NIZK (Z1).
 //! - [`opening`]: LaBRADOR-style batched opening over the Z2 ring (Z2).
-//! - [`sumcheck`]: multilinear ring-sumcheck + gadget-IPA (Z3).
+//! - [`pcs`]: Greyhound-style polynomial commitment over the Z1 ring —
+//!   commit to `f`, open at a point with a proof of `y = f(x)` (Z7);
+//!   `pcs::batched` proves `k` claims at one shared point with a single
+//!   HyperBall-weighted folded opening.
+//! - [`sumcheck`]: multilinear ring-sumcheck + gadget-IPA (Z3);
+//!   `sumcheck::batch` merges multiple assertions into one Π_batch-shaped
+//!   round structure and `sumcheck::range` carries digit-range / Booleanity
+//!   claims via vanishing polynomials.
 //! - [`shortness`]: projection / norm-bound arguments — digit-balanced and
 //!   gadget-slack flavors (Z5).
 //! - [`folding`]: Nova-style folding (Z4) and LatticeFold-style
@@ -48,6 +55,7 @@ pub mod folding;
 pub mod foundation;
 pub mod instance;
 pub mod opening;
+pub mod pcs;
 pub mod shortness;
 pub mod sigma;
 pub mod sumcheck;
