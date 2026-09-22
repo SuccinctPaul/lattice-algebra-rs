@@ -9,6 +9,13 @@
 //! this ring. The expansion lives in [`crate::foundation::sampling`], the
 //! coefficient wire conversion in [`crate::foundation::encoding`]. The R1CS
 //! instance layer over this ring lives in [`crate::instance::r1cs`].
+//!
+//! Besides the 2-adic ModSwitch/integer lift, this module provides the
+//! **prime-ring direction** of the switch (`switch_ring`/`switch_scalar`
+//! with the `switch_exact_guard` window): Z2-line values re-stated over a
+//! prime ring, where the prime-only machinery applies — NTT-diagonal
+//! challenges (`foundation::sampling::diagonal_set_poly`) and the
+//! vanishing range/bit checks (`sumcheck::range`).
 
 use crate::foundation::encoding::{ring_from_u32, ring_to_u32};
 use algebra::ring::poly_ring::PolyRing;
@@ -94,6 +101,37 @@ pub fn split_mod_2k(x: &[Z2Ring], k: u32) -> (Vec<Z2Ring>, Vec<Z2Ring>) {
     (los, his)
 }
 
+/// General-`p` integer lift: splits every coefficient of `x` into
+/// `(quotient, remainder)` with `x = p·quotient + remainder` exactly
+/// (coefficient-wise). This is the general-p companion of
+/// [`split_mod_2k`] — it turns the modular statement `A·s ≡ t (mod p)`
+/// into the exact ring equation `A·s + p·v = t` with a short carry
+/// vector `v` — adding the hidden carry to the witness instead of
+/// proving arithmetic mod a non-ring modulus.
+///
+/// Works for any modulus `p` with `2 ≤ p < 2^32` (the 2-adic case is
+/// [`split_mod_2k`]; the prime-field case uses the odd `p` structure).
+///
+/// # Panics
+/// If `p` is 0 or 1.
+pub fn split_mod_p(x: &[Z2Ring], p: u32) -> (Vec<Z2Ring>, Vec<Z2Ring>) {
+    assert!(p >= 2, "modulus p must be ≥ 2");
+    let mut quotients = Vec::with_capacity(x.len());
+    let mut remainders = Vec::with_capacity(x.len());
+    for r in x {
+        let cs = ring_to_u32(r);
+        let mut quo = [0u32; D];
+        let mut rem = [0u32; D];
+        for j in 0..D {
+            quo[j] = cs[j] / p;
+            rem[j] = cs[j] % p;
+        }
+        quotients.push(ring_from_u32(&quo));
+        remainders.push(ring_from_u32(&rem));
+    }
+    (quotients, remainders)
+}
+
 /// Homomorphic 2-adic modulus switch: reduces every coefficient modulo
 /// `Q` (a power of two). The reduction is a ring homomorphism
 /// `Z_{2^32}[X]/(X^D+1) → Z_Q[X]/(X^D+1)`, so
@@ -150,6 +188,86 @@ pub fn ring_inv_newton(a: &Z2Ring) -> Option<Z2Ring> {
     // verify
     let check = a.clone() * x.clone();
     (ring_to_u32(&check)[0] == 1 && ring_to_u32(&check)[1..].iter().all(|&v| v == 0)).then_some(x)
+}
+
+/// The centered integer representatives of `x`'s coefficients (the
+/// canonical signed view the switching helpers operate on).
+pub fn centered_coeffs(x: &Z2Ring) -> [i64; D] {
+    let mut out = [0i64; D];
+    for (dst, &c) in out.iter_mut().zip(ring_to_u32(x).iter()) {
+        *dst = if c > (1 << 31) {
+            i64::from(c) - (1i64 << 32)
+        } else {
+            i64::from(c)
+        };
+    }
+    out
+}
+
+/// **Prime-ring switch** (the prime direction of the ModSwitch): lifts
+/// every coefficient of `x` into the prime ring `Q` through its centered
+/// integer representative.
+///
+/// Unlike the 2-adic [`modswitch_ring`], this is *not* a ring homomorphism
+/// on all of `Z_{2^32}` (an odd prime admits no truncation ideal); it is
+/// the **identity on the integers**, so it is exact where the 2-adic
+/// arithmetic was wrap-free:
+///
+/// - always additive: `sw(a) + sw(b) == sw(a + b)`;
+/// - multiplicative whenever [`switch_exact_guard`] holds for the operands'
+///   bound — the schoolbook convolution in `Z_{2^32}` then never wraps and
+///   agrees with the mod-`q` product;
+/// - injective on coefficients in `[−q/2, q/2]` — the window all masked
+///   Z2-line values (rejection-sampled masks, digit tables) live in.
+///
+/// That window is the point of the helper: Z2-line values can be re-stated
+/// over a prime ring, where the prime-only machinery applies (unit lemmas,
+/// NTT-diagonal challenges, the vanishing range/bit checks of
+/// `sumcheck::range`).
+///
+/// Returns `None` if any coefficient lies outside the injective window.
+pub fn switch_ring<Q: Ring>(x: &Z2Ring) -> Option<PolyRing<Q, D>> {
+    let half = (Q::MODULUS - 1) / 2;
+    let centered = centered_coeffs(x);
+    if centered.iter().any(|&c| c.unsigned_abs() > half) {
+        return None;
+    }
+    Some(PolyRing::from_coefficients(
+        centered
+            .iter()
+            .map(|&c| Q::from(c.rem_euclid(Q::MODULUS as i64) as u64))
+            .collect(),
+    ))
+}
+
+/// Switches a **scalar-valued** (constant) Z2 ring element into the prime
+/// scalar ring `Q` — the entry point for re-stating Z2-line scalar claims
+/// (sumcheck table entries, folded evaluations) as prime-ring values.
+///
+/// # Errors
+/// `None` if `x` has any nonzero higher coefficient (not scalar-valued) or
+/// falls outside the injective window (see [`switch_ring`]).
+pub fn switch_scalar<Q: Ring>(x: &Z2Ring) -> Option<Q> {
+    let centered = centered_coeffs(x);
+    if centered[1..].iter().any(|&c| c != 0) {
+        return None;
+    }
+    let half = (Q::MODULUS - 1) / 2;
+    let c = centered[0];
+    if c.unsigned_abs() as u64 > half {
+        return None;
+    }
+    Some(Q::from(c.rem_euclid(Q::MODULUS as i64) as u64))
+}
+
+/// The exactness guard for switching a degree-`n` negacyclic product of
+/// operands bounded by `bound` (infinity norm): the integer convolution
+/// coefficients `|Σ aᵢb_{k−i}| ≤ n·bound²` must (a) stay below `2^31` so
+/// the `Z_{2^32}` product never wraps, and (b) stay below `q/2` so the
+/// mod-`q` statement matches the integer one.
+pub fn switch_exact_guard(n: usize, bound: i64, q: u64) -> bool {
+    let prod = (n as i128) * (bound as i128) * (bound as i128);
+    prod < (1i128 << 31) && 2 * (prod as u64) < q
 }
 
 #[cfg(test)]
@@ -267,5 +385,95 @@ mod tests {
         ];
         assert_eq!(infinity_norm(&v), 5);
         assert_eq!(infinity_norm(&[]), 0);
+    }
+
+    #[test]
+    fn centered_coeffs_are_signed() {
+        let x = ring_from_u32(&{
+            let mut c = [0u32; D];
+            c[0] = 5;
+            c[1] = 0xFFFF_FFFF; // −1
+            c[2] = (1 << 31) + 1; // −(2^31 − 1) centered (2^31 itself is +2^31)
+            c
+        });
+        let cs = centered_coeffs(&x);
+        assert_eq!(cs[0], 5);
+        assert_eq!(cs[1], -1);
+        assert_eq!(cs[2], -(1i64 << 31) + 1);
+    }
+
+    #[test]
+    fn switch_to_prime_is_exact_on_windowed_values() {
+        type Z1 = Zq<8380417>;
+        // small coefficients: injective window, signed roundtrip
+        let x = ring_from_u32(&{
+            let mut c = [0u32; D];
+            c[0] = 5;
+            c[1] = 0xFFFF_FFF6; // −10
+            c[63] = 123;
+            c
+        });
+        let switched: PolyRing<Z1, D> = switch_ring(&x).expect("in window");
+        let cs = switched.coefficients();
+        assert_eq!(cs[0], Z1::from(5));
+        assert_eq!(cs[1], Z1::from(8_380_417 - 10));
+        assert_eq!(cs[63], Z1::from(123));
+
+        // outside the window (|c| > q/2) must be refused
+        let big = ring_from_u32(&{
+            let mut c = [0u32; D];
+            c[0] = 4_190_209; // q/2 + 1
+            c
+        });
+        let switched: Option<PolyRing<Z1, D>> = switch_ring(&big);
+        assert!(switched.is_none(), "out-of-window value must be refused");
+    }
+
+    #[test]
+    fn switched_products_match_under_the_guard() {
+        type Z1 = Zq<8380417>;
+        // deterministic small operands (‖·‖∞ ≤ 4): 64·4² = 1024 is wrap-free
+        let mut a = [0u32; D];
+        let mut b = [0u32; D];
+        for j in 0..D {
+            a[j] = ((((5 + j) % 9) as i64) - 4).rem_euclid(1 << 32) as u32;
+            b[j] = ((((2 + 3 * j) % 7) as i64) - 3).rem_euclid(1 << 32) as u32;
+        }
+        let (a, b) = (ring_from_u32(&a), ring_from_u32(&b));
+        assert!(switch_exact_guard(D, 4, 8_380_417));
+        assert!(infinity_norm(&[a.clone(), b.clone()]) <= 4);
+
+        let prod = a.clone() * b.clone();
+        let lhs: PolyRing<Z1, D> = switch_ring(&prod).expect("in window");
+        let sw_a: PolyRing<Z1, D> = switch_ring(&a).expect("in window");
+        let sw_b: PolyRing<Z1, D> = switch_ring(&b).expect("in window");
+        assert_eq!(lhs, sw_a * sw_b, "multiplicative under the guard");
+
+        // outside the guard the equality need not hold: bound 300 fails
+        assert!(!switch_exact_guard(D, 300, 8_380_417));
+        // and the guard is overflow-safe far beyond i64 ranges
+        assert!(!switch_exact_guard(1 << 12, 1 << 20, u64::MAX));
+    }
+
+    #[test]
+    fn switch_scalar_carries_constant_elements_only() {
+        type Z1 = Zq<8380417>;
+        let scalar = ring_from_u32(&{
+            let mut c = [0u32; D];
+            c[0] = 0xFFFF_FFF9; // −7
+            c
+        });
+        let switched: Z1 = switch_scalar(&scalar).expect("scalar in window");
+        assert_eq!(switched, Z1::from(8_380_417 - 7));
+
+        // a non-constant element is not scalar-valued
+        let nonscalar = ring_from_u32(&{
+            let mut c = [0u32; D];
+            c[0] = 3;
+            c[1] = 1;
+            c
+        });
+        let switched: Option<Z1> = switch_scalar(&nonscalar);
+        assert!(switched.is_none());
     }
 }

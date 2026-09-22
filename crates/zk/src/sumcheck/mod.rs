@@ -409,4 +409,6 @@ mod tests {
     }
 }
 
+pub mod batch;
 pub mod ipa;
+pub mod range;

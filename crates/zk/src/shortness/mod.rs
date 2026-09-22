@@ -7,7 +7,11 @@
 //! - [`projection`]: the `l2` flavor — GHL-style Johnson–Lindenstrauss
 //!   projection with an explicit certified-bound gap (LaBRADOR's
 //!   shortness layer, simplified ±1-entry variant).
+//! - [`fold`]: pairwise commitment folding with JL shortness
+//!   certification — the base step of the amortized-compression route
+//!   (rows 19/24);
 
 pub mod balanced;
+pub mod fold;
 pub mod gadget;
 pub mod projection;

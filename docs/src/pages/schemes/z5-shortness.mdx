@@ -24,16 +24,23 @@ v = 2^γ·h + l        ← balanced split: exact, ‖l‖∞ ≤ 2^{γ−1}
 
 ## JL projection argument (`shortness::projection`)
 
-The `l2` flavor (LaBRADOR/GHL21): the verifier draws a ±1 projection
-`Π: Z^{m·D} → Z^k` from a seed; the prover reveals `p = Π·w`. Acceptance
-`‖p‖₂ ≤ √(2k)·B` certifies `‖w‖₂ ≲ 2·B`:
+The `l2` flavor (LaBRADOR/GHL21): the verifier draws a projection
+`Π ∈ {0,±1}^{k×m·D}` with the tuned distribution — `P(0) = 1/2`,
+`P(±1) = 1/4` each — from a seed; the prover reveals `p = Π·w`. Acceptance
+`‖p‖₂² ≤ k·B²` certifies `‖w‖₂ ≲ √(128/30)·B ≈ 2.07·B`:
 
-- honest floor: `E‖Πw‖₂² = k·‖w‖₂²` (cross terms vanish), so an honest
-  witness concentrates near `√k·B`;
+- honest floor: with the tuned entries `E‖Πw‖₂² = (k/2)·‖w‖₂²`, so an
+  honest witness concentrates near `√(k/2)·B` — comfortably under the
+  `√k·B` threshold;
 - cheating: an inflated witness survives only with probability decreasing
-  exponentially in `k` (Hanson–Wright), independent of prover adaptivity;
-- `k` parameterizes the confidence. LaBRADOR's tuned entry distribution
-  tightens the certified gap to `√(128/30) ≈ 2.07` (tracked refinement).
+  exponentially in `k` (Hanson–Wright floor `√(k/4)·‖w‖₂`), independent
+  of prover adaptivity;
+- certified constant: `⌈√(128/30)·B⌉ ≈ 2.07·B` — the GHL21 extraction
+  gap for the tuned distribution, via the conservative closure
+  `1033/500 ≥ √(128/30)`; `k` parameterizes the confidence.
+- amortized integration: all `k` row claims `⟨πᵢ, s⟩ = pᵢ` fold into one
+  γ-combined gadget-IPA (`prove_l2_bound_amortized`) — the response's
+  correctness rides the batch instead of k separate proofs.
 
 ## Gadget split with provable slack (`shortness::gadget`)
 

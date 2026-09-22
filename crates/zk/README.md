@@ -29,10 +29,16 @@ layered strictly `foundation → instance → commitment → protocol domains`:
 | `shortness::gadget` | Z2 | Gadget split + approximate linear check with provable slack |
 | `folding::nova` | Z4 | Nova-style folding / IVC: relaxed R1CS instances, homomorphic commitment updates, cross-term absorption, folding verifier |
 | `folding::latticefold` | Z5 | LatticeFold-style folding: small-norm fold challenge, exact quotient-free `b`-bit balanced decomposition of the folded vector, homomorphic digit commitments, splitting-query batched opening with a provable norm gate |
+| `pcs` | Z7 | Greyhound-style polynomial commitment (Nguyen–Seiler, eprint 2024/1293): two-layer Ajtai commitment over the √N split, exact base-2 gadget (`pcs::gadget`), √N-split evaluation protocol with five link equations + soundness-critical norm gates; proof stays at the O(√N) core size (LaBRADOR compression deferred) |
+| `pcs::batched` | Z7 | Batched opening at a shared point: `k` committed polynomials proved with one HyperBall-weighted folded opening `z = Σⱼ βⱼ·zⱼ`, saving `(k−1)·m·δ` ring elements per batch; norm budget `‖β‖₁·k·r·d` keeps the aMSIS extraction instance bounded |
 
 A survey mapping these primitives to the schemes that use them (LaBRADOR,
 Greyhound, LatticeFold/+, LaZer, Rinocchio, …) lives in
-[`docs/survey-lattice-zksnarks.md`](docs/survey-lattice-zksnarks.md).
+[`docs/survey-lattice-zksnarks.md`](docs/survey-lattice-zksnarks.md); the
+companion survey of the PCS landscape beyond Greyhound (Hachi, Maltese,
+Akita, Grand Danois, Jindo, Serval, CELPC, CMNW, Orbweaver, plus the
+DeepFold/WHIR boundary) is
+[`docs/survey-lattice-pcs.md`](docs/survey-lattice-pcs.md).
 
 Zero-knowledge status: Z1 is honest-verifier ZK (rejection sampling); Z2/Z3
 are transparent like LaBRADOR. Full ZK via blinding is deferred — see the

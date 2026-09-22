@@ -70,7 +70,9 @@ Primitives:
 
 The first concretely efficient polynomial commitment from standard lattice
 assumptions (53 KB evaluation proofs at `N = 2^30`); combined with
-LaBRADOR it forms a full SNARK.
+LaBRADOR it forms a full SNARK. **Implemented (core)**: the two-layer
+commitment and the √N-split evaluation protocol land in `pcs` (see the
+primitive map row 24) — the LaBRADOR compression backend stays open.
 
 Primitives:
 1. **Gadget matrix and `G^{-1}`**: `G_n = I_n ⊗ [1,2,…,2^{δ−1}]`;
@@ -192,17 +194,39 @@ Payment-privacy application stack on the ESLL19 toolbox:
 ### 1.10 The lattice folding ecosystem (2024–2026, existence verified)
 
 After LatticeFold: **Lova** (2024/1964, unstructured lattices),
-**Neo / SuperNeo** (2025/294 / 2026/242, small-field pay-per-bit),
-**SALSAA** (2025/2124), **Symphony** (2025/1905), **Cyclo** (2026/359),
-**PikkuFold** (2026/1809), **LatticeBlindFold** (2026/1857, ZK folding),
-**"Improving LatticeFold+ with ℓ₂-norm checks"** (2026/721). Shared
+**Neo / SuperNeo** (2025/294, formally superseded → **2026/242**, CRYPTO 2026:
+small-field pay-per-bit — cite 2026/242 as canonical),
+**SALSAA** (2025/2124, sumcheck-aided linear-time prover norm check; first
+folding on ℓ₂-norm-bounded witnesses), **Symphony** (2025/1905, single-shot
+k-instance folding), **Cyclo** (2026/359, amortized norm-refreshing: check
+fresh witnesses only, let the accumulator grow additively),
+**PikkuFold** (2026/1809, layered random projections + certified-constant
+JL for biased ternary matrices mod q), **LatticeBlindFold** (2026/1857, ZK
+folding on SuperNeo), **RoK and Roll** (2025/1220, ASIACRYPT 2025: first
+Õ(λ)-size lattice SNARK via verifier-efficient random projections),
+**RoKoko** (2026/575, *committed folding* — cross terms committed instead of
+sent — plus recursive commitments generalizing LaBRADOR's double
+commitment), **CauchyFold** (2026/2011, high-arity folding via a degree-<k
+"Cauchy carrier" for the quadratic mixed terms), **ProtogaLattice**
+(2026/1317, norm-reduction bootstrapping for unbounded folding depth),
+**"Improving LatticeFold+ with ℓ₂-norm checks"** (2026/721, zkProof 8
+notes: random-projection constraints + exact shortening), and Zama's
+verifiable-bootstrapping line (2026/1127, first benchmarked lattice IVC with
+ROM knowledge-soundness over super-constant rounds). Shared
 primitives: homomorphic commitment updates, explicit cross-term
 commitments, large challenge spaces, per-round norm management
-(decomposition / modulus switching / scaling).
+(decomposition / modulus switching / scaling / amortized refreshing).
 
 > Note: the frequently conflated names "Alpine / Shadow / Grease" could
 > not be located (a full title scan of eprint 2024–2025 found nothing);
-> the ecosystem list above sticks to verifiable entries.
+> the ecosystem list above sticks to verifiable entries. The PCS-facing
+> companion survey — the 2025–2026 wave beyond Greyhound (Hachi, Maltese,
+> Akita, Grand Danois, Jindo, Serval, CELPC, CMNW, Orbweaver) — is
+> [`survey-lattice-pcs.md`](survey-lattice-pcs.md); it also documents the
+> first ring-lookup-argument framework (2026/471,
+> Bootle–Guskind–Patranabis–Sotiraki: Plookup/LogUp over `Z_q[X]/(X^d+1)`
+> with an explicit zero-divisor hazard analysis, prime ring only), the
+> research entry for ⏳ item 23.
 
 ### 1.11 Shared foundations
 
@@ -217,6 +241,20 @@ commitments, large challenge spaces, per-round norm management
   challenge space being a strong-sampling set.
 
 ## 2. Primitive → implementation map (this crate)
+
+**Scope note (status semantics).** ✅ rows are implemented and tested in
+this crate. Rows marked ✅ with a trailing ⏳ note carry a scoped
+*follow-up refinement* whose concrete blocker is documented (see the
+referenced module docs): rows 19/24 hold the LaBRADOR amortized-openings
+compression (per-gate homomorphic commitment folding + JL norm checks — a
+second non-unit-challenge Σ bridge re-introduces the ½-parity slack,
+`opening/mod.rs`); row 25 holds cross-point batching (the √N-split weight
+tables must factor as `aⱼ·bᵢ` — cross-point/MLE tables do not,
+`pcs/batched.rs`); row 17's amortized integration is landed, row 20's
+committed-table mode lands with the PCS line. Rows 18 (full LaZer
+protocol) and 23 (full lookup arguments) are accepted **research
+branches**: each is a complete protocol port, not a primitive drop-in.
+Every row names its concrete crate location.
 
 | # | Primitive | Used by | Location in this crate | Status |
 | --- | --- | --- | --- | --- |
@@ -237,13 +275,15 @@ commitments, large challenge spaces, per-round norm management
 | 14 | FS transcript (domain separation + per-shape re-expansion + non-unit challenges) | all | `foundation::fs` + `foundation::sampling::nonunit_linear_poly` + `algebra::crypto::transcript` | ✅ |
 | 15 | discrete Gaussian sampling (CDT) | Falcon, some Σ-protocols | `algebra::crypto::sampling::DiscreteGaussian` | ✅ (algebra layer) |
 | 16 | rejection sampling / FS with aborts (HVZK) | LNP22, MatRiCT, Dilithium | `sigma::fs_prove` (rejection loop) | ✅ |
-| 17 | JL-variant projection argument (±1 entries, Hanson–Wright concentration) | full LaBRADOR (GHL21, tight √(128/30) gap) | `shortness::projection` (simplified variant: certified bound 2×B, k-parameterized confidence) | ✅ (tight GHL constants / amortized integration ⏳) |
+| 17 | JL-variant projection argument (±1 entries, Hanson–Wright concentration) | full LaBRADOR (GHL21, tight √(128/30) gap) | `shortness::projection` (GHL21-tuned `{0,±1}` entry distribution, certified bound ⌈√(128/30)·B⌉ ≈ 2.07·B, k-parameterized confidence) + `prove_l2_bound_amortized`/`verify_l2_bound_amortized` (the `k` row claims amortize into one γ-combined gadget-IPA — LaBRADOR's "inner-product equations inside the batch") | ✅ |
 | 18 | **ZK blinded Σ-response** (mask commitment first + small non-unit challenge + rejection sampling) | LaZer, LNP22, Biscuit (Z2-line HVZK) | `sigma::z2` | ✅ (the full LaZer integer-statement protocol ⏳) |
-| 19 | LaBRADOR recursion (masked terms committed before the challenges open them → full relation soundness) | full LaBRADOR | `opening::{prove_recursive, verify_recursive}` (transparent full-relation mode, O(G) size) | ✅ (amortized size optimization ⏳) |
-| 20 | multi-assertion batched sumcheck (β/γ/α/μ/ζ weights), vanishing-polynomial range check | LatticeFold Π_batch | — | ⏳ next step for `sumcheck` |
-| 21 | 2-adic ModSwitch (coefficient-truncation ring homomorphism) + integer lift `A·s + 2^k·v = t` | Alpine/Shadow line, LaZer | `instance::ring::{modswitch_ring, split_mod_2k}` | ✅ (prime-ring switching ⏳) |
-| 22 | **strong-sampling-set challenge** (invertible differences: odd sum = unit) | LatticeFold, LaBRADOR (LS18) | `foundation::sampling::odd_sum_poly` (+ small non-unit `nonunit_small_poly`) | ✅ (NTT-diagonal prime rings ⏳) |
-| 23 | lookup / bit arguments (non-arithmetic constraints) | all (acknowledged weak spot) | — | ⏳ research branch |
+| 19 | LaBRADOR recursion (masked terms committed before the challenges open them → full relation soundness) | full LaBRADOR | `opening::{prove_recursive, verify_recursive}` (transparent full-relation mode, O(G) size) + `shortness::fold` (the pairwise-folding base step: homomorphic commitment folding + JL shortness certification) | ✅ (amortized size optimization ⏳ — the log-depth folding recursion and the JL-norm-checked bounded-mask Σ are the documented sound route, see `opening/mod.rs`) |
+| 20 | multi-assertion batched sumcheck (β/γ/α/μ/ζ weights), vanishing-polynomial range check | LatticeFold Π_batch | `sumcheck::batch` (γ-power weights + per-claim `eq(βᵢ)` points + one combined round loop) + `sumcheck::range` (digit-vanishing `∏(X−i)(X+i)` / Booleanity `X²−X` claims, exact over prime rings) | ✅ (committed-table mode — replacing the transparent tables by PCS openings — lands with the Z7 PCS line) |
+| 21 | 2-adic ModSwitch (coefficient-truncation ring homomorphism) + integer lift `A·s + 2^k·v = t` | Alpine/Shadow line, LaZer | `instance::ring::{modswitch_ring, split_mod_2k}` + `switch_ring`/`switch_scalar`/`switch_exact_guard` (prime-ring direction: identity-on-integers lift, exact where the 2-adic arithmetic is wrap-free, injective window `|c| ≤ q/2` — feeds Z2-line values into the prime-ring-only machinery: NTT-diagonal challenges, vanishing range/bit checks) | ✅ |
+| 22 | **strong-sampling-set challenge** (invertible differences: odd sum = unit) | LatticeFold, LaBRADOR (LS18) | `foundation::sampling::odd_sum_poly` (+ small non-unit `nonunit_small_poly`) + `diagonal_set_poly` (NTT-diagonal prime rings: nonzero constants, differences always units) | ✅ (challenge space `|C| = q−1` — size the ring to the soundness target) |
+| 23 | lookup / bit arguments (non-arithmetic constraints) | all (acknowledged weak spot) | `sumcheck::range` (Booleanity `X²−X` and digit-range claims on folded evaluations — the "every digit in range" shape, exact over prime rings; batched via `sumcheck::batch`) | partial ⏳ (full lookup arguments remain a research branch: first ring-lookup framework 2026/471, prime ring — see `survey-lattice-pcs.md` §3) |
+| 24 | **Greyhound core PCS** (two-layer Ajtai commitment + √N-split evaluation protocol, 5 link equations + norm gates) | Greyhound (eprint 2024/1293) | `pcs` (Z1 ring, `pcs::gadget` exact base-2 `G⁻¹`, heap-backed keys) + `pcs::packing` + the **packed mode** `pcs::{commit_packed, open_packed, verify_packed}` (σ-automorphism `X ↦ X^{−1}` with the `const(g·σ(h)) = Σg_k h_k` pairing; scalar weight vectors `a_j = ξ^j, b_i = ξ^{i·m}`, `ξ = x^d` — `d×` more scalar coefficients per commitment, eqs. 1/3/4/5/6 unchanged) | ✅ (LaBRADOR proof compression ⏳ — same blocker as row 19, analyzed in `opening/mod.rs`) |
+| 25 | **batched opening at a shared point** (HyperBall-weighted single folded opening `z = Σⱼ βⱼ·zⱼ`, norm budget `‖β‖₁·k·r·d`) | LaBRADOR amortized opening (PCS form), Greyhound batch mode, Akita batched openings | `pcs::batched` + `pcs::mle` (tall-key linear commitment; `claim`/`witness_of` exact read-out; `certify_l2`; `batch_verify` multi-claim verification) | ✅ (cross-point batching via MLE tall-key ⏳) |
 
 ## 3. Protocol details of the newer pieces (matching the code)
 
@@ -288,8 +328,21 @@ threshold `‖p‖₂ ≤ √(2k)·B`; the honest floor is `√(k/2)·‖w‖₂
 (Hanson–Wright), giving the 2× certified-bound gap. `k` parameterizes the
 confidence; the sparse-cheater rejection probability is `3^{-K}`-shaped
 (a single inflated coefficient survives only if all K rows miss it).
-LaBRADOR's tuned entry distribution tightens the gap to `√(128/30) ≈
-2.07` — tracked as the remaining refinement.
+**Landed (GHL21 tightening)**: the projection now draws its entries from
+LaBRADOR's tuned `{0,±1}` distribution (`P(0) = 1/2`, `P(±1) = 1/4`), the
+acceptance threshold scales to `‖p‖₂² ≤ k·B²` against the halved
+expectation `E‖p‖₂² = (k/2)·‖s‖₂²`, and the certified bound is the
+literature constant `⌈√(128/30)·B⌉ ≈ 2.07·B` (conservative rational
+closure `1033/500 ≥ √(128/30)`, rounding up).
+
+**Landed (amortized integration)**: `prove_l2_bound_amortized` /
+`verify_l2_bound_amortized` — the `k` projection rows act
+coefficient-position-wise across the committed ring elements, the
+revealed response `p` is norm-gated against `k·B²`, and all `k` row
+claims `⟨πᵢ, s⟩ = pᵢ` amortize into **one** γ-combined gadget-IPA
+(`Π_γ = Σ γⁱ·πᵢ`) whose challenges bind `(c, Π, p)` — the response's
+correctness is carried inside the batch exactly as in LaBRADOR's
+amortized batch proof.
 
 ### 3.4 `opening::{prove_recursive, verify_recursive}` (LaBRADOR recursion)
 
@@ -362,5 +415,7 @@ committed-opening line.
 - Ligetron: IEEE S&P 2024, DOI 10.1109/SP54263.2024.00086 (non-lattice, listed for contrast)
 - MatRiCT: [2019/1287](https://eprint.iacr.org/2019/1287) (CCS 2019); MatRiCT+: [2021/545](https://eprint.iacr.org/2021/545) (S&P 2022)
 - LNP22: [2022/284](https://eprint.iacr.org/2022/284); LNS21: [2020/1183](https://eprint.iacr.org/2020/1183); BLOOM: [2022/1307](https://eprint.iacr.org/2022/1307); LS18 invertibility lemma: [2017/523](https://eprint.iacr.org/2017/523); FS-with-aborts analyses: [2023/245](https://eprint.iacr.org/2023/245), [2023/246](https://eprint.iacr.org/2023/246)
-- Folding ecosystem: Lova [2024/1964](https://eprint.iacr.org/2024/1964); Neo [2025/294](https://eprint.iacr.org/2025/294); SuperNeo [2026/242](https://eprint.iacr.org/2026/242); SALSAA [2025/2124](https://eprint.iacr.org/2025/2124); Symphony [2025/1905](https://eprint.iacr.org/2025/1905); Cyclo [2026/359](https://eprint.iacr.org/2026/359); LatticeBlindFold [2026/1857](https://eprint.iacr.org/2026/1857); LatticeFold+ ℓ₂-norm improvement [2026/721](https://eprint.iacr.org/2026/721)
+- Folding ecosystem: Lova [2024/1964](https://eprint.iacr.org/2024/1964); Neo [2025/294](https://eprint.iacr.org/2025/294); SuperNeo [2026/242](https://eprint.iacr.org/2026/242); SALSAA [2025/2124](https://eprint.iacr.org/2025/2124); Symphony [2025/1905](https://eprint.iacr.org/2025/1905); Cyclo [2026/359](https://eprint.iacr.org/2026/359); PikkuFold [2026/1809](https://eprint.iacr.org/2026/1809); LatticeBlindFold [2026/1857](https://eprint.iacr.org/2026/1857); LatticeFold+ ℓ₂-norm improvement [2026/721](https://eprint.iacr.org/2026/721); RoK and Roll [2025/1220](https://eprint.iacr.org/2025/1220); RoKoko [2026/575](https://eprint.iacr.org/2026/575); CauchyFold [2026/2011](https://eprint.iacr.org/2026/2011); ProtogaLattice [2026/1317](https://eprint.iacr.org/2026/1317); Verifiable bootstrapping from lattice folding (Zama) [2026/1127](https://eprint.iacr.org/2026/1127)
+- Ring lookup arguments: Lookup Arguments over Rings [2026/471](https://eprint.iacr.org/2026/471) (Bootle–Guskind–Patranabis–Sotiraki; prime ring — 2-adic port open)
+- PCS landscape beyond Greyhound (Hachi, Maltese, Akita, Grand Danois, Jindo, Serval, CELPC, CMNW, Orbweaver; DeepFold/HyperWolf corrections): [`survey-lattice-pcs.md`](survey-lattice-pcs.md) §1
 - NIST FIPS 203/204 (reference semantics for CBD / SampleInBall / rejection sampling)
