@@ -17,11 +17,11 @@
 //! assembly is the PE→TE bridge `(1 ‖ u)` (p. 25's `TE` relation), so that factor
 //! reads coordinate `1` and vanishes — measured 2026-09-24: forging `v_top` left
 //! the cycle's whole check list green. §5.4 is where the paper binds them, and
-//! this module is that section: [`reshape_prove`]/[`reshape_report]` recommit all
+//! this module is that section: [`reshape_prove`]/[`reshape_report`] recommit all
 //! `2ω+1` side-claims into Def. 23's two-layer commitment and check Eq. (32)–(36)
-//! and the prefix claim, [`norm_check_fin`] continues through Π^PE_NC,fin's two
-//! layer evaluations, and [`gh_prime_report`] runs the `GHPrincipal′` rows that
-//! make Greyhound fit `OE(2)`.
+//! and the prefix claim, [`finish`]/[`fin_report`] continue through Π^PE_NC,fin's
+//! two layer evaluations, and [`gh_prime_report`] checks Eq. (38) row by row — the
+//! `GHPrincipal′` system that makes Greyhound fit `OE(2)`.
 //!
 //! # Where each printed condition lives
 //!
@@ -50,12 +50,17 @@
 //!   [`FinError::Layer2ClaimMismatch`], and Step 3's shift claims give `y1, y2` at
 //!   a second verifier point `r′`. The paper's `nα1 ≤ 2^β α2` substring
 //!   requirement is a `setup` assertion.
-//! * **§5.4.3 (pp. 41, 45)** — the *modification*: `OE(2)`'s multilinear claims
-//!   become `GHPrincipal′`'s two extra rows, `q⊺·s1 = y1` with `q` the
-//!   evaluation-form tensor of Eq. (37), and `a⊺·s2·b = y2` with `a, b` the split
-//!   of Lemma 16. [`gh_prime_report`] checks both *and* that the received `q, a, b`
-//!   are those tensors of the received points — without that check `y1, y2` would
-//!   be claims about some other evaluation point.
+//! * **§5.4.3 (pp. 41, 45)** — the *modification*: `OE(2)`'s two multilinear
+//!   claims become `GHPrincipal′`'s rows `q⊺·s1 = y1`, with `q` the evaluation-form
+//!   tensor of Eq. (37), and `a⊺·s2·b = y2`, with `a, b` the split of Lemma 16; the
+//!   reduction's verification equation is then the five-row system Eq. (38).
+//!   [`fin_report`] checks the two relation rows *and* that the received `q, a, b`
+//!   are those tensors of the received point — without that check `y1, y2` would be
+//!   claims about some other evaluation point. [`gh_prime_report`] checks Eq. (38)
+//!   itself: `D·ŵ = v`, `b⊺·G_{b1,2^γ}·ŵ = y2`, `c⊺·G_{b1,2^γ}·ŵ = a⊺·z`, the
+//!   `η`-row, and the two norm gates Cor. 5 inherits from Greyhound's Thm. 4.1.
+//!   The printed system's second row, `B·s1 = u`, *is* Def. 23's root equation, so
+//!   it keeps the one name [`FinError::RootMismatch`] rather than getting a second.
 //!
 //! # What is *not* here
 //!
@@ -80,6 +85,14 @@
 //!   *never* succinct in any compilation. What this slice buys now is that every
 //!   set-aside claim is bound to **one** fresh two-layer commitment (Def. 23's
 //!   binding paragraph, p. 39) through named, separately-falsifiable equations.
+//! * **`Π^PE_NC,fin`'s Step 1 `Q_N` zero-check**, p. 44: the `ξ`-batched norm
+//!   polynomial over **both** layers, proved by a sum-check that ends at the point
+//!   `r` Step 2 evaluates at. It is not a round protocol here — its conclusion is
+//!   Def. 23's `‖s1‖∞ < b1` and `‖s2‖∞ < b2`, which [`gh_open_report`] already
+//!   gates as two named conditions on the opened witness, and this compilation
+//!   hands the openings over anyway, so a round would add messages without adding
+//!   a check. What that costs is stated in Fig. 6's accounting below: the
+//!   `SC(2b)` component of the finish row is the one this module does not send.
 //! * **Zero knowledge** — like the rest of the tree line, a proof of knowledge
 //!   with no masking.
 //!
@@ -121,6 +134,14 @@ const B1_LABEL: &[u8] = b"lattice-algebra/Z7/fin-B1";
 
 /// Domain-separation label of Def. 23's `B2 ∈ R^{n×2^β α2}`.
 const B2_LABEL: &[u8] = b"lattice-algebra/Z7/fin-B2";
+
+/// Domain-separation label of Eq. (38)'s `D ∈ R^{n×2^γ α1}` — the matrix the
+/// Greyhound prover commits `ŵ` with (NS24, Fig. 4). Def. 23's `GHSetup` prints
+/// only `{B1,B2}` because it is restating the *commitment scheme*; `GH′` "runs
+/// the modified initial three-move protocol" of NS24 §3.1, whose setup also
+/// samples the `ŵ`-commitment matrix. It is therefore a third seed-expanded
+/// matrix here.
+const D_LABEL: &[u8] = b"lattice-algebra/Z7/fin-D";
 
 /// Why a finishing proof was refused. Each variant names the equation of §5.4 it
 /// corresponds to, so a tampered component identifies itself rather than
@@ -225,6 +246,45 @@ pub enum FinError {
     QFormMismatch,
     /// `GHPrincipal′(b1,b2)`: `a⊺·s2·b ≠ y2`.
     ABFormMismatch,
+    /// Eq. (38) row 1: `D·ŵ ≠ v`, i.e. the `ŵ` LaBRADOR is handed is not the one
+    /// `GH′` committed to.
+    GhCommitmentMismatch {
+        /// First row that disagreed.
+        at: usize,
+    },
+    /// Eq. (38) row 3: `b⊺·G_{b1,2^γ}·ŵ ≠ y2`. This is `OE(2)`'s second-layer
+    /// claim read through the *digit* witness rather than through `s2`, which is
+    /// what makes it a row of the reduction rather than a restatement of
+    /// [`FinError::ABFormMismatch`].
+    GhEvalRowMismatch,
+    /// Eq. (38) row 4: `c⊺·G_{b1,2^γ}·ŵ ≠ a⊺·z`, i.e. the same row combination
+    /// `c` applied to `ŵ`'s recomposition and to the folded opening `z` disagree.
+    GhFoldRowMismatch,
+    /// Eq. (38) row 5: `(c⊺⊗G_{b1,n})·s1 + η⃗e₁·(q⊺s1) ≠ B2·z + η·y₁·⃗e₁`. The
+    /// `η` term is `GH′`'s whole modification, so this is the one row a stock
+    /// Greyhound cannot produce.
+    GhEq38LastRowMismatch {
+        /// Row of `R_F^n` that disagreed.
+        row: usize,
+    },
+    /// `GH′`'s first norm gate (Cor. 5, inherited from Greyhound's Thm. 4.1):
+    /// `ŵ` is not `b1`-short. Everything Eq. (38) extracts is an argument about
+    /// a *short* witness, so an out-of-range `ŵ` makes its rows meaningless
+    /// rather than false.
+    GhWNotShort {
+        /// Observed infinity norm.
+        got: u64,
+        /// Bound `b1`.
+        bound: u64,
+    },
+    /// `GH′`'s second norm gate: `‖z‖∞` above `d·(Σ_j‖c_j‖∞)·(b2−1)`, the bound
+    /// [`folded_norm_bound`] states for `z = Σ_j c_j·s2,j` with `‖s2‖∞ < b2`.
+    GhZNotShort {
+        /// Observed infinity norm.
+        got: u64,
+        /// Bound [`folded_norm_bound`] returns for these challenges.
+        bound: u64,
+    },
     /// A tree commitment carried inside a side-claim failed to open, so the input
     /// is not a member of `TE(1,k,b)^ω × PE(1,k,b)^{ω+1}`.
     Tree(TreeError),
@@ -300,6 +360,32 @@ impl fmt::Display for FinError {
             ),
             FinError::QFormMismatch => write!(f, "GHPrincipal′: q⊺·s1 ≠ y1 (Eq. 38's extra row)"),
             FinError::ABFormMismatch => write!(f, "GHPrincipal′: a⊺·s2·b ≠ y2"),
+            FinError::GhCommitmentMismatch { at } => {
+                write!(f, "Eq. (38) row 1: (D·ŵ)_{at} ≠ v_{at}")
+            }
+            FinError::GhEvalRowMismatch => write!(
+                f,
+                "Eq. (38) row 3: b⊺·G_{{b1,2^γ}}·ŵ ≠ y2, i.e. ŵ does not open to the \
+                 column combination whose inner product with b is y2"
+            ),
+            FinError::GhFoldRowMismatch => write!(
+                f,
+                "Eq. (38) row 4: c⊺·G_{{b1,2^γ}}·ŵ ≠ a⊺·z, i.e. the row combination c sees \
+                 a different ŵ than the folded opening z does"
+            ),
+            FinError::GhEq38LastRowMismatch { row } => write!(
+                f,
+                "Eq. (38) row 5: (c⊺⊗G_{{b1,n}})·s1 + η⃗e₁·(q⊺s1) ≠ B2·z + η·y₁·⃗e₁ at row {row}"
+            ),
+            FinError::GhWNotShort { got, bound } => write!(
+                f,
+                "GH′: ‖ŵ‖∞ = {got} is not < b1 = {bound}, so Eq. (38) is an equation about \
+                 a witness the reduction cannot extract"
+            ),
+            FinError::GhZNotShort { got, bound } => write!(
+                f,
+                "GH′: z is not short enough: {got} > d·(Σ of the challenges' norms)·(b2−1) = {bound}"
+            ),
             FinError::Tree(err) => write!(f, "a side-claim tree does not open: {err}"),
             FinError::Eval(err) => write!(f, "multilinear evaluation failed: {err}"),
         }
@@ -307,11 +393,14 @@ impl fmt::Display for FinError {
 }
 
 /// `GHSetup(1^λ, β, γ) → pp ← {B1, B2}` (Def. 23, p. 39): two independent uniform
-/// matrices, `B1 ∈ R^{n×2^γ nα1}` and `B2 ∈ R^{n×2^β α2}`.
+/// matrices, `B1 ∈ R^{n×2^γ nα1}` and `B2 ∈ R^{n×2^β α2}` — plus the third one
+/// Eq. (38)'s first row needs, `D ∈ R^{n×2^γ α1}`, which Def. 23 does not print
+/// because it restates only the *commitment scheme* while `GH′` runs Greyhound's
+/// initial three-move protocol, which commits to `ŵ` under a matrix of its own.
 ///
-/// Like [`TreeKey::setup`] there is no trapdoor: both are seed-expanded uniform
-/// matrices, and Def. 23's binding comes from MSIS on the *shortness* of `s1`,
-/// `s2`, not from an invertible construction.
+/// Like [`TreeKey::setup`] there is no trapdoor: all three are seed-expanded
+/// uniform matrices, and Def. 23's binding comes from MSIS on the *shortness* of
+/// `s1`, `s2`, not from an invertible construction.
 ///
 /// This instance sets `b1 = b2 = b` (`α1 = α2 = α`), i.e. the same base as
 /// `TCom`; `BASE`/`ALPHA` are the crate's const generics, so a distinct `b1`
@@ -324,6 +413,7 @@ pub struct FinKey<R: Ring, const D: usize, const BASE: u64, const ALPHA: usize> 
     beta: usize,
     b1: RingMatrixKey<R, D>,
     b2: RingMatrixKey<R, D>,
+    d: RingMatrixKey<R, D>,
 }
 
 impl<R: Ring, const D: usize, const BASE: u64, const ALPHA: usize> fmt::Debug
@@ -377,6 +467,7 @@ impl<R: Ring, const D: usize, const BASE: u64, const ALPHA: usize> FinKey<R, D, 
             beta,
             b1: RingMatrixKey::setup(B1_LABEL, seed, rows, (1usize << gamma) * rows * ALPHA),
             b2: RingMatrixKey::setup(B2_LABEL, seed, rows, (1usize << beta) * ALPHA),
+            d: RingMatrixKey::setup(D_LABEL, seed, rows, (1usize << gamma) * ALPHA),
         }
     }
 
@@ -439,6 +530,17 @@ impl<R: Ring, const D: usize, const BASE: u64, const ALPHA: usize> FinKey<R, D, 
     /// `B2`.
     pub fn b2(&self) -> &RingMatrixKey<R, D> {
         &self.b2
+    }
+
+    /// `D ∈ R^{n×2^γ α1}`: Eq. (38)'s first row, the commitment to `ŵ`.
+    pub fn d(&self) -> &RingMatrixKey<R, D> {
+        &self.d
+    }
+
+    /// `|ŵ| = 2^γ·α1`: the digit count of the gadget image `G⁻¹_{b1,2^γ}(w)` that
+    /// `D` commits to.
+    pub const fn w_len(&self) -> usize {
+        self.nodes() * ALPHA
     }
 }
 
@@ -1681,8 +1783,8 @@ where
 /// verifier from `r′`, so none of them is sent.
 ///
 /// This is Fig. 6's (p. 47) "1 commitment + 2 RF + 2 RF" part of the finish row;
-/// the rest of that row — `SC(2b)`, `ShiftSC(2,1)`, `BatchSC(2,1)` and
-/// `Greyhound(2^{µ+k+1}nαd)` — is the unlanded remainder (module doc).
+/// [`FinishAccounting`] computes the whole row and names what this compilation
+/// does not send.
 pub fn wire_rings<R: Ring, const D: usize>(proof: &FinProof<R, D>) -> usize {
     proof.reshape.commitment.t.len() + 6
 }
@@ -1692,6 +1794,360 @@ pub fn wire_rings<R: Ring, const D: usize>(proof: &FinProof<R, D>) -> usize {
 /// sends. Kept separate from [`wire_rings`] so the two are never conflated.
 pub fn witness_entries<R: Ring, const D: usize>(proof: &FinProof<R, D>) -> usize {
     proof.reshape.commitment.s1.len() + proof.reshape.commitment.s2.len()
+}
+
+/// What `GH′` commits to *before* the verifier sends `η` (p. 45: "η would need to
+/// be sent by the verifier after the commitments to `ŵ, s1, z` are sent"): the
+/// three witnesses Eq. (38)'s `z` column vector holds. `s1` is already in
+/// [`TwoLayerCommitment`], so only the other two legs are new messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GhPrimeProof<R: Ring, const D: usize> {
+    /// `ŵ ← G⁻¹_{b1,2^γ}(s2·a)`: the gadget image of Lemma 16's column
+    /// combination, `2^γ·α1` entries.
+    pub w_hat: Vec<PolyRing<R, D>>,
+    /// `v = D·ŵ ∈ R_F^n`: Eq. (38) row 1's left-hand commitment.
+    pub v: Vec<PolyRing<R, D>>,
+    /// `z = Σ_j c_j·s2,j ∈ R^{2^β α2}`: the folded second-layer opening, i.e.
+    /// Greyhound's `z` leg.
+    pub z: Vec<PolyRing<R, D>>,
+}
+
+/// `d·(Σ_j norm(c_j))·(b2−1)`, the bound on `‖z‖∞` for `z = Σ_j c_j·s2,j` with
+/// `s2` `b2`-short: negacyclic multiplication is a `d`-term convolution, so
+/// `‖x·y‖∞ ≤ d·‖x‖∞·‖y‖∞`. At `r` ternary challenges and `b2 = 2` it reads
+/// `d·r`, which is exactly the crate's ternary [`crate::pcs::B_Z`]; `GH′`'s Cor. 5
+/// inherits Greyhound's norm gates for an arbitrary challenge set, and without this
+/// bound the row-5 equation would be checkable by an arbitrarily long `z`.
+///
+/// Saturating on the products, and *not* floored at one: with all-zero challenges
+/// the bound genuinely is `0`, and a gate that rounded it up would accept a `z` the
+/// fold cannot produce. `d ≥ 1` and `b2 − 1 ≥ 1` for any legal base, so `0` is the
+/// only degenerate value it can take.
+pub fn folded_norm_bound<R: Ring + CenteredRing, const D: usize>(
+    challenges: &[PolyRing<R, D>],
+    base2: u64,
+) -> u64 {
+    let sum: u64 = challenges
+        .iter()
+        .map(|c| max_norm(core::slice::from_ref(c)))
+        .fold(0, u64::saturating_add);
+    (D as u64)
+        .saturating_mul(sum)
+        .saturating_mul(base2.saturating_sub(1))
+}
+
+/// `s2·a`: the column combination of the `2^γ × 2^β α2` matrix `s2` by Lemma
+/// 16's `a` — the vector `w` whose digit expansion is `ŵ` and whose inner product
+/// with `b` is `y2`.
+fn column_combination<R, const D: usize, const BASE: u64, const ALPHA: usize>(
+    fin: &FinKey<R, D, BASE, ALPHA>,
+    s2: &[PolyRing<R, D>],
+    a: &[PolyRing<R, D>],
+) -> Vec<PolyRing<R, D>>
+where
+    R: Ring,
+{
+    s2.chunks(fin.inner_width())
+        .map(|row| tree_eval::inner_product(a, row))
+        .collect()
+}
+
+/// `GH′`'s prover: `w = s2·a`, `ŵ = G⁻¹_{b1,2^γ}(w)`, `v = D·ŵ`, and
+/// `z = Σ_j c_j·s2,j`.
+///
+/// `claim` is the `OE(2)` instance being reduced — its `a` (Lemma 16) fixes the
+/// column combination, and its `y1, y2, b` are what the rows below re-read.
+///
+/// # Errors
+/// [`FinError::WrongLength`] unless `|a| = 2^β α2`, `|s2| = 2^{γ+β}α2` and there
+/// is one challenge per `2^γ` block.
+pub fn gh_prime_prove<R, const D: usize, const BASE: u64, const ALPHA: usize>(
+    fin: &FinKey<R, D, BASE, ALPHA>,
+    claim: &FinProof<R, D>,
+    challenges: &[PolyRing<R, D>],
+) -> Result<GhPrimeProof<R, D>, FinError>
+where
+    R: Ring + CenteredRing,
+{
+    let s2 = &claim.reshape.commitment.s2;
+    if claim.a.len() != fin.inner_width()
+        || s2.len() != fin.bottom_len()
+        || challenges.len() != fin.nodes()
+    {
+        return Err(FinError::WrongLength {
+            got: challenges.len(),
+            expected: fin.nodes(),
+        });
+    }
+    let w = column_combination(fin, s2, &claim.a);
+    let w_hat = gadget::split::<R, D, BASE, ALPHA>(&w);
+    let v = fin.d().matvec(&w_hat).map_err(|err| FinError::WrongLength {
+        got: err.got,
+        expected: err.expected,
+    })?;
+    let mut z = vec![tree_eval::zero_ring::<R, D>(); fin.inner_width()];
+    for (c, block) in challenges.iter().zip(s2.chunks(fin.inner_width())) {
+        for (acc, value) in z.iter_mut().zip(block) {
+            *acc += c.clone() * value;
+        }
+    }
+    Ok(GhPrimeProof { w_hat, v, z })
+}
+
+/// **Every** condition of Eq. (38) plus the two norm gates Cor. 5 inherits from
+/// Greyhound's Thm. 4.1, evaluated rather than short-circuiting.
+///
+/// Eq. (38) is the five-row system `P·(ŵ, s1, z)⊺ = h` printed on p. 45. Row by
+/// row here:
+///
+/// 1. `D·ŵ = v` → [`FinError::GhCommitmentMismatch`];
+/// 2. `B·s1 = u` *is* Def. 23's root equation, so it keeps the one name
+///    [`gh_open_report`] gives it ([`FinError::RootMismatch`]) rather than
+///    getting a second;
+/// 3. `b⊺·G_{b1,2^γ}·ŵ = y2` → [`FinError::GhEvalRowMismatch`];
+/// 4. `c⊺·G_{b1,2^γ}·ŵ − a⊺·z = 0` → [`FinError::GhFoldRowMismatch`];
+/// 5. `(c⊺⊗G_{b1,n})·s1 + η·ẽ₁·(q⊺s1) − B2·z = η·y₁·ẽ₁` →
+///    [`FinError::GhEq38LastRowMismatch`].
+///
+/// Row 5 is the whole modification: the `+η·ẽ₁·q⊺` entry in that row's `s1`
+/// column is what carries the *first* layer's Eq. (37) claim into the linear
+/// relation LaBRADOR proves, and `ẽ₁` is the first standard basis vector of
+/// `R_F^n`, so of the `n` rows only row 0 carries the new term — which is why
+/// moving `q⊺·s1` leaves every row but `row = 0` of the last equation alone.
+///
+/// The `q`, `a`, `b` used here are the ones the `OE(2)` instance carries, exactly
+/// as `GHPrincipal′(b1,b2)` lists them among its public inputs; that they are the
+/// tensors of the forwarded point is [`fin_report`]'s [`FinError::FormMismatch`]
+/// gate, and Eq. (37) itself is re-checked here as its own row
+/// ([`FinError::QFormMismatch`]) because row 5's `η` term is stated in terms of
+/// `q⊺·s1`, not in terms of `y1`.
+///
+/// A shape mismatch is reported as [`FinError::WrongLength`] and returned alone:
+/// the rows above index these vectors, and a truncated one would make an inner
+/// product agree vacuously.
+pub fn gh_prime_report<R, const D: usize, const BASE: u64, const ALPHA: usize>(
+    fin: &FinKey<R, D, BASE, ALPHA>,
+    claim: &FinProof<R, D>,
+    proof: &GhPrimeProof<R, D>,
+    challenges: &[PolyRing<R, D>],
+    eta: &PolyRing<R, D>,
+) -> Vec<FinError>
+where
+    R: Ring + CenteredRing,
+{
+    let mut bad: Vec<FinError> = Vec::new();
+    let mut push = |error: FinError| {
+        if !bad.contains(&error) {
+            bad.push(error);
+        }
+    };
+    let commitment = &claim.reshape.commitment;
+    if proof.w_hat.len() != fin.w_len()
+        || proof.v.len() != fin.rows()
+        || proof.z.len() != fin.inner_width()
+        || challenges.len() != fin.nodes()
+        || commitment.s1.len() != fin.top_len()
+        || commitment.s2.len() != fin.bottom_len()
+        || claim.a.len() != fin.inner_width()
+        || claim.b.len() != fin.nodes()
+    {
+        push(FinError::WrongLength {
+            got: proof.w_hat.len(),
+            expected: fin.w_len(),
+        });
+        return bad;
+    }
+    // The norm gates first: everything below is an extraction argument about a
+    // *short* witness, so an out-of-range ŵ or z makes the rows meaningless
+    // rather than false.
+    let got = max_norm(&proof.w_hat);
+    if got >= BASE {
+        push(FinError::GhWNotShort { got, bound: BASE });
+    }
+    let bound = folded_norm_bound(challenges, BASE);
+    let got = max_norm(&proof.z);
+    if got > bound {
+        push(FinError::GhZNotShort { got, bound });
+    }
+    // Row 1: D·ŵ = v.
+    match fin.d().matvec(&proof.w_hat) {
+        Ok(expect) => {
+            if let Some(at) = expect
+                .iter()
+                .zip(proof.v.iter())
+                .position(|(want, got)| got != want)
+            {
+                push(FinError::GhCommitmentMismatch { at });
+            }
+        }
+        Err(err) => push(FinError::WrongLength {
+            got: err.got,
+            expected: err.expected,
+        }),
+    }
+    // Rows 3 and 4 open the same row combination G_{b1,2^γ}·ŵ.
+    let w = gadget::join::<R, D, BASE, ALPHA>(&proof.w_hat);
+    if tree_eval::inner_product(&claim.b, &w) != claim.y2 {
+        push(FinError::GhEvalRowMismatch);
+    }
+    if tree_eval::inner_product(challenges, &w) != tree_eval::inner_product(&claim.a, &proof.z) {
+        push(FinError::GhFoldRowMismatch);
+    }
+    // Eq. (37) on its own — the claim row 5 batches in.
+    let side = tree_eval::inner_product(&claim.q, &commitment.s1);
+    if side != claim.y1 {
+        push(FinError::QFormMismatch);
+    }
+    // Row 5: (c⊺G_{b1,n})·s1 + η·ẽ₁·(q⊺s1) = B2·z + η·y₁·ẽ₁.
+    let recomposed = gadget::join::<R, D, BASE, ALPHA>(&commitment.s1);
+    let folded = match fin.b2().matvec(&proof.z) {
+        Ok(values) => values,
+        Err(err) => {
+            push(FinError::WrongLength {
+                got: err.got,
+                expected: err.expected,
+            });
+            return bad;
+        }
+    };
+    for row in 0..fin.rows() {
+        let mut combined = tree_eval::zero_ring::<R, D>();
+        for (c, block) in challenges.iter().zip(recomposed.chunks(fin.rows())) {
+            combined += c.clone() * &block[row];
+        }
+        let mut lhs = combined - &folded[row];
+        let mut expect = tree_eval::zero_ring::<R, D>();
+        if row == 0 {
+            lhs += eta.clone() * &side;
+            expect = eta.clone() * &claim.y1;
+        }
+        if lhs != expect {
+            push(FinError::GhEq38LastRowMismatch { row });
+            break;
+        }
+    }
+    bad
+}
+
+/// `GH′`'s verifier: [`gh_prime_report`] then "take the first". `GH′` is a *weak*
+/// interactive reduction (Cor. 5), so its acceptance is the bit `(0,1)` — the
+/// whole output of `Π^Fin`.
+///
+/// # Errors
+/// The first entry of [`gh_prime_report`].
+pub fn gh_prime_verify<R, const D: usize, const BASE: u64, const ALPHA: usize>(
+    fin: &FinKey<R, D, BASE, ALPHA>,
+    claim: &FinProof<R, D>,
+    proof: &GhPrimeProof<R, D>,
+    challenges: &[PolyRing<R, D>],
+    eta: &PolyRing<R, D>,
+) -> Result<(), FinError>
+where
+    R: Ring + CenteredRing,
+{
+    gh_prime_report(fin, claim, proof, challenges, eta)
+        .into_iter()
+        .next()
+        .map_or(Ok(()), Err)
+}
+
+/// Ring elements `GH′` puts on the wire *in addition to* [`wire_rings`]: `ŵ`
+/// (`2^γ·α1`), `v` (`n`) and `z` (`2^β α2`). Kept separate because these three
+/// are the messages of the LaBRADOR-backed inner protocol, not of `Π^Reshape`,
+/// and Fig. 6 accounts for them under `Greyhound(2^{µ+k+1}nαd)`.
+pub fn gh_prime_wire_elements<R: Ring, const D: usize>(proof: &GhPrimeProof<R, D>) -> usize {
+    proof.w_hat.len() + proof.v.len() + proof.z.len()
+}
+
+/// One row of Fig. 6 (p. 47)'s proof-size breakdown, computed from the parameter
+/// rather than read off the printed table.
+///
+/// The `finish` row is
+/// `SC(2b) + ShiftSC(2,1) + 2 R_K + BatchSC(2,1) + 2 R_F + 1 commitment`,
+/// `+ Greyhound(2^{µ+k+1}nαd)`, where `µ := ⌈log₂(2ω+1)⌉` and every sum-check
+/// message is a `K`-valued field element (`e` coefficients of `F_q` each, since
+/// §4's ring sum-checks run over the degree-`e` extension). The last term is the
+/// one this crate cannot compute: its size *is* the LaBRADOR recursion (module
+/// doc, "What is *not* here"), which is why [`Self::greyhound_allowance`] reports
+/// it as a difference rather than as a formula.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FinishAccounting {
+    /// `SC(2b)`: `2b+1` elements per round, `µ′+m` rounds.
+    pub norm_sumcheck: usize,
+    /// `ShiftSC(2,1)`: `3` elements per round.
+    pub shift_sc: usize,
+    /// `BatchSC(2,1)`: `3` elements per round.
+    pub batch_sc: usize,
+    /// The two `R_K` claims `a1, a2` (Prot. 7 Step 2).
+    pub packed_claims: usize,
+    /// The two `R_F` claims `y1, y2` (Prot. 7 Step 3).
+    pub eval_claims: usize,
+    /// The one `R_F^n` commitment `t*_reshape` (Prot. 6 Step 3).
+    pub commitment: usize,
+    /// `2^{µ+k+1}·n·α·d`, the field-element input size `Greyhound(·)` is stated
+    /// at — a size, not a byte count, because its proof is the unlanded term.
+    pub greyhound_input: usize,
+    /// `µ′+m`, the variables each of the three sum-checks runs over.
+    pub rounds: usize,
+}
+
+impl FinishAccounting {
+    /// The row's components for one parameterisation.
+    ///
+    /// `field_bytes` is `⌈log₂ q / 8⌉` and `e` the extension degree that makes a
+    /// `K`-valued message cost `e·log₂ q` bits — Protocols 1–2 state their
+    /// sum-checks over `K`, so a caller accounting for `F` alone passes `e = 1`.
+    ///
+    /// # Panics
+    /// If `n·α` is not a power of two (`m := log₂(nα)` must exist) or `base < 2`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        field_bytes: usize,
+        e: usize,
+        d: usize,
+        n: usize,
+        alpha: usize,
+        k: usize,
+        omega: usize,
+        base: usize,
+    ) -> Self {
+        let slot = n * alpha;
+        assert!(
+            slot.is_power_of_two(),
+            "m := log₂(nα) must exist: nα = {slot} is not a power of two"
+        );
+        assert!(base >= 2, "a digit base below 2 has no expansion");
+        let mu = (2 * omega + 1).next_power_of_two().trailing_zeros() as usize;
+        let rounds = mu + k + 1 + slot.trailing_zeros() as usize;
+        let ring_bytes = field_bytes * d;
+        Self {
+            norm_sumcheck: (2 * base + 1) * rounds * e * field_bytes,
+            shift_sc: 3 * rounds * e * field_bytes,
+            batch_sc: 3 * rounds * e * field_bytes,
+            packed_claims: 2 * ring_bytes * e,
+            eval_claims: 2 * ring_bytes,
+            commitment: n * ring_bytes,
+            greyhound_input: (1usize << (mu + k + 1)) * slot * d,
+            rounds,
+        }
+    }
+
+    /// The components this module's `Π^Fin` actually sends, in bytes.
+    pub const fn implemented_bytes(&self) -> usize {
+        self.norm_sumcheck
+            + self.shift_sc
+            + self.batch_sc
+            + self.packed_claims
+            + self.eval_claims
+            + self.commitment
+    }
+
+    /// The printed row's total, less what [`Self::implemented_bytes`] accounts
+    /// for: that difference *is* the `Greyhound(2^{µ+k+1}nαd)` term, so this is
+    /// the size of the hole rather than a measurement of it.
+    pub const fn greyhound_allowance(&self, paper_total_kb: usize) -> usize {
+        (paper_total_kb * 1024).saturating_sub(self.implemented_bytes())
+    }
 }
 
 #[cfg(test)]
@@ -2231,6 +2687,52 @@ mod tests {
     }
 
     #[test]
+    fn a_padding_block_is_pinned_by_step_1a_alone() {
+        // Π^Reshape pads `s_reshape` to `2^⌈log(2ω+1)⌉` blocks, so the last block
+        // carries no claim: Step 2(f)'s prefix gate walks the *declared* blocks and
+        // never looks at it, and a prover that re-derives Eq. (33)/(34)'s claims
+        // *and* the `OE(2)` leg from the edited vector leaves every other check
+        // quiet. What still refuses it is Step 1(a)'s binding — the padding is part
+        // of Prot. 6's input, not an implementation detail.
+        let mut sc = Setup::new();
+        let block_width = (1usize << (K + 1)) * SLOT;
+        let padding = sc.claims.len();
+        assert!(
+            (padding + 1) * block_width <= sc.proof.reshape.commitment.s2.len(),
+            "this instance must actually have a padding block"
+        );
+        let at = padding * block_width + 1;
+        let mut reshaped = sc.proof.reshape.commitment.s2.clone();
+        reshaped[at] = monomial(1);
+        let commitment = gh_commit(&sc.fin, &reshaped).expect("GHCommit takes any s2");
+        let v_a =
+            reshape_a_side(&sc.tree, &reshaped, SLOT, K, &sc.claims, sc.zeta, sc.xi, sc.eta)
+                .expect("the A side of the edited vector");
+        let v_g = reshape_g_side(
+            &reshaped,
+            SLOT,
+            sc.tree.rows(),
+            K,
+            &sc.claims,
+            sc.zeta,
+            sc.xi,
+            sc.eta,
+            BASE,
+            ALPHA,
+        )
+        .expect("the G side of the edited vector");
+        let reshape = ReshapeProof {
+            commitment,
+            v_a,
+            v_g,
+        };
+        let r = sc.proof.r.clone();
+        let r_prime = sc.proof.r_prime.clone();
+        sc.proof = finish(&sc.fin, &reshape, r, r_prime).expect("the OE(2) leg re-derives");
+        assert_eq!(sc.report(), vec![FinError::BlocksMismatch { at }]);
+    }
+
+    #[test]
     fn lifting_p_eta_matches_the_tensor_form() {
         // Eq. (33) pairs `q_reshape,A` with `p_{η,n} ⊗ s`; the report takes the
         // cheap scalar lift, so pin it against `tensor_ring` on a small case.
@@ -2331,5 +2833,226 @@ mod tests {
             "the openings §5.4's BatchSC would hide"
         );
         assert!(witness_entries(&sc.proof) > wire_rings(&sc.proof) * 100);
+    }
+
+    /// `GH′`'s folding challenges `c` — one ring element per `2^γ` block of `s2`
+    /// — and `η`, which p. 45 draws *after* the commitments to `ŵ, s1, z`.
+    fn gh_challenges(sc: &Setup) -> Vec<Elt> {
+        tree_eval::ring_challenges::<F, D>(b"gh-prime-c", b"tree-fin-gh-prime", sc.fin.nodes())
+    }
+
+    fn gh_eta() -> Elt {
+        ring_point(1, 91)[0].clone()
+    }
+
+    #[test]
+    fn eq_38_verifies_and_its_rows_are_named_separately() {
+        let sc = Setup::new();
+        let c = gh_challenges(&sc);
+        let eta = gh_eta();
+        let gh = gh_prime_prove(&sc.fin, &sc.proof, &c).expect("GH′ proves its own rows");
+        assert_eq!(gh.w_hat.len(), sc.fin.w_len(), "ŵ is 2^γ·α1 digits");
+        assert_eq!(gh.v.len(), sc.fin.rows(), "v = D·ŵ ∈ R_F^n");
+        assert_eq!(gh.z.len(), sc.fin.inner_width(), "z is 2^β·α2 long");
+        assert!(
+            gh_prime_report(&sc.fin, &sc.proof, &gh, &c, &eta).is_empty(),
+            "the honest GH′ proof was refused by {:?}",
+            gh_prime_report(&sc.fin, &sc.proof, &gh, &c, &eta)
+        );
+        gh_prime_verify(&sc.fin, &sc.proof, &gh, &c, &eta).expect("GH′ accepts");
+        assert_eq!(
+            gh_prime_wire_elements(&gh),
+            sc.fin.w_len() + sc.fin.rows() + sc.fin.inner_width()
+        );
+
+        // Row 1 alone: the commitment to `ŵ`, with `ŵ` itself untouched.
+        let mut bad = gh.clone();
+        bad.v[0] = bad.v[0].clone() + monomial(1);
+        assert_eq!(
+            gh_prime_report(&sc.fin, &sc.proof, &bad, &c, &eta),
+            vec![FinError::GhCommitmentMismatch { at: 0 }],
+            "D·ŵ ≠ v enters no other row"
+        );
+
+        // Row 3 alone: `y2` is what `b⊺·G_{b1,2^γ}·ŵ` reads, and GH′ is the only
+        // reader — `a⊺·s2·b = y2` is the same claim through `s2`, and `fin_report`
+        // owns that name.
+        let mut claim = sc.proof.clone();
+        claim.y2 = claim.y2.clone() + monomial(1);
+        assert_eq!(
+            gh_prime_report(&sc.fin, &claim, &gh, &c, &eta),
+            vec![FinError::GhEvalRowMismatch]
+        );
+
+        // Row 4 alone: `a` enters GH′ only as `a⊺·z`.
+        let mut claim = sc.proof.clone();
+        claim.a[0] = claim.a[0].clone() + monomial(1);
+        assert_eq!(
+            gh_prime_report(&sc.fin, &claim, &gh, &c, &eta),
+            vec![FinError::GhFoldRowMismatch]
+        );
+    }
+
+    #[test]
+    fn the_eta_entry_is_what_carries_eq_37_into_eq_38() {
+        // §5.4.3's whole modification is the `+η·ẽ₁·q⊺` entry of Eq. (38)'s last
+        // row, so the control is to run the same forgery with and without it: a
+        // stock Greyhound row cannot see the first layer's claim at all.
+        let sc = Setup::new();
+        let c = gh_challenges(&sc);
+        let eta = gh_eta();
+        let gh = gh_prime_prove(&sc.fin, &sc.proof, &c).expect("GH′ proves its own rows");
+        let mut claim = sc.proof.clone();
+        claim.y1 = claim.y1.clone() + monomial(1);
+        let zero = monomial(0);
+        assert_eq!(
+            gh_prime_report(&sc.fin, &claim, &gh, &c, &zero),
+            vec![FinError::QFormMismatch],
+            "η = 0 leaves Eq. (37) outside the last equation"
+        );
+        assert_eq!(
+            gh_prime_report(&sc.fin, &claim, &gh, &c, &eta),
+            vec![
+                FinError::QFormMismatch,
+                FinError::GhEq38LastRowMismatch { row: 0 }
+            ],
+            "with η ≠ 0 the same forgery breaks the last equation — at row 0 only, \
+             because ẽ₁ has a single nonzero coordinate"
+        );
+    }
+
+    #[test]
+    fn a_noncanonical_w_hat_trips_only_the_gh_norm_gate() {
+        // The pair move `each_def_23_gate_fails_alone` uses, applied to `ŵ`:
+        // `(0,0) → (2,−1)` preserves `G_{b1,2^γ}·ŵ`, hence rows 3 and 4, and the
+        // prover rebinds `v`, hence row 1 — so only `‖ŵ∞ < b1` can speak. This is
+        // the gate that stops a prover from satisfying Eq. (38) with a witness no
+        // LaBRADOR extractor could return.
+        let sc = Setup::new();
+        let c = gh_challenges(&sc);
+        let eta = gh_eta();
+        let gh = gh_prime_prove(&sc.fin, &sc.proof, &c).expect("GH′ proves its own rows");
+        let zero = monomial(0);
+        let at = gh
+            .w_hat
+            .windows(2)
+            .enumerate()
+            .find(|(index, pair)| index % ALPHA + 1 < ALPHA && pair[0] == zero && pair[1] == zero)
+            .expect("a gadget image has adjacent zero digits inside one block")
+            .0;
+        let mut bad = gh.clone();
+        bad.w_hat[at] = monomial(2);
+        bad.w_hat[at + 1] = monomial(0) - monomial(1);
+        assert_eq!(
+            gadget::join::<F, D, BASE, ALPHA>(&gh.w_hat),
+            gadget::join::<F, D, BASE, ALPHA>(&bad.w_hat),
+            "the pair move must preserve G·ŵ"
+        );
+        bad.v = sc
+            .fin
+            .d()
+            .matvec(&bad.w_hat)
+            .expect("the same shape the honest commitment had");
+        assert_eq!(
+            gh_prime_report(&sc.fin, &sc.proof, &bad, &c, &eta),
+            vec![FinError::GhWNotShort {
+                got: 2,
+                bound: BASE
+            }]
+        );
+    }
+
+    #[test]
+    fn folded_norm_bound_tracks_the_challenges_and_bites() {
+        let sc = Setup::new();
+        let eta = gh_eta();
+        // Ternary challenges, so the bound is a real number rather than something
+        // no `z` could reach: `d·(Σ_j‖c_j‖∞)·(b2−1) = 8·8·1`.
+        let c: Vec<Elt> = (0..sc.fin.nodes())
+            .map(|j| {
+                if j % 2 == 0 {
+                    monomial(1)
+                } else {
+                    monomial(0) - monomial(1)
+                }
+            })
+            .collect();
+        let bound = folded_norm_bound(&c, BASE);
+        assert_eq!(bound, (D * sc.fin.nodes() * (BASE as usize - 1)) as u64);
+        assert_eq!(bound, 64);
+        // And the bound is not floored at one: all-zero challenges genuinely give
+        // `0`, so a gate that rounded up would accept a `z` of norm 1 the fold
+        // cannot produce.
+        let zeros = vec![monomial(0); sc.fin.nodes()];
+        assert_eq!(folded_norm_bound(&zeros, BASE), 0);
+        let gh = gh_prime_prove(&sc.fin, &sc.proof, &c).expect("ternary challenges fold");
+        assert!(
+            max_norm(&gh.z) <= bound,
+            "the honest fold is inside the bound the negacyclic convolution gives: \
+             {} > {bound}",
+            max_norm(&gh.z)
+        );
+        // A `z` longer than the bound is refused *as a length*: rows 4 and 5 read
+        // `z` too, so they co-fail, and the report says so in that order.
+        let mut bad = gh.clone();
+        bad.z[0] = monomial(bound + 1);
+        assert_eq!(
+            gh_prime_report(&sc.fin, &sc.proof, &bad, &c, &eta),
+            vec![
+                FinError::GhZNotShort {
+                    got: bound + 1,
+                    bound
+                },
+                FinError::GhFoldRowMismatch,
+                FinError::GhEq38LastRowMismatch { row: 0 },
+            ]
+        );
+    }
+
+    #[test]
+    fn finish_accounting_decomposes_fig_6_s_p3_row() {
+        // Fig. 5 (p. 45)'s P3 column: `log₂q = 32`, `d = 64`, `e = 8`, `n = 32`,
+        // `b = 2`, `k = 7`; Fig. 6 (p. 47) gives `ω = 6` cycles, a `single cycle
+        // total` of 43.8 KB, a `finish` row of ∼72 KB, and Fig. 5's total of
+        // 335 KB.
+        let p3 = FinishAccounting::new(4, 8, 64, 32, 32, 7, 6, 2);
+        assert_eq!(
+            p3.rounds, 22,
+            "µ′+m = (⌈log₂(2ω+1)⌉+k+1)+log₂(nα) = (4+7+1)+10"
+        );
+        assert_eq!(p3.norm_sumcheck, 5 * 22 * 8 * 4, "SC(2b)");
+        assert_eq!(p3.shift_sc, 3 * 22 * 8 * 4, "ShiftSC(2,1)");
+        assert_eq!(p3.batch_sc, 3 * 22 * 8 * 4, "BatchSC(2,1)");
+        assert_eq!(p3.packed_claims, 2 * 4 * 64 * 8, "2 R_K");
+        assert_eq!(p3.eval_claims, 2 * 4 * 64, "2 R_F");
+        assert_eq!(p3.commitment, 32 * 4 * 64, "1 commitment");
+        assert_eq!(p3.greyhound_input, (1usize << 12) * 1024 * 64);
+        // What this compilation sends is a fifth of the printed row, and the
+        // unlanded `Greyhound(2^{µ+k+1}nαd)` term is the rest — bigger than every
+        // component above. That difference is the size of the hole, stated as one.
+        assert_eq!(p3.implemented_bytes(), 20_544);
+        let allowance = p3.greyhound_allowance(72);
+        assert_eq!(allowance, 72 * 1024 - 20_544);
+        assert!(
+            allowance > p3.implemented_bytes(),
+            "the hole should dominate: {allowance} vs {}",
+            p3.implemented_bytes()
+        );
+        // The ∼72 KB row is *inside* Fig. 5's 335 KB total (43.8·6 + 72 = 334.8),
+        // which is what makes the allowance above a statement about Greyhound
+        // rather than about a proof the paper never counted.
+        assert_eq!(
+            438 * 6 + 720,
+            3_348,
+            "Fig. 6's own arithmetic, in tenths of KB"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "not a power of two")]
+    fn finish_accounting_refuses_a_shape_with_no_m() {
+        // `m := log₂(nα)` indexes the sum-check's variables; without it the row
+        // cannot be stated, and a silent rounding would print a confident number.
+        let _ = FinishAccounting::new(4, 8, 64, 3, 32, 7, 6, 2);
     }
 }
