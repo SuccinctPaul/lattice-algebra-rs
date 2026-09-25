@@ -118,6 +118,7 @@
 //! `a` inside the column), not the reverse. [`bivariate_split`] is that split and
 //! `the_lemma_16_split_is_not_transposable` refuses the transposition.
 
+use crate::pcs::dotproduct::{QuadFn, Relation, zero_elt};
 use crate::pcs::gadget;
 use crate::pcs::key::{apply_blockwise, RingMatrixKey};
 use crate::pcs::tree_commit::{self, max_norm, TreeError, TreeKey, TreeOpening};
@@ -2027,6 +2028,154 @@ where
         }
     }
     bad
+}
+
+/// Eq. (38) as **LaBRADOR's principal relation** — §5.4.3's last step, which is
+/// where the paper says the matrix equation is "proven by using LaBRADOR as a
+/// sub-protocol".
+///
+/// Every row of Eq. (38) is *linear* in the stacked witness `(ŵ, s1, z)`, so each
+/// row coordinate becomes one [`QuadFn`] with `a = 0`, `φ` the matrix row and `b`
+/// the claimed entry: `Σᵢ ⟨φᵢ, xᵢ⟩ = b`. `Relation::rank` is one number, so the
+/// three parts are padded to the widest (`|s1|`); a padded slot carries zero
+/// coefficient and zero witness, which neither weakens the statement nor inflates
+/// `β`.
+///
+/// Row 2 (`B·s1 = u`) is included even though Def. 23 already gates it: LaBRADOR
+/// proves the *system*, and dropping a row would make the statement proved weaker
+/// than the one [`gh_prime_report`] accepts.
+///
+/// The norm budget is derived, not asserted: `ŵ` and `s1` are gadget images, so
+/// every entry has magnitude `≤ b−1`, and `z = Σⱼ cⱼ·s2,j` is bounded by
+/// [`folded_norm_bound`]. That is the number LaBRADOR's slack condition
+/// (`β ≤ √(30/128)·q/125`) has to fit, and it is why the budget is computed here
+/// rather than passed in.
+///
+/// # Errors
+/// [`FinError::WrongLength`] when the shapes do not describe this key.
+pub fn eq38_relation<R, const D: usize, const BASE: u64, const ALPHA: usize>(
+    fin: &FinKey<R, D, BASE, ALPHA>,
+    claim: &FinProof<R, D>,
+    gh: &GhPrimeProof<R, D>,
+    challenges: &[PolyRing<R, D>],
+    eta: &PolyRing<R, D>,
+) -> Result<Relation<R, D>, FinError>
+where
+    R: Ring + CenteredRing,
+{
+    let commitment = &claim.reshape.commitment;
+    let (nodes, width, rows, alpha) = (fin.nodes(), fin.inner_width(), fin.rows(), ALPHA);
+    let (w_len, s1_len) = (fin.w_len(), fin.top_len());
+    if gh.w_hat.len() != w_len
+        || gh.z.len() != width
+        || gh.v.len() != rows
+        || commitment.s1.len() != s1_len
+        || commitment.s2.len() != fin.bottom_len()
+        || commitment.t.len() != rows
+        || challenges.len() != nodes
+        || claim.b.len() != nodes
+        || claim.a.len() != width
+        || claim.q.len() != s1_len
+    {
+        return Err(FinError::WrongLength {
+            got: gh.w_hat.len(),
+            expected: w_len,
+        });
+    }
+    // The three witness parts share `Relation::rank`; `s1` is the widest.
+    let rank = w_len.max(s1_len).max(width);
+    let mut phi_w = vec![zero_elt::<R, D>(); rank];
+    let mut phi_s = vec![zero_elt::<R, D>(); rank];
+    let mut phi_z = vec![zero_elt::<R, D>(); rank];
+    let mut full: Vec<QuadFn<R, D>> = Vec::new();
+    let mut push = |phi_w: &mut Vec<PolyRing<R, D>>,
+                    phi_s: &mut Vec<PolyRing<R, D>>,
+                    phi_z: &mut Vec<PolyRing<R, D>>,
+                    b: PolyRing<R, D>| {
+        full.push(QuadFn {
+            a: vec![vec![zero_elt::<R, D>(); 3]; 3],
+            phi: vec![phi_w.clone(), phi_s.clone(), phi_z.clone()],
+            b,
+        });
+        phi_w.iter_mut().for_each(|c| *c = zero_elt::<R, D>());
+        phi_s.iter_mut().for_each(|c| *c = zero_elt::<R, D>());
+        phi_z.iter_mut().for_each(|c| *c = zero_elt::<R, D>());
+    };
+
+    // Row 1: D·ŵ = v, one function per row of D.
+    for rho in 0..rows {
+        let row = fin.d().row(rho);
+        phi_w[..w_len].clone_from_slice(row);
+        push(&mut phi_w, &mut phi_s, &mut phi_z, gh.v[rho].clone());
+    }
+    // Row 2: B1·s1 = t — Def. 23's root equation, part of the system.
+    for rho in 0..rows {
+        let row = fin.b1().row(rho);
+        phi_s[..s1_len].clone_from_slice(row);
+        push(&mut phi_w, &mut phi_s, &mut phi_z, commitment.t[rho].clone());
+    }
+    // Row 3: b⊺·G_{b1,2^γ}·ŵ = y2. `G` recomposes `Σ_k BASE^k·ŵ[i·α + k]`, so the
+    // coefficient of `ŵ[i·α + k]` is `b[i]·BASE^k`.
+    let powers: Vec<PolyRing<R, D>> = (0..alpha)
+        .scan(tree_eval::embed::<R, D>(R::ONE), |acc, _| {
+            let out = acc.clone();
+            *acc = acc.clone() * &tree_eval::embed::<R, D>(R::from(BASE));
+            Some(out)
+        })
+        .collect();
+    for i in 0..nodes {
+        for k in 0..alpha {
+            phi_w[i * alpha + k] = claim.b[i].clone() * &powers[k];
+        }
+    }
+    push(&mut phi_w, &mut phi_s, &mut phi_z, claim.y2.clone());
+    // Row 4: c⊺·G_{b1,2^γ}·ŵ − a⊺·z = 0.
+    for i in 0..nodes {
+        for k in 0..alpha {
+            phi_w[i * alpha + k] = challenges[i].clone() * &powers[k];
+        }
+    }
+    for j in 0..width {
+        phi_z[j] = tree_eval::zero_ring::<R, D>() - claim.a[j].clone();
+    }
+    push(&mut phi_w, &mut phi_s, &mut phi_z, tree_eval::zero_ring::<R, D>());
+    // Row 5: (c⊺G_{b1,n})·s1 + η·ẽ₁·(q⊺s1) − B2·z = η·y₁·ẽ₁, one function per
+    // coordinate of R_F^n. Only row 0 carries the `η` terms — `ẽ₁` is the first
+    // standard basis vector, and that single entry is §5.4.3's whole modification.
+    for rho in 0..rows {
+        for j in 0..nodes {
+            for k in 0..alpha {
+                phi_s[(j * rows + rho) * alpha + k] = challenges[j].clone() * &powers[k];
+            }
+        }
+        if rho == 0 {
+            for slot in phi_s[..s1_len].iter_mut().zip(claim.q.iter()) {
+                *slot.0 += eta.clone() * slot.1;
+            }
+        }
+        let row = fin.b2().row(rho);
+        phi_z[..width].clone_from_slice(row);
+        phi_z[..width].iter_mut().for_each(|c| *c = tree_eval::zero_ring::<R, D>() - c.clone());
+        let b = if rho == 0 {
+            eta.clone() * &claim.y1
+        } else {
+            tree_eval::zero_ring::<R, D>()
+        };
+        push(&mut phi_w, &mut phi_s, &mut phi_z, b);
+    }
+
+    // The derived budget: binary digits, and `z` bounded by the convolution.
+    let digit = (BASE - 1) as u128;
+    let z_bound = folded_norm_bound(challenges, BASE) as u128;
+    let norm_bound_sq = (D as u128)
+        * (digit * digit * (w_len + s1_len) as u128 + (width as u128) * z_bound * z_bound);
+    Ok(Relation {
+        rank,
+        multiplicity: 3,
+        full,
+        ct_only: Vec::new(),
+        norm_bound_sq,
+    })
 }
 
 /// `GH′`'s verifier: [`gh_prime_report`] then "take the first". `GH′` is a *weak*
