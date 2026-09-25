@@ -8,11 +8,16 @@ use algebra::crypto::xof::{Shake256Xof, Xof};
 use zk::foundation::sampling::fixed_weight_poly;
 use zk::instance::ring::{Z2Coeff, Z2Ring, D};
 use zk::shortness::projection::{
-    certified_l2_bound, prove_l2_shortness, verify_l2_shortness, JLProjection,
+    certified_l2_bound, prove_l2_shortness, verify_l2_shortness, JLProjection, GHL21_MIN_ROWS,
 };
 
 fn main() {
-    const K: usize = 128; // reduced dimension = confidence parameter
+    // `K` is the reduced dimension = confidence parameter. It sits at
+    // `GHL21_MIN_ROWS` deliberately: below that floor the certified tail is
+    // not merely larger, it is *not provable*, and `certified_l2_bound`
+    // returns `None`.
+    const K: usize = GHL21_MIN_ROWS;
+    const STALE_K: usize = 128;
 
     // a witness with exactly one ±13 coefficient per ring element:
     // ‖w‖₂ = 2·√M·13 — the prover's secret
@@ -31,7 +36,17 @@ fn main() {
     let p = prove_l2_shortness(&projection, &w);
     let claimed_bound = 64_u64; // ‖w‖₂ = 26 ≤ 64
     println!("response rows: {}", p.len());
-    println!("certified ‖w‖₂ ≤ {}", certified_l2_bound(claimed_bound));
+    // The certified tail depends on how many rows the projection drew, and it
+    // is **refused** (not merely widened) below `GHL21_MIN_ROWS`. Printed as an
+    // `Option` on purpose: where the floor sits, and whether the tuned tail
+    // clears it at a given `B`, is pinned by `shortness::projection`'s own
+    // tests — this example is about `prove`/`verify`, so it must not fail just
+    // because that certificate's arithmetic moved.
+    println!(
+        "certified bound: {K} rows → {:?}, {STALE_K} rows → {:?}",
+        certified_l2_bound(K, claimed_bound),
+        certified_l2_bound(STALE_K, claimed_bound),
+    );
 
     let accepted = verify_l2_shortness(&projection, &p, claimed_bound);
     println!("honest certificate accepted: {accepted}");

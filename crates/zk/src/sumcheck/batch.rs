@@ -138,7 +138,7 @@ pub fn prove_batched<R, const G: usize>(
     challenger: &mut dyn RoundChallenger<R>,
 ) -> BatchedProof<R, G>
 where
-    R: MatrixElement + Clone + core::ops::AddAssign + core::ops::MulAssign,
+    R: MatrixElement + Clone + Send + Sync + core::ops::AddAssign + core::ops::MulAssign,
 {
     let gamma = batch_gamma(challenger);
     let table = combined_table(claims, &gamma);

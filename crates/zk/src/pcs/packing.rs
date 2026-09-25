@@ -31,30 +31,53 @@
 
 use crate::foundation::encoding::{ring_from_u32, ring_to_u32};
 use crate::pcs::{RingElt, Z1Coeff, DIM};
+use algebra::ring::poly_ring::PolyRing;
 use algebra::ring::{PolynomialQuotientRing, Ring};
 use alloc::{vec, vec::Vec};
+
+/// The coefficient-reversal automorphism `σ: X ↦ X^{−1}`, **generic over the
+/// scalar ring and the ring degree**.
+///
+/// The concrete [`sigma_automorphism`] is this with the crate's `Z1`/`d=256`
+/// instance; schemes that need a different ring — CMNW, Hachi, Serval and
+/// Maltese all require `q ≡ 5 (mod 8)`, which is not NTT-friendly — go
+/// through this form (gap G1 in `docs/open-milestones.md`).
+///
+/// `σ` has order two, so `σ⁻¹ = σ`: that is why the self-inner-product
+/// argument reads `⟨s, σ(s)⟩` and still states Serval's `⟨s, σ⁻¹(s)⟩`.
+pub fn sigma_of<R: Ring, const D: usize>(g: &PolyRing<R, D>) -> PolyRing<R, D> {
+    let src = ring_to_u32::<R, D>(g);
+    let mut out = [0u32; D];
+    out[0] = src[0];
+    for k in 1..D {
+        out[D - k] = if src[k] == 0 {
+            0
+        } else {
+            // `R::MODULUS ≤ 2³²` here (enforced by `ring_to_u32`), and the
+            // `src[k] == 0` branch above keeps the subtraction away from the
+            // modulus itself, so the result always fits a `u32`.
+            (R::MODULUS - u64::from(src[k])) as u32
+        };
+    }
+    ring_from_u32::<R, D>(&out)
+}
+
+/// The σ-pairing `const(g · σ(h)) = Σ_k g_k·h_k`, generic over `(R, D)`.
+pub fn pairing_of<R: Ring, const D: usize>(g: &PolyRing<R, D>, h: &PolyRing<R, D>) -> R {
+    let prod = g.clone() * sigma_of(h);
+    R::from(u64::from(ring_to_u32::<R, D>(&prod)[0]))
+}
 
 /// The coefficient-reversal automorphism `σ: X ↦ X^{−1}`:
 /// `σ(g)_0 = g_0`, `σ(g)_{d−k} = −g_k` (mod `q`).
 pub fn sigma_automorphism(g: &RingElt) -> RingElt {
-    let src = ring_to_u32::<Z1Coeff, DIM>(g);
-    let mut out = [0u32; DIM];
-    out[0] = src[0];
-    for k in 1..DIM {
-        out[DIM - k] = if src[k] == 0 {
-            0
-        } else {
-            (Z1Coeff::MODULUS - u64::from(src[k])) as u32
-        };
-    }
-    ring_from_u32::<Z1Coeff, DIM>(&out)
+    sigma_of::<Z1Coeff, DIM>(g)
 }
 
 /// The σ-pairing `const(g·σ(h)) = Σ_k g_k·h_k` — the scalar inner product
 /// via one ring product's constant term (see the module docs).
 pub fn sigma_pairing(g: &RingElt, h: &RingElt) -> Z1Coeff {
-    let prod = g.clone() * sigma_automorphism(h);
-    Z1Coeff::from(u64::from(ring_to_u32::<Z1Coeff, DIM>(&prod)[0]))
+    pairing_of::<Z1Coeff, DIM>(g, h)
 }
 
 /// Packs scalar coefficients into ring elements (`DIM` per element): `Fⱼ`

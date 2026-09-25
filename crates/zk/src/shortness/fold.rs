@@ -27,7 +27,10 @@ pub struct FoldedPair {
     pub s_star: Vec<Z2Ring>,
     /// The claimed `l2` bound the JL certificate was checked against.
     pub claimed_bound: u64,
-    /// The certified `l2` bound: `⌈√(128/30)·B⌉` (the GHL21 gap).
+    /// The certified `l2` bound, from [`crate::shortness::projection::certified_l2_bound`]
+    /// at *this* projection's row count — the GHL21 lower tail depends on how
+    /// many rows were drawn, so a `None` here (too few rows, or the bound not
+    /// fitting `u64`) refuses the fold rather than guessing a number.
     pub certified_bound: u64,
     /// `Π·s*` — the JL projection response (the shortness certificate's
     /// checkable data).
@@ -123,7 +126,7 @@ pub fn fold_and_certify<const N: usize, const M: usize>(
         c_star,
         s_star,
         claimed_bound,
-        certified_bound: certified_l2_bound(claimed_bound),
+        certified_bound: certified_l2_bound(proj.rows(), claimed_bound)?,
         proj_response,
     })
 }
@@ -182,10 +185,21 @@ mod tests {
         let recomputed = key.commit(&s_star);
         assert_eq!(recomputed.as_slice(), c_star.as_slice());
 
-        let proj = JLProjection::from_seed(&[5u8; 32], 128, M * D);
+        // 256 rows, not 128: `certified_l2_bound` refuses below
+        // `GHL21_MIN_ROWS`, so a fold that is supposed to certify has to draw
+        // enough projection rows to have a certificate at all.
+        let proj = JLProjection::from_seed(
+            &[5u8; 32],
+            crate::shortness::projection::GHL21_MIN_ROWS,
+            M * D,
+        );
         let folded = fold_and_certify(&key, &c1, &c2, &s1, &s2, &gamma, &proj, 64);
         let folded = folded.expect("short fold must certify");
-        assert_eq!(folded.certified_bound, certified_l2_bound(64));
+        assert_eq!(
+            folded.certified_bound,
+            certified_l2_bound(proj.rows(), 64).expect("the same row count certifies"),
+            "the emitted bound must be the one the projection's rows support"
+        );
         // the JL response is consistent with the folded witness
         let flat: Vec<i64> = s_star.iter().flat_map(centered_coeffs).collect();
         assert_eq!(folded.proj_response, proj.project(&flat));
@@ -201,8 +215,24 @@ mod tests {
         let c1 = commit(&key, &s1);
         let c2 = commit(&key, &s2);
         let gamma = ring_elt(1);
-        let proj = JLProjection::from_seed(&[6u8; 32], 128, M * D);
+        let proj = JLProjection::from_seed(
+            &[6u8; 32],
+            crate::shortness::projection::GHL21_MIN_ROWS,
+            M * D,
+        );
 
+        // The floor must not be what makes this pass. Below
+        // `GHL21_MIN_ROWS` every fold refuses for want of a certificate, and
+        // the `is_none()` assertion below would then hold even if the norm gate
+        // were removed entirely — so pin the gate itself, then the composite.
+        assert!(
+            crate::shortness::projection::certified_l2_bound(proj.rows(), 40).is_some(),
+            "the fixture must sit above the certificate floor"
+        );
+        assert!(
+            !certify_short(&proj, &fold_pair(&s1, &s2, &gamma), 40),
+            "the JL norm gate itself must reject the inflated fold"
+        );
         let folded = fold_and_certify(&key, &c1, &c2, &s1, &s2, &gamma, &proj, 40);
         assert!(
             folded.is_none(),
@@ -212,7 +242,11 @@ mod tests {
         // a genuinely short fold with the same claimed bound certifies
         let s_short = witness(9, 2);
         let c_short = commit(&key, &s_short);
-        assert!(fold_and_certify(&key, &c1, &c_short, &s1, &s_short, &gamma, &proj, 40).is_some());
+        let short_fold = fold_and_certify(&key, &c1, &c_short, &s1, &s_short, &gamma, &proj, 40);
+        assert!(
+            short_fold.is_some(),
+            "the same gate must accept a genuinely short fold at the same bound"
+        );
     }
 
     #[test]
