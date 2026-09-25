@@ -1392,3 +1392,27 @@ drift 且还会牵连「no dead check」守卫。改回同构的 `is_some_and` �
 多出来的系数）。**教训**：把一个检查拆成「前置检查失败就不评估」是**改变审计语义**，
 不是等价重构；要么保持原来的记录形状，要么把 shadowing 明确写进期望集。
 
+
+## Maltese 任务 #13 + #15：Eq.(38) 作为 LaBRADOR 关系表达完成（2026-09-25，任务 #18 第 1 步）
+
+上一轮收口的 §5.4 `Π^Fin` 进装配后，本环节实现**第 18 号任务步骤 1** —— 
+**用 LaBRADOR 的 principal Relation 表达 Eq.(38)**。这是 GH′ 能由 sum-check *证明* 
+而非仅由 opening *验证* 的核心能力。
+
+新增公共函数 [`eq38_relation`](crates/zk/src/pcs/tree_fin.rs:2055)：
+- 输入：FinKey、FinProof、GhPrimeProof、挑战与 η 值  
+- 输出：LaBRADOR `Relation<R,D>`（三 witness 向量 `(ŵ,s1,z)` 共享 rank，每坐标一行约束）
+- 每一行都是纯线性约束：`QuadFn{a=0, φ=矩阵行，b=声称值}`，三个分量分别填充 `φ_w/φ_s/φ_z`
+- 行 1（D·ŵ=v）、行 2（B1·s1=t）、行 3（b⊺Gŵ=y2）、行 4（c⊺Gŵ=a⊺z）、行 5 带 η 项的末行
+  全部按纸面五行构造；row 0 的 s1 系数额外加上 `η·q⊺`，其余行零
+- **范数预算推导自参数**：`norm_bound_sq = D·((BASE−1)²·(|ŵ|+|s1|) + width·folded_norm_bound(challenges)²)`，
+  而不是硬编码。这正是 LaBRADOR slack 条件 `β ≤ √(30/128)·q/125` 需要容纳的量。
+
+**实测状态**（665 lib tests / 0 failed / 1 ignored，全仓 1352/0，protocol_contract 14/0）：
+- `eq38_relation` 编译通过，无测试（步骤 1 只做到「关系表达」，不做 sum-check prove）
+- 下一步（步骤 2–3）是建立 `CoreSetup/CoreParams` 并在 maltese example 中调用
+  `dotproduct::prove_core/verify_core_report`，让 `GH′` 成为 proved 而非 verified
+- 这一步完成了"Maltese §5.4 `Π^Fin` 进装配”的最后一环：**所有协议义务都已在 src 可用**，
+  只是还缺 inner-protocol sum-check 调用层。
+
+---
