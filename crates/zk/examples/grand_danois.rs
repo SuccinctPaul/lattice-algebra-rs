@@ -9,7 +9,7 @@
 //! coefficient bridge from [`zk::pcs::projection`], the σ-pairing that turns
 //! eq. (15) into a field dot from [`zk::pcs::packing`], the exact-`ℓ2` arithmetic
 //! from [`zk::shortness::exact_l2`] and the sumcheck of eq. (19) from
-//! [`zk::sumcheck`]. What lives here is the instance, the message order, and the
+//! [`zk::sumcheck::circuit`]. What lives here is the instance, the message order, and the
 //! equations the paper prints.
 //!
 //! # Steps covered (paper numbering; pages are the 25-page eprint PDF)
@@ -51,12 +51,14 @@
 //!   than by a proof of knowledge. So this is one layer of `Π_eval`, not the
 //!   recursive scheme, and the size printed below is the core size, not the
 //!   paper's estimated 80–90 KB.
-//! * **Sumcheck degree.** The paper's sumcheck has individual degree 2 (it folds
-//!   two multilinear extensions and closes on `(βMα)~(r)·z′~(r)`), which
-//!   [`zk::sumcheck`] does not implement: it folds a truth table and closes on
-//!   `T~(r)`. So the verifier closes in the crate's transparent-table mode, and
-//!   the `O(d)` fold is exercised where it *is* the verifier's work — building
-//!   `βMα` — rather than pretending a degree-2 closure exists.
+//! * **Sumcheck degree.** eq. (19) is proved by the degree-2 circuit sum-check of
+//!   [`zk::sumcheck::circuit`] with the oracles kept separate —
+//!   `G = (U + γV)·W`, `U = (βMα)~`, `V = σ~`, `W = z′~` — so the verifier closes
+//!   on the paper's `(ũ(r) + γṽ(r))·w̃(r)` rather than on the multilinear extension
+//!   of a materialised product table. The two agree on the cube and differ off it
+//!   (`sumcheck::circuit`'s `the_weighted_product_matches_the_table_on_the_cube_and_differs_off_it`
+//!   pins that), so this is not a re-encoding of the same check. The `O(d)` fold is
+//!   still exercised where it *is* the verifier's work — building `βMα`.
 //!
 //! # What the paper leaves undefined, and what this instance chose
 //!
@@ -146,7 +148,7 @@ use zk::pcs::mixed::BlockMat;
 use zk::pcs::projection::{const_term, dot, from_coeffs, sigma_pairing_vec, to_coeffs, FieldMat};
 use zk::pcs::rotation::{evaluation_vector, fold_matrix, fold_row, one_poly, powers, RowTensor};
 use zk::shortness::exact_l2::{direct_route_admissible, squared_norm};
-use zk::sumcheck::{prove, verify, FsChallenger, SumcheckProof};
+use zk::sumcheck::circuit::{self, CircuitSumcheckProof, WeightedProduct};
 
 /// `2³² − 99`: prime, `≡ 5 (mod 8)`, 2-adicity 2 — the house non-NTT instance,
 /// so every step here runs in the coefficient domain.
@@ -244,7 +246,7 @@ const C_EVAL_RING: &str = "eq15: const(Σⱼ σ(bⱼ)·wⱼ) = y (ring route)";
 const C_CRS: &str = "crs §3.2.2: the vSIS blocks are the announced row tensors";
 const C_BIND: &str = "cm′ binds z′";
 const C_SUM: &str = "sumcheck eq. (19): rounds close at H";
-const C_FINAL: &str = "sumcheck: final value = T~(r)";
+const C_FINAL: &str = "sumcheck: final value = (ũ(r)+γṽ(r))·w̃(r)";
 const C_GATE_P: &str = "gate-p: ‖p‖₂² ≤ 337²·ω² for every i";
 const C_GATE_W: &str = "gate-wtz: ‖(ŵ,t̂,ẑ)‖₂² ≤ Fig. 1's bound";
 
@@ -377,7 +379,7 @@ struct Proof {
     z_hat: Vec<Elt>,
     v: Vec<Elt>,
     cm_prime: Vec<Elt>,
-    sumcheck: SumcheckProof<Q, G>,
+    sumcheck: CircuitSumcheckProof<Q, G, 3>,
 }
 
 impl Proof {
@@ -549,11 +551,11 @@ impl Fs {
         (row[0], row[1], row[2])
     }
 
-    /// The eq. (19) challenger, seeded from the same transcript state.
-    fn challenger(&mut self) -> FsChallenger<Shake256Xof, Q> {
-        let mut ch = FsChallenger::<Shake256Xof, Q>::new(b"danois-sumcheck");
-        ch.absorb(b"state", &self.tr.challenge_bytes(32));
-        ch
+    /// The eq. (19) sum-check's binding, seeded from the same transcript state.
+    /// The prover and the verifier both derive it here, so the round challenges
+    /// cannot be bound to a different statement than the one folded.
+    fn sumcheck_binding(&mut self) -> Vec<u8> {
+        self.tr.challenge_bytes(32)
     }
 }
 
@@ -725,6 +727,16 @@ fn sigma_vector(b_g: &[Elt]) -> Vec<Q> {
     sigma
 }
 
+/// One of eq. (19)'s three oracles: the flattened vector, zero-padded to the
+/// `2^G` cube the sum-check runs over. The padding contributes `0·0` to every
+/// entry of the circuit, so it leaves the claimed sum `H` untouched.
+fn padded(values: &[Q]) -> Vec<Q> {
+    assert!(values.len() <= TABLE, "the oracle must fit the cube");
+    let mut t = vec![Q::ZERO; TABLE];
+    t[..values.len()].copy_from_slice(values);
+    t
+}
+
 /// `H = (β⊗α)cf(y) + γy` for `y = [v, cm, 0, 0, 0]ᵀ`: the public right-hand side
 /// of eq. (19), computable without the witness.
 fn claimed_sum(beta: &[Q], alpha: &Q, v: &[Elt], cm: &[Elt], y: Q, gamma: Q) -> Q {
@@ -734,22 +746,6 @@ fn claimed_sum(beta: &[Q], alpha: &Q, v: &[Elt], cm: &[Elt], y: Q, gamma: Q) -> 
         acc += beta[i] * dot(&pw, &to_coeffs(core::slice::from_ref(row)));
     }
     acc + gamma * y
-}
-
-/// The eq. (19) table `T(b) = ((βMα)(b) + γσ(b))·z′(b)` over the padded cube.
-///
-/// # Panics
-/// If any input is not `FLAT` long.
-fn combined_table(folded: &[Q], sigma: &[Q], z_flat: &[Q], gamma: Q) -> Vec<Q> {
-    assert_eq!(
-        (folded.len(), sigma.len(), z_flat.len()),
-        (FLAT, FLAT, FLAT)
-    );
-    let mut t = vec![Q::ZERO; TABLE];
-    for i in 0..FLAT {
-        t[i] = (folded[i] + gamma * sigma[i]) * z_flat[i];
-    }
-    t
 }
 
 /// `aᵀ[s₁|…|s_r]` with `a` a scalar vector over the module.
@@ -823,12 +819,28 @@ fn prove_eval(crs: &Crs, inst: &Instance, w: &Witness) -> Proof {
     .concat();
     let cm_prime = cm_key().matvec(&z_prime).expect("instance-sized");
     let (alpha, beta, gamma) = fs.folds(&z_prime);
+    let beta_row = powers(&beta, M_ROWS);
     let b_g = b_gadget(&inst.x);
     let m = constraint_matrix(crs, &proj, &c, &a);
-    let folded = fold_matrix(&powers(&beta, M_ROWS), &alpha, &m);
-    let t = combined_table(&folded, &sigma_vector(&b_g), &to_coeffs(&z_prime), gamma);
-    let mut ch = fs.challenger();
-    let sumcheck = prove::<Q, G>(&t, &mut ch);
+    let folded = fold_matrix(&beta_row, &alpha, &m);
+    // eq. (19) as its own circuit: `(U + γV)·W` with U = (βMα)~, V = σ~, W = z′~,
+    // proved by a degree-2 sum-check rather than by folding the materialised
+    // product table — the two close on different claims off the cube.
+    let oracle_u = padded(&folded);
+    let oracle_v = padded(&sigma_vector(&b_g));
+    let oracle_w = padded(&to_coeffs(&z_prime));
+    let h = claimed_sum(&beta_row, &alpha, &v, &inst.cm, inst.y, gamma);
+    let binding = fs.sumcheck_binding();
+    let sumcheck = circuit::prove::<Q, G, 3, _>(
+        &[&oracle_u, &oracle_v, &oracle_w],
+        &h,
+        b"danois-sumcheck",
+        &binding,
+        &mut WeightedProduct {
+            weights: vec![Q::ONE, gamma],
+        },
+    )
+    .expect("the honest z′ satisfies eq. (19)'s circuit");
     Proof {
         p_hat,
         w_hat,
@@ -950,21 +962,26 @@ fn failing(crs: &Crs, inst: &Instance, pr: &Proof) -> Result<Vec<&'static str>, 
         C_BIND,
     );
 
-    // eq. (19): the sumcheck against the public H, then the folded table at r
+    // eq. (19): the degree-2 sum-check against the public H, then its output
+    // claim tied to the circuit `(ũ(r) + γṽ(r))·w̃(r)`. That is *not* the
+    // multilinear extension of the materialised product table — the two agree on
+    // the cube and differ off it, which is what Def. 9 exists to keep apart
+    // (`sumcheck::circuit`'s weighted-product test pins that identity).
     let folded = fold_matrix(&beta_row, &alpha, &m);
-    let t = combined_table(&folded, &sigma, &to_coeffs(&z_prime), gamma);
+    let oracle_u = padded(&folded);
+    let oracle_v = padded(&sigma);
+    let oracle_w = padded(&to_coeffs(&z_prime));
     let h = claimed_sum(&beta_row, &alpha, &pr.v, &inst.cm, inst.y, gamma);
-    let mut ch = fs.challenger();
-    let outcome = verify::<Q, G>(&pr.sumcheck, h, &mut ch);
+    let binding = fs.sumcheck_binding();
+    let outcome =
+        circuit::verify::<Q, G, 3>(&pr.sumcheck, &h, b"danois-sumcheck", &binding).ok();
     check(outcome.is_some(), C_SUM);
     check(
         outcome.as_ref().is_some_and(|(point, final_eval)| {
-            // The crate's sumcheck folds variable g with the g-th challenge and
-            // splits the table on bit G−1−g, so the evaluation vector is the
-            // point read with the variable order reversed.
-            let mut ordered = point.clone();
-            ordered.reverse();
-            dot(&evaluation_vector(&ordered), &t) == *final_eval
+            (circuit::multilinear_at(&oracle_u, point)
+                + gamma * circuit::multilinear_at(&oracle_v, point))
+                * circuit::multilinear_at(&oracle_w, point)
+                == *final_eval
         }),
         C_FINAL,
     );
@@ -1064,7 +1081,7 @@ fn proof_bytes(pr: &Proof) -> usize {
         + pr.cm_prime.len())
         * D
         * 4
-        + pr.sumcheck.rounds.len() * 2 * 4
+        + pr.sumcheck.rounds.len() * 3 * 4
         + 4
 }
 
@@ -1247,7 +1264,7 @@ fn main() {
     bad.cm_prime[0] = bad.cm_prime[0].clone() + one();
     expect_reject("tampered cm′", &crs, &inst, &bad, C_BIND, &[C_BIND]);
     let mut bad = proof.clone();
-    bad.sumcheck.rounds[0].1 += Q::ONE;
+    bad.sumcheck.rounds[0][1] += Q::ONE;
     expect_reject(
         "tampered sumcheck round",
         &crs,

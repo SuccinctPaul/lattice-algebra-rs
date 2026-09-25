@@ -1374,3 +1374,21 @@ lib 侧：`--lib` **660 passed / 0 failed**（653 → 660，新增 7 条），
 输出对 `P̃(ρ)` 的断言在这里是**直接开启**兑现的，所以这一步不带来 succinctness，
 带来的是「语句被协议证明」；以及 Lemma 1/Thm 1 的迹映射桥 `R_q^H ≅ F_{q^k}`。
 
+## Grand Danois 的 eq. (19) 改用电路求和检验（2026-09-25 19:3x，实测）
+
+Hachi 那条能力落地的直接收益：`sumcheck::circuit::WeightedProduct`
+（`G = (Σₖ wₖAₖ)·B`，`NC = 3`）就是 eq. (19) 的形状 ——
+`Σᵢ(βMα)~(i)z′~(i) + γΣᵢσ̃(i)z′~(i) = H` 即 `(U + γV)·W`。
+example 原来把 `(u+γv)·w` **逐点物化成一张表**再跑多元线性求和检验，于是闭合断言是
+`T̃(r)`；现在三张 oracle 各自保留，验证方在 `(ũ(r)+γṽ(r))·w̃(r)` 上回绑，
+正是论文那句 degree-2 的闭合。survey 里「the sumcheck closes in transparent-table
+mode rather than the paper's degree-2 form」这条因此划掉。
+
+一个值得记的实测细节：`C_FINAL` 与 `C_SUM` 的旧约定是「`verify` 失败时两条都不成立」
+（旧代码用 `is_some_and`，None 直接算失败）。我一开始把它改成 `match`，于是所有
+「改了语句 ⇒ H 变了 ⇒ 第一轮就不闭合」的用例里 `C_FINAL` **不再出现**，一次跑出 2 处
+drift 且还会牵连「no dead check」守卫。改回同构的 `is_some_and` 形状后，
+13 条命名检查全部被 trip、exit 0、诚实证明 149 956 B（比原来多 64 B = 16 轮 × 1 个
+多出来的系数）。**教训**：把一个检查拆成「前置检查失败就不评估」是**改变审计语义**，
+不是等价重构；要么保持原来的记录形状，要么把 shadowing 明确写进期望集。
+
