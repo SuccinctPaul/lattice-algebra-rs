@@ -117,7 +117,7 @@
 //! 84.3 s debug, and the tamper battery scales with it (≈2 min vs ≈40 min).
 
 use algebra::ring::poly_ring::PolyRing;
-use algebra::ring::traits::Ring;
+use algebra::ring::traits::{CenteredRing, Ring};
 use algebra::ring::PolynomialQuotientRing;
 use std::collections::BTreeSet;
 use std::time::Instant;
@@ -281,6 +281,9 @@ struct Finishing {
     r_prime: Vec<Elt>,
     gh_challenges: Vec<Elt>,
     gh_eta: Elt,
+    // For proving GH′ via LaBRADOR core (step 2 of #18): CoreSetup + params
+    core_setup: Option<dotproduct::CoreSetup<F, D>>,
+    core_params: Option<dotproduct::CoreParams<F, D>>,
 }
 
 impl Finishing {
@@ -328,11 +331,21 @@ impl Finishing {
             // full-ring η would make Eq. (38)'s norm gates vacuous — `‖z‖∞` is
             // bounded by `d·(Σ‖c_j‖∞)·(b−1)`, which only *bites* for a short `C`.
             gh_eta: p3_set().sample(seed, blocks as u64),
+            // Task #18 step 2: placeholder for CoreSetup/params (full impl pending)
+            core_setup: None,
+            core_params: None,
         }
+    }
+    
+    /// Placeholder for building CoreParams at P3 shape. Full proof_core integration
+    /// will be implemented once ChallengeSpace is available in no_std context.
+    fn build_core_params(&mut self) -> Result<(), String> {
+        Err("CoreParams construction requires ChallengeSpace from crypto module; see task notes".to_string())
     }
 
     /// `GH′`'s prover message on top of a finished `OE(2)` claim: `ŵ`, its
     /// commitment `v = D·ŵ`, and the folded opening `z` (Eq. 38, p. 45).
+    /// TODO (#18 step 2): replace with prove_core when CoreParams is wired up.
     fn prove_gh(&self, claim: &tree_fin::FinProof<F, D>) -> GhPrimeProof<F, D> {
         tree_fin::gh_prime_prove(&self.key, claim, &self.gh_challenges)
             .expect("GH′ proves Eq. (38) for its own claim")
