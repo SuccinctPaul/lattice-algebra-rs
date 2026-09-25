@@ -304,6 +304,45 @@ impl<R: MatrixElement> Composition<R, 3> for Product {
     }
 }
 
+/// `G(X) = (Σₖ wₖ·Aₖ(X)) · B(X)`: a public-weighted sum of oracles times one more
+/// oracle, degree 2, so it runs at `NC = 3`.
+///
+/// [`Product`] is the `weights = [1]` case with a single summand; this is the
+/// shape a verifier reaches for once it has *batched* several constraint
+/// polynomials with public scalars and still wants the claim to close on the
+/// circuit rather than on a materialised table. Grand Danois' eq. (19) (p. 19) is
+/// the example in this crate: `Σᵢ (βMα)~(i)·z′~(i) + γ·Σᵢ σ̃(i)·z′~(i) = H` is
+/// `(U + γV)·W` with `U = (βMα)~`, `V = σ̃`, `W = z′~`, and the paper's closure is
+/// `(ũ(r) + γṽ(r))·w̃(r)` — not the multilinear extension of the pointwise product.
+///
+/// The oracles are supplied in the same order as `weights`, with the multiplicand
+/// last.
+pub struct WeightedProduct<R: MatrixElement> {
+    /// The public scalars `wₖ`, one per summed oracle.
+    pub weights: Vec<R>,
+}
+
+impl<R: MatrixElement, const NC: usize> Composition<R, NC> for WeightedProduct<R> {
+    fn compose(
+        &mut self,
+        lines: &[LinePoly<R, NC>],
+        acc: &mut LinePoly<R, NC>,
+    ) -> Result<(), CircuitError> {
+        if lines.len() != self.weights.len() + 1 {
+            return Err(CircuitError::WrongLength {
+                got: lines.len(),
+                expected: self.weights.len() + 1,
+            });
+        }
+        let mut summed = LinePoly::<R, NC>::zero();
+        for (line, weight) in lines[..self.weights.len()].iter().zip(self.weights.iter()) {
+            summed.add_assign(&line.scaled(weight));
+        }
+        acc.add_assign(&summed.mul(&lines[lines.len() - 1])?);
+        Ok(())
+    }
+}
+
 /// A completed degree-`Δ` sum-check (Def. 9) over `NV` variables, where the
 /// round messages carry `NC = Δ + 1` coefficients.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -795,6 +834,74 @@ mod tests {
     fn multilinear_at_refuses_a_table_that_does_not_span_the_point() {
         let point: Vec<F> = (0..NV - 1).map(|_| F::from(7u64)).collect();
         let _ = multilinear_at(&vec_at(LEN, 3), &point);
+    }
+
+    /// `WeightedProduct` with `weights = [1, γ]` is Grand Danois' eq. (19): the
+    /// same hypercube sum as the materialised table `(u + γv)·w`, and a closure
+    /// that **differs** from that table's multilinear extension off the cube —
+    /// which is exactly why a degree-2 protocol cannot be replaced by folding the
+    /// product table.
+    #[test]
+    fn the_weighted_product_matches_the_table_on_the_cube_and_differs_off_it() {
+        let (u, v, w) = (vec_at(LEN, 3), vec_at(LEN, 5), vec_at(LEN, 7));
+        let gamma = F::from(91u64);
+        let combined: Vec<F> = (0..LEN).map(|i| (u[i] + gamma * v[i]) * w[i]).collect();
+        let claimed = (0..LEN).fold(F::ZERO, |acc, i| acc + combined[i]);
+        let binding = b"eq-nineteen";
+        let proof = prove::<F, NV, NC, _>(
+            &[&u, &v, &w],
+            &claimed,
+            DOMAIN,
+            binding,
+            &mut WeightedProduct {
+                weights: vec![F::ONE, gamma],
+            },
+        )
+        .expect("eq. (19)'s circuit proves its own claim");
+        let (rho, g) = verify::<F, NV, NC>(&proof, &claimed, DOMAIN, binding).expect("verify");
+        let tied = (multilinear_at(&u, &rho) + gamma * multilinear_at(&v, &rho))
+            * multilinear_at(&w, &rho);
+        assert_eq!(g, tied, "the output claim is the circuit at ρ");
+        assert_ne!(
+            g,
+            multilinear_at(&combined, &rho),
+            "the two readings must differ off the cube, or Def. 9 would be redundant"
+        );
+        // …and agree on it, coordinate by coordinate.
+        for j in 0..NV {
+            let vertex: Vec<F> = (0..NV)
+                .map(|i| {
+                    if i <= j {
+                        F::ONE
+                    } else {
+                        F::ZERO
+                    }
+                })
+                .collect();
+            let circuit = (multilinear_at(&u, &vertex) + gamma * multilinear_at(&v, &vertex))
+                * multilinear_at(&w, &vertex);
+            assert_eq!(
+                circuit,
+                multilinear_at(&combined, &vertex),
+                "the readings must agree at vertex {j}"
+            );
+        }
+        // A wrong oracle count is a refusal, not a silent pairing.
+        assert_eq!(
+            prove::<F, NV, NC, _>(
+                &[&u, &v],
+                &claimed,
+                DOMAIN,
+                binding,
+                &mut WeightedProduct {
+                    weights: vec![F::ONE, gamma]
+                },
+            ),
+            Err(CircuitError::WrongLength {
+                got: 2,
+                expected: 3
+            })
+        );
     }
 
     /// [`Product`] is exactly two oracles: a third is refused rather than quietly
