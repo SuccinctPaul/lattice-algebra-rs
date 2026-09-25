@@ -36,6 +36,11 @@
 //!   gadget-slack flavors (Z5).
 //! - [`folding`]: Nova-style folding (Z4) and LatticeFold-style
 //!   decomposition folding (Z5).
+//! - [`qrp`]: Quadratic Ring Programs — the QAP-over-rings relation layer
+//!   (exceptional sets, monic divisibility, Lagrange interpolation).
+//! - [`encoding`]: noisy ring encodings, i.e. Regev/Ring-LWE encryptions used
+//!   as *encodings* (linear Eval, quadratic root detection, image
+//!   verification) rather than as commitments.
 //!
 //! Milestone labels (Z1–Z5) are roadmap tags and live in module docs and
 //! the README, not in module names. A primitive-level survey of the scheme
@@ -51,11 +56,13 @@ extern crate alloc;
 extern crate std;
 
 pub mod commitment;
+pub mod encoding;
 pub mod folding;
 pub mod foundation;
 pub mod instance;
 pub mod opening;
 pub mod pcs;
+pub mod qrp;
 pub mod shortness;
 pub mod sigma;
 pub mod sumcheck;

@@ -375,6 +375,7 @@ fn projection_l2_bound_amortized_binding_accepts_honest_and_rejects_forgeries() 
     use zk::instance::ring::Z2Ring;
     use zk::shortness::projection::{
         certified_l2_bound, prove_l2_bound_amortized, verify_l2_bound_amortized, JLProjection,
+        GHL21_MIN_ROWS,
     };
     use zk::sumcheck::ipa::IpaKey;
 
@@ -414,8 +415,34 @@ fn projection_l2_bound_amortized_binding_accepts_honest_and_rejects_forgeries() 
     assert!(verify_l2_bound_amortized(
         &key, &key_seed, &rows, &c, claimed, &proof
     ));
-    // the certificate carries the GHL21 gap
-    assert_eq!(certified_l2_bound(claimed), certified_l2_bound(40));
+    // The certificate's row-count contract, asserted rather than restated.
+    // This line used to read `assert_eq!(certified_l2_bound(claimed),
+    // certified_l2_bound(40))` while `claimed` *is* 40 (see above), i.e.
+    // `f(40) == f(40)` — a tautology filed under "the certificate carries the
+    // GHL21 gap". Making it real also surfaces the live question: `K_ROWS = 16`
+    // sits far below `GHL21_MIN_ROWS`, so at this row count the amortized
+    // argument has **no** certified tail to quote. Whether `K_ROWS` rises or the
+    // floor is the audit's call, not this test's, so the assertion pins the
+    // boundary instead of a number that the GHL21 rework is still moving.
+    let certified = certified_l2_bound(K_ROWS, claimed);
+    println!("certified_l2_bound({K_ROWS}, {claimed}) = {certified:?}");
+    assert_eq!(
+        certified.is_some(),
+        K_ROWS >= GHL21_MIN_ROWS,
+        "a certificate must exist exactly at or above the {}-row floor, got {certified:?} at {K_ROWS}",
+        GHL21_MIN_ROWS,
+    );
+    if let Some(tail) = certified {
+        assert!(
+            tail >= claimed,
+            "the certified bound must not undercut the claim"
+        );
+        assert_ne!(
+            certified_l2_bound(K_ROWS * 2, claimed),
+            Some(tail),
+            "the tail is row-count dependent, which is why the signature grew"
+        );
+    }
 
     // a response inconsistent with the committed witness fails the IPA link
     let s_forge: Vec<Z2Ring> = (0..4)
@@ -459,7 +486,7 @@ fn pairwise_folding_chain_compresses_committed_witnesses() {
     use zk::instance::ring::Z2Coeff;
     use zk::instance::ring::Z2Ring;
     use zk::shortness::fold::fold_and_certify;
-    use zk::shortness::projection::JLProjection;
+    use zk::shortness::projection::{JLProjection, GHL21_MIN_ROWS};
     use zk::sumcheck::ipa::IpaKey;
 
     const WITNESSES: usize = 8; // 2^3 → a 3-level folding tree
@@ -501,7 +528,13 @@ fn pairwise_folding_chain_compresses_committed_witnesses() {
         // witnesses has norm ≤ 2B); the JL certificate checks against the
         // GHL21 gap on top
         let claimed = 80u64 * (1u64 << level);
-        let proj_l = JLProjection::from_seed(&seed32(b"contract-fold-pair-proj"), 128, 4 * 64);
+        // `GHL21_MIN_ROWS`: the √30 lower tail is licensed at 256 rows, and
+        // `certified_l2_bound` refuses below the floor. (The reason this level
+        // refused at *all* row counts was an overflow in the bisection's first
+        // probe — see `projection::ceil_sqrt_ratio`; `certify_short` was
+        // accepting the honest fold throughout.)
+        let proj_l =
+            JLProjection::from_seed(&seed32(b"contract-fold-pair-proj"), GHL21_MIN_ROWS, 4 * 64);
         let mut next_c = Vec::new();
         let mut next_w = Vec::new();
         for pair in (0..level_commitments.len()).step_by(2) {

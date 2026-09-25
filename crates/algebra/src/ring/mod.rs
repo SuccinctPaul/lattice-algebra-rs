@@ -2,6 +2,8 @@
 //! traits that gate its methods ([`traits`]), and the number theory
 //! ([`number_theory`]) shared by the NTT engine and the samplers.
 
+pub mod extension;
+pub mod matrix_unit;
 pub mod number_theory;
 pub mod poly_ring;
 

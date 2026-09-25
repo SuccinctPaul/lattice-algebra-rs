@@ -409,6 +409,13 @@ mod tests {
     }
 }
 
+pub mod alphabet;
 pub mod batch;
+/// The **degree-`Δ`** sum-check of eprint 2026/2067 Def. 9, for claims whose
+/// summand is a circuit in multilinear oracles. This module is the multilinear
+/// (`Δ = 1`) special case; see [`circuit`] for why the two are not
+/// interchangeable off the hypercube.
+pub mod circuit;
+pub mod fused;
 pub mod ipa;
 pub mod range;

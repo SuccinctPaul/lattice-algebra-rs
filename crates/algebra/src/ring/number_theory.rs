@@ -173,6 +173,126 @@ pub fn find_primitive_root<R: Ring>(n: usize) -> R {
     g.pow(exponent)
 }
 
+/// Greatest common divisor of two `u64`s (Euclid).
+pub const fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
+}
+
+/// The multiplicative order of `a` modulo `n`, or `None` when `a` is not
+/// invertible mod `n`.
+///
+/// The loop is capped at `n` steps; every caller here uses `n = 2d` with `d`
+/// a power of two, so the order is at most `n` by Lagrange.
+pub fn order_mod(a: u64, n: u64) -> Option<u64> {
+    if n < 2 {
+        return None;
+    }
+    let a = a % n;
+    if gcd_u64(a, n) != 1 {
+        return None;
+    }
+    let mut cur = a;
+    let mut k = 1u64;
+    while cur != 1 {
+        cur = mulmod(cur, a, n);
+        k += 1;
+        if k > n {
+            return None;
+        }
+    }
+    Some(k)
+}
+
+/// How `X^d + 1` factors over the prime field `F_q`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Splitting {
+    /// Degree of each irreducible factor (all are equal in this family).
+    pub factor_degree: u64,
+    /// Number of irreducible factors, `d / factor_degree`.
+    pub factor_count: u64,
+}
+
+impl Splitting {
+    /// Whether `X^d + 1` splits into linear factors — the NTT-friendly case,
+    /// where `F_q` holds a primitive `2d`-th root of unity.
+    pub const fn is_split_completely(&self) -> bool {
+        self.factor_degree == 1
+    }
+
+    /// Whether `X^d + 1` splits into exactly two factors of degree `d / 2`,
+    /// the shape LaBRADOR's Theorem 5.1 states its MSIS reduction over.
+    pub const fn is_two_half_degrees(&self, d: u64) -> bool {
+        self.factor_count == 2 && self.factor_degree == d / 2
+    }
+}
+
+/// Factors `X^d + 1` over `F_q` for `d = 2^e` (`e >= 1`) and odd prime `q`.
+///
+/// For `d` a power of two, `X^d + 1 = Phi_{2d}(X)` is the `2d`-th cyclotomic
+/// polynomial, and `Phi_m(X)` over `F_q` (with `q` coprime to `m`) factors
+/// into `phi(m) / ord_m(q)` irreducibles each of degree `ord_m(q)`. Here
+/// `m = 2d` and `phi(2d) = d`, so the whole picture is set by the
+/// multiplicative order of `q` mod `2d`:
+///
+/// ```text
+/// q ==  1 mod 2d    ->  d linear factors        (complete splitting, NTT)
+/// q ==  3 or 5 mod 8 ->  2 factors of degree d/2 (LaBRADOR's stated regime)
+/// ```
+///
+/// Returns `None` outside the lemma's hypotheses (`d` not a power of two
+/// below `2^63`, or `q` not an odd prime).
+pub fn x_pow_d_plus_1_splitting(q: u64, d: u64) -> Option<Splitting> {
+    if d < 2 || d & (d - 1) != 0 {
+        return None;
+    }
+    if q <= 2 || !is_prime_u64(q) {
+        return None;
+    }
+    let degree = order_mod(q, 2 * d)?;
+    Some(Splitting {
+        factor_degree: degree,
+        factor_count: d / degree,
+    })
+}
+
+/// Searches downward from `2^bits` for a prime `q` making `X^d + 1` split
+/// into factors of exactly `want_degree`.
+///
+/// Ring selection is a security-relevant choice, not packaging: the crate's
+/// Z1 prime `8380417` is `1 mod 8`, so `X^256 + 1` splits *completely* —
+/// which is why the NTT works, and also why schemes stated over the
+/// two-factor regime (LaBRADOR) cannot inherit it unchanged. Capped search;
+/// returns `None` rather than spinning.
+#[must_use]
+pub fn find_prime_for_splitting(d: u64, want_degree: u64, bits: u32) -> Option<u64> {
+    if bits == 0 || bits > 62 {
+        return None;
+    }
+    let mut q = (1u64 << bits) - 1;
+    if q % 2 == 0 {
+        q -= 1;
+    }
+    for _ in 0..200_000 {
+        if q < 3 {
+            return None;
+        }
+        if is_prime_u64(q) {
+            if let Some(split) = x_pow_d_plus_1_splitting(q, d) {
+                if split.factor_degree == want_degree {
+                    return Some(q);
+                }
+            }
+        }
+        q -= 2;
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,5 +344,85 @@ mod tests {
         assert_eq!(omega.pow(8), Zq17::ONE);
         assert_ne!(omega.pow(4), Zq17::ONE);
         assert_ne!(omega.pow(2), Zq17::ONE);
+    }
+
+    #[test]
+    fn test_order_mod() {
+        assert_eq!(order_mod(2, 7), Some(3)); // 2^3 = 8 = 1 mod 7
+        assert_eq!(order_mod(3, 7), Some(6));
+        assert_eq!(order_mod(3, 8), Some(2)); // 3^2 = 9 = 1 mod 8
+        assert_eq!(order_mod(2, 8), None, "2 is not invertible mod 8");
+        assert_eq!(order_mod(4, 8), None, "4 is not invertible mod 8");
+    }
+
+    #[test]
+    fn x_pow_d_plus_1_splits_completely_when_q_is_one_mod_2d() {
+        // The crate's Z1 prime: q - 1 = 2^13 * 3 * 11 * 31, so it is 1 mod
+        // 512 = 2*256 and X^256 + 1 splits into linear factors. That is what
+        // makes our NTT work - and what LaBRADOR's reduction cannot assume.
+        const Z1: u64 = 8_380_417;
+        let split = x_pow_d_plus_1_splitting(Z1, 256).expect("q prime, d a power of two");
+        assert!(split.is_split_completely());
+        assert_eq!(split.factor_count, 256);
+        assert_eq!(Z1 % 8, 1);
+    }
+
+    #[test]
+    fn x_pow_d_plus_1_gives_two_half_degree_factors_for_q_three_or_five_mod_eight() {
+        for q in [5u64, 13, 29, 37] {
+            assert!(is_prime_u64(q));
+            for d in [8u64, 64, 256] {
+                let split = x_pow_d_plus_1_splitting(q, d).expect("valid inputs");
+                assert!(
+                    split.is_two_half_degrees(d),
+                    "q = {q} (mod 8 = {}) must give 2 factors of degree {}: {split:?}",
+                    q % 8,
+                    d / 2
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn splitting_formula_matches_direct_root_counting() {
+        // Independent check for the complete-splitting case: degree-1 factors
+        // mean X^d + 1 has exactly d roots in F_q.
+        for (q, d) in [(17u64, 8usize), (97u64, 8usize), (257u64, 8usize)] {
+            let split = x_pow_d_plus_1_splitting(q, d as u64).expect("valid");
+            let roots = (0..q as i64)
+                .filter(|&a| (powmod(a.unsigned_abs(), d as u64, q) + 1) % q == 0)
+                .count();
+            if split.is_split_completely() {
+                assert_eq!(
+                    roots, d,
+                    "q = {q}, d = {d}: linear factors must all be roots"
+                );
+            } else {
+                assert_eq!(roots, 0, "q = {q}, d = {d}: no linear factor, so no root");
+            }
+        }
+    }
+
+    #[test]
+    fn finds_primes_for_either_splitting_regime() {
+        let two_factor = find_prime_for_splitting(64, 32, 16).expect("a 16-bit q with degree 32");
+        assert!(is_prime_u64(two_factor));
+        assert!(x_pow_d_plus_1_splitting(two_factor, 64)
+            .unwrap()
+            .is_two_half_degrees(64));
+
+        let complete = find_prime_for_splitting(64, 1, 16);
+        // degree 1 needs q == 1 mod 128, which the 16-bit range does contain
+        let complete = complete.expect("a 16-bit q splitting X^64 + 1 completely");
+        assert!(x_pow_d_plus_1_splitting(complete, 64)
+            .unwrap()
+            .is_split_completely());
+    }
+
+    #[test]
+    fn rejects_inputs_outside_the_lemma() {
+        assert_eq!(x_pow_d_plus_1_splitting(8_380_417, 63), None, "d not 2^e");
+        assert_eq!(x_pow_d_plus_1_splitting(9, 64), None, "q not prime");
+        assert_eq!(x_pow_d_plus_1_splitting(2, 64), None, "q must be odd");
     }
 }

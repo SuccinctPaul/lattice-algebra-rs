@@ -464,6 +464,49 @@ impl<'a, R: Ring, const DEGREE_BOUND: usize> Mul<&'a Self> for PolyRing<R, DEGRE
     }
 }
 
+/// Reference-form binary operators.
+///
+/// The `op(&Self) for Self` forms above still force the *left* operand to be
+/// owned, so any call site holding two references (`a + b` where both are
+/// borrowed out of a slice) has to clone first. These delegate to those impls
+/// and add no new arithmetic.
+///
+/// The right operand is spelled out rather than written `&'a Self`: inside
+/// `impl … for &'a PolyRing`, `Self` *is* `&'a PolyRing`, so `&'a Self` would
+/// silently mean `&&PolyRing`.
+impl<'a, R: Ring, const DEGREE_BOUND: usize>
+    Add<&'a PolyRing<R, DEGREE_BOUND>> for &'a PolyRing<R, DEGREE_BOUND>
+{
+    type Output = PolyRing<R, DEGREE_BOUND>;
+
+    #[inline]
+    fn add(self, rhs: &'a PolyRing<R, DEGREE_BOUND>) -> Self::Output {
+        self.clone() + rhs.clone()
+    }
+}
+
+impl<'a, R: Ring, const DEGREE_BOUND: usize>
+    Sub<&'a PolyRing<R, DEGREE_BOUND>> for &'a PolyRing<R, DEGREE_BOUND>
+{
+    type Output = PolyRing<R, DEGREE_BOUND>;
+
+    #[inline]
+    fn sub(self, rhs: &'a PolyRing<R, DEGREE_BOUND>) -> Self::Output {
+        self.clone() - rhs.clone()
+    }
+}
+
+impl<'a, R: Ring, const DEGREE_BOUND: usize>
+    Mul<&'a PolyRing<R, DEGREE_BOUND>> for &'a PolyRing<R, DEGREE_BOUND>
+{
+    type Output = PolyRing<R, DEGREE_BOUND>;
+
+    #[inline]
+    fn mul(self, rhs: &'a PolyRing<R, DEGREE_BOUND>) -> Self::Output {
+        self.clone() * rhs.clone()
+    }
+}
+
 impl<R: Ring, const DEGREE_BOUND: usize> MulAssign for PolyRing<R, DEGREE_BOUND> {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.clone() * rhs;
@@ -797,5 +840,28 @@ mod tests {
                 Zq17::new(12)  // 2 + 4 + 6
             ]
         );
+    }
+
+    /// The `&Self op &Self` forms must agree with the by-value operators *and*
+    /// with hand arithmetic. Each of the three is pinned to a distinct expected
+    /// result, so no operator can be silently wired to another one.
+    #[test]
+    fn reference_operators_match_the_owned_ones() {
+        let a = create_test_poly::<Zq17>(vec![1, 2]); // 1 + 2X
+        let b = create_test_poly::<Zq17>(vec![3, 16]); // 3 − X
+
+        // (1+2X) + (3−X) = 4 + X
+        assert_eq!((&a + &b).coefficients(), vec![Zq17::new(4), Zq17::new(1)]);
+        // (1+2X) − (3−X) = −2 + 3X
+        assert_eq!((&a - &b).coefficients(), vec![Zq17::new(15), Zq17::new(3)]);
+        // (1+2X)(3−X) = 3 + 22X + 32X² ≡ 3 + 5X + 15X² (mod 17), no wraparound
+        assert_eq!(
+            (&a * &b).coefficients(),
+            vec![Zq17::new(3), Zq17::new(5), Zq17::new(15)]
+        );
+        // …and each matches the by-value operator it delegates to.
+        assert_eq!(&a + &b, a.clone() + b.clone());
+        assert_eq!(&a - &b, a.clone() - b.clone());
+        assert_eq!(&a * &b, a.clone() * b.clone());
     }
 }

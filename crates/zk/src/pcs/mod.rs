@@ -29,25 +29,92 @@
 //! re-sized (and validated with the Core-SVP estimator, see
 //! `algebra::security`) before any security claim.
 //!
+//! [`api`] is the scheme-facing abstraction — [`Pcs`] for point openings,
+//! [`BatchPcs`] for shared-point batches, [`WeightPcs`] for arbitrary
+//! weight tables — that a scheme under `examples/` assembles against so the
+//! crate keeps `src` = capabilities and example = scheme.
 //! [`packing`] carries the σ-automorphism identity
 //! `const(g·σ(h)) = Σ g_k·h_k` (`σ: X ↦ X^{−1}`) with the scalar packing
 //! helpers — the factor-`d` removal for scalar-coefficient polynomials.
-//! [`mle`] carries the tall-key linear-commitment mode with exact
-//! arbitrary-weight-claim verification (the transparent read-out the
-//! cross-point batching composes against).
+//! [`mle`] carries the tall-key linear-commitment mode: exact verification of
+//! **arbitrary** weight-table claims `y = ⟨w, F⟩` (power tables, `eq`
+//! tensors, range-check functionals), a Σ opening per claim, and
+//! [`batch_verify`] folding `k` such claims into one opening. This is the
+//! cross-point/cross-table shape the √N split cannot express, so the
+//! sumcheck line composes against it.
 
+pub mod api;
 pub mod batched;
+pub mod binary_r1cs;
+pub mod digit_pack;
+pub mod dotproduct;
+pub mod fold_geom;
 pub mod gadget;
 pub mod greyhound;
+pub mod jl_compose;
+pub mod key;
+pub mod leveled;
+pub mod masking;
+pub mod mixed;
 pub mod mle;
+pub mod monomial_pok;
+pub mod nested;
+pub mod norm_route;
 pub mod packing;
+pub mod powers_srs;
+pub mod prisis;
+pub mod projection;
+pub mod ring_reduce;
+pub mod rotation;
+pub mod slap_tree;
+pub mod setup_stream;
+pub mod switching;
+pub mod trapdoor;
+pub mod tree_commit;
+pub mod tree_eval;
+pub mod tree_fin;
+pub mod tree_fold;
 
+pub use api::{
+    BatchOpening, BatchPcs, PackedGreyhound, Pcs, WeightPcs, WeightPcsExt,
+};
 pub use batched::{open_batch, verify_batch, BatchedOpeningProof, L1_PER_POLY, MAX_BATCH};
+pub use dotproduct::{
+    aggregation_count, prove_core, verify_core, verify_core_report, AggregatedCoeffs,
+    ChallengeError, ChallengeSpace, CoreChallenger, CoreError, CoreMessage, CoreParams, CoreSetup,
+    CtFn, Decomposition, DigitError, NormBounds, Projection, QuadFn, Relation, RelationError,
+    PROJECTION_ROWS,
+};
 pub use greyhound::{
     commit, commit_packed, open, open_packed, verify, verify_packed, GreyhoundKey, OpeningProof,
     PcsError, PolyCommitment,
 };
-pub use mle::{certify_l2, claim, commit_mle, witness_of, MleCommitment, MleError, MleKey};
+pub use jl_compose::{
+    extractor_slack_sq, identity_mat, kron, projection_gate_ok, tuned_ternary, SquaredRatioWindow,
+    StructuredProjection, SINGLE_STAGE, TWO_STAGE,
+};
+pub use key::{apply_blockwise, KeyShapeError, RingMatrixKey};
+pub use mixed::{BlockMat, MixedError};
+pub use mle::{
+    batch_verify, certify_l2, claim, combined_claim, commit_mle, open_claims, open_mle_proof,
+    verify_mle_proof, witness_of, MleCommitment, MleError, MleKey, MleOpenProof, WeightClaim,
+    MASK_BOUND,
+};
+pub use nested::{NestedError, NestedGadget, TensorGadget};
+pub use projection::{
+    const_term, from_coeffs, gamma_stack, sigma_matrix, sigma_pairing_vec, to_coeffs, FieldMat,
+    FieldShapeError,
+};
+pub use rotation::{
+    evaluation_vector, expand_matrix, fold_matrix, fold_row, identity_field_mat,
+    multiplication_matrix, one_poly, powers, rot, zip_entries, RowTensor, TensorShapeError,
+};
+
+pub use trapdoor::{
+    bound_of_matrix, check_gadget_capacity, gadget_apply, gadget_matrix, identity_matrix, matmul,
+    preimage_ok, preimage_random_with_trapdoor, preimage_with_trapdoor, scalar_elt, short_matrix,
+    trapdoor_relation, TrapError, TrapdoorKey, UnitMatrix,
+};
 
 /// Ring degree `d` of one committed coefficient (the Z1 cyclotomic).
 pub const DIM: usize = 256;

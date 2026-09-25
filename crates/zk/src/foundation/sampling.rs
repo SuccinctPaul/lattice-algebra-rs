@@ -465,6 +465,109 @@ pub fn hyperball_ring_from_seed<R: Ring, const N: usize>(
         .remove(0)
 }
 
+/// A dense `rows × cols` matrix over `{−1, 0, 1}`, with integer
+/// matrix–vector products.
+///
+/// This is the object several lattice arguments fold a witness *down to
+/// scalars* with, where the ring structure is deliberately absent:
+/// - CMNW (eprint 2024/281 App. A, step 4–7) draws `P ← χ^{λ×r₂nαd}` with
+///   `χ = {−1,0,1}` and forms `p = (I ⊗ P)·ẽ` over `Z_q`, then `B·P` to get
+///   the ring elements the final check multiplies;
+/// - the same shape underlies a Johnson–Lindenstrauss projection, which is why
+///   it lives beside [`crate::shortness::projection`] rather than in `pcs`.
+///
+/// Unlike [`JLProjection`](crate::shortness::projection::JLProjection) this
+/// exposes its **rows**, because a scheme needs to combine them with a second
+/// public matrix (`B·P`) and re-read the result as ring elements — something a
+/// black-box projector cannot support.
+///
+/// Entries are drawn i.i.d. with `Pr[−1] = Pr[+1] = 1/4`, `Pr[0] = 1/2`, so
+/// `⟨row, v⟩` concentrates like a JL projection with variance `‖v‖₂²/2`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignMatrix {
+    rows: usize,
+    cols: usize,
+    entries: Vec<i8>,
+}
+
+impl SignMatrix {
+    /// Expands a matrix from a seed. Deterministic and reproducible.
+    ///
+    /// # Panics
+    /// If `rows` or `cols` is zero.
+    pub fn from_seed<X: Xof>(seed: &[u8; 32], rows: usize, cols: usize) -> Self {
+        assert!(rows > 0 && cols > 0, "a sign matrix has at least one entry");
+        let mut xof = X::new(&[]);
+        xof.absorb(b"sign-matrix");
+        xof.absorb(seed);
+        xof.absorb(&(rows as u64).to_le_bytes());
+        xof.absorb(&(cols as u64).to_le_bytes());
+        let mut stream = BitStream::new(&mut xof);
+        let mut entries = Vec::with_capacity(rows * cols);
+        for _ in 0..rows * cols {
+            // Two bits per entry: 00 → 0, 01 → +1, 10 → −1, 11 → 0, giving
+            // Pr[±1] = 1/4 each and Pr[0] = 1/2.
+            entries.push(match stream.read_bits(2) {
+                1 => 1,
+                2 => -1,
+                _ => 0,
+            });
+        }
+        Self {
+            rows,
+            cols,
+            entries,
+        }
+    }
+
+    /// Row count.
+    pub const fn rows(&self) -> usize {
+        self.rows
+    }
+
+    /// Column count.
+    pub const fn cols(&self) -> usize {
+        self.cols
+    }
+
+    /// Row `i` as signed entries.
+    ///
+    /// # Panics
+    /// If `i >= rows`.
+    pub fn row(&self, i: usize) -> &[i8] {
+        &self.entries[i * self.cols..(i + 1) * self.cols]
+    }
+
+    /// `M · v` over the integers.
+    ///
+    /// # Panics
+    /// If `v.len() != cols`.
+    pub fn apply(&self, v: &[i64]) -> Vec<i64> {
+        assert_eq!(v.len(), self.cols, "sign matrix width mismatch");
+        (0..self.rows)
+            .map(|i| {
+                self.row(i)
+                    .iter()
+                    .zip(v.iter())
+                    .fold(0i64, |acc, (&m, &x)| acc + i64::from(m) * x)
+            })
+            .collect()
+    }
+
+    /// `uᵀ M v` over the integers — the bilinear form the projection checks
+    /// reduce to.
+    ///
+    /// # Panics
+    /// If either vector has the wrong length.
+    pub fn form(&self, u: &[i64], v: &[i64]) -> i64 {
+        assert_eq!(u.len(), self.rows, "left vector must match the rows");
+        self.apply(v)
+            .iter()
+            .zip(u.iter())
+            .fold(0i64, |acc, (&a, &b)| acc + a * b)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -760,5 +863,75 @@ mod tests {
             let _ = diagonal_set_poly::<R32, Shake256Xof, 64>(&mut x);
         });
         assert!(result.is_err(), "2-adic rings must use odd_sum_poly");
+    }
+
+    #[test]
+    fn sign_matrix_is_sparse_signed_and_reproducible() {
+        type M = crate::foundation::sampling::SignMatrix;
+        let a = M::from_seed::<algebra::crypto::xof::Shake128Xof>(&[3u8; 32], 4, 64);
+        let b = M::from_seed::<algebra::crypto::xof::Shake128Xof>(&[3u8; 32], 4, 64);
+        let c = M::from_seed::<algebra::crypto::xof::Shake128Xof>(&[4u8; 32], 4, 64);
+        assert_eq!(a, b, "same seed reproduces the matrix");
+        assert_ne!(a, c, "the seed binds the matrix");
+        assert_eq!(a.rows(), 4);
+        assert_eq!(a.cols(), 64);
+        let mut zeros = 0;
+        for e in a.entries.iter() {
+            assert!((-1..=1).contains(e), "entries must be in {{-1,0,1}}");
+            if *e == 0 {
+                zeros += 1;
+            }
+        }
+        // Pr[0] = 1/2 over 256 draws: allow generous slack, this only guards
+        // against a degenerate distribution (all zeros / all ones).
+        assert!(zeros > 64 && zeros < 192, "zeros = {zeros} of 256");
+    }
+
+    #[test]
+    fn sign_matrix_apply_and_form_agree_with_expanded_arithmetic() {
+        type M = crate::foundation::sampling::SignMatrix;
+        let m = M::from_seed::<algebra::crypto::xof::Shake128Xof>(&[9u8; 32], 3, 16);
+        let v: Vec<i64> = (0..16).map(|i| i - 7).collect();
+        let got = m.apply(&v);
+        assert_eq!(got.len(), 3);
+        for (i, got_i) in got.iter().enumerate() {
+            let manual: i64 = m
+                .row(i)
+                .iter()
+                .zip(v.iter())
+                .map(|(&a, &b)| i64::from(a) * b)
+                .sum();
+            assert_eq!(got_i, &manual, "row {i}");
+        }
+        let u: Vec<i64> = (0..3).map(|i| i + 1).collect();
+        // uᵀ(Mv) must equal (uᵀM)v — the associativity the projection checks
+        // silently rely on when a verifier re-orders them.
+        let left = m.form(&u, &v);
+        let mut combined: Vec<i64> = (0..16).map(|_| 0i64).collect();
+        for (i, ui) in u.iter().enumerate() {
+            for (k, &e) in m.row(i).iter().enumerate() {
+                combined[k] += ui * i64::from(e);
+            }
+        }
+        let right: i64 = combined.iter().zip(v.iter()).map(|(a, b)| a * b).sum();
+        assert_eq!(left, right, "uᵀMv == (uᵀM)v");
+    }
+
+    #[test]
+    fn sign_matrix_row_is_a_window_into_the_storage() {
+        type M = crate::foundation::sampling::SignMatrix;
+        let m = M::from_seed::<algebra::crypto::xof::Shake128Xof>(&[11u8; 32], 2, 5);
+        assert_eq!(m.row(0).len(), 5);
+        assert_eq!(m.row(1).len(), 5);
+        assert_ne!(m.row(0), m.row(1), "rows must be independent draws");
+        let mut oversized = m.clone();
+        oversized.cols = 4;
+        assert!(
+            std::panic::catch_unwind(move || {
+                let _ = oversized.row(3);
+            })
+            .is_err(),
+            "an out-of-range row panics rather than wrapping"
+        );
     }
 }

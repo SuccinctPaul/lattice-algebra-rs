@@ -91,6 +91,86 @@ where
     table.iter().map(|t| vanishing_eval(t, b)).collect()
 }
 
+/// The **centered** digit set of `b` values: `[lo, lo + b − 1]` with
+/// `lo = −⌊b/2⌋`, so 16 digits are `{−8, …, 7}` and 3 are `{−1, 0, 1}`.
+///
+/// This is the set balanced base-`b` decomposition actually produces — and
+/// it is *not* symmetric about zero when `b` is even, which is why the
+/// symmetric [`vanishing_eval`] cannot express it.
+pub const fn centered_digits(b: u64) -> (i64, i64) {
+    assert!(b >= 1, "a digit set needs at least one value");
+    let lo = -((b / 2) as i64);
+    (lo, lo + b as i64 - 1)
+}
+
+/// The vanishing polynomial of an arbitrary integer interval:
+/// `∏_{t = lo..=hi} (w − t)`, zero exactly on those integers.
+///
+/// # Panics
+/// If `hi < lo` (empty interval) or the interval spans the modulus.
+pub fn vanishing_eval_interval<R: Ring>(w: &R, lo: i64, hi: i64) -> R {
+    assert!(hi >= lo, "the interval must not be empty");
+    assert!(
+        u128::try_from(hi - lo + 1)
+            .map(|n| n < u128::from(R::MODULUS))
+            .unwrap_or(true),
+        "an interval of at least q values vanishes everywhere and proves nothing"
+    );
+    let mut acc = R::ONE;
+    let mut t = lo;
+    while t <= hi {
+        acc *= *w - crate::foundation::sampling::from_centered::<R>(t);
+        t += 1;
+    }
+    acc
+}
+
+/// The vanishing polynomial of the centered `b`-digit set.
+///
+/// For `b = 16` this is Hachi's balanced-norm gate (eprint 2026/156 eq. 23
+/// specialised to centered digits), `∏_{i=−8..7}(w − i) = (w² + 8w) ·
+/// ∏_{k=1..7}(w² − k²)` — degree 16, composed into the sumcheck round
+/// polynomial on top of it.
+pub fn centered_vanishing_eval<R: Ring>(w: &R, b: u64) -> R {
+    let (lo, hi) = centered_digits(b);
+    vanishing_eval_interval(w, lo, hi)
+}
+
+/// The centered-digit range check `g(w) == 0`: exact over prime rings for
+/// the centered representative when `b < q` (same argument as
+/// [`range_check`], with the zero set shifted).
+///
+/// # Panics
+/// If the ring is not prime (unsound over `2^k`).
+pub fn centered_range_check<R: CenteredRing>(w: &R, b: u64) -> bool {
+    assert!(
+        R::IS_PRIME,
+        "the vanishing range check is exact only over prime rings"
+    );
+    centered_vanishing_eval(w, b) == R::ZERO
+}
+
+/// Like [`range_claim_table`] but for the **centered** `b`-digit set: a
+/// table of `g_centered(t)` whose honest sum is zero exactly when every
+/// entry lies in `[−⌊b/2⌋, ⌈b/2⌉ − 1]`.
+///
+/// # Panics
+/// If the ring is not prime.
+pub fn centered_range_claim_table<R>(table: &[R], b: u64) -> Vec<R>
+where
+    R: MatrixElement + Ring + Clone,
+{
+    assert!(
+        R::IS_PRIME,
+        "the vanishing range check is exact only over prime rings"
+    );
+    table
+        .iter()
+        .cloned()
+        .map(|t| centered_vanishing_eval(&t, b))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +238,73 @@ mod tests {
             bit_check(&two32)
         });
         assert!(result.is_err(), "2-adic rings must refuse the check");
+    }
+
+    #[test]
+    fn centered_digits_are_the_balanced_digit_set() {
+        assert_eq!(centered_digits(16), (-8, 7));
+        assert_eq!(centered_digits(3), (-1, 1));
+        assert_eq!(centered_digits(2), (-1, 0));
+        assert_eq!(centered_digits(1), (0, 0));
+    }
+
+    #[test]
+    fn hachi_balanced_gate_is_our_centered_vanishing_polynomial() {
+        // Hachi (2026/156, b = 16 centered digits): the published closed
+        // form must agree with the interval product everywhere, which pins
+        // its degree at 16 (the survey said 18).
+        let closed = |w: &Rq| {
+            let w2 = w.square();
+            let mut acc = w2 + *w * Rq::from(8u64);
+            for k in 1..=7u64 {
+                acc *= w2 - Rq::from(k * k);
+            }
+            acc
+        };
+        for v in -40i64..=40 {
+            assert_eq!(
+                centered_vanishing_eval(&w(v), 16),
+                closed(&w(v)),
+                "c_bal and the interval product disagree at w = {v}"
+            );
+        }
+    }
+
+    #[test]
+    fn centered_check_accepts_exactly_the_digit_set() {
+        for t in -8i64..=7 {
+            assert!(centered_range_check(&w(t), 16), "{t} is a digit");
+        }
+        for t in [-9i64, 8, 100, -1_000] {
+            assert!(!centered_range_check(&w(t), 16), "{t} is not a digit");
+        }
+        // the symmetric gate cannot express this set: 8 must pass the
+        // symmetric check and fail the centered one
+        assert!(range_check(&w(8), 8));
+        assert!(!centered_range_check(&w(8), 16));
+    }
+
+    #[test]
+    fn centered_claim_table_sums_to_zero_iff_all_digits_in_range() {
+        let good: Vec<Rq> = (0..16).map(|i| w((i as i64 % 16) - 8)).collect();
+        let sum = centered_range_claim_table(&good, 16)
+            .iter()
+            .fold(Rq::zero(), |a, b| a + *b);
+        assert_eq!(sum, Rq::ZERO);
+
+        let mut bad = good.clone();
+        bad[5] = w(8); // just outside the centered set
+        let sum = centered_range_claim_table(&bad, 16)
+            .iter()
+            .fold(Rq::zero(), |a, b| a + *b);
+        assert_ne!(sum, Rq::ZERO, "one off-center digit must show up");
+    }
+
+    #[test]
+    fn interval_vanishing_rejects_an_interval_spanning_the_modulus() {
+        // A polynomial vanishing on q or more points is the zero function
+        // mod q and certifies nothing; the helper must refuse to build it.
+        let r = std::panic::catch_unwind(|| vanishing_eval_interval(&w(3), 0, Q as i64));
+        assert!(r.is_err(), "an interval of length q proves nothing");
     }
 }

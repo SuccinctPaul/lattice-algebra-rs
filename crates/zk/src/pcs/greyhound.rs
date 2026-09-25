@@ -213,7 +213,7 @@ pub(crate) struct AjtaiKeyHeap {
 
 impl AjtaiKeyHeap {
     /// ExpandA: entry `(i, j)` from `XOF(KEY_DOMAIN ‖ label ‖ seed ‖ j ‖ i)`.
-    fn setup(label: &[u8], seed: &[u8; 32], rows: usize, cols: usize) -> Self {
+    pub(crate) fn setup(label: &[u8], seed: &[u8; 32], rows: usize, cols: usize) -> Self {
         let mut entries = Vec::with_capacity(rows * cols);
         for j in 0..cols {
             for i in 0..rows {
