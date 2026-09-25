@@ -385,6 +385,7 @@ impl<B: Ring + Field + fmt::Display, const K: usize, const A: u64> MatrixElement
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ring::number_theory::{is_prime_u64, x_pow_d_plus_1_splitting};
     use crate::ring::zq::Zq;
     use alloc::vec::Vec;
 
@@ -547,5 +548,61 @@ mod tests {
                 "Z² − {c} must invert when Z⁴ − 2 is irreducible"
             );
         }
+    }
+
+    // Maltese's Protocols 1–2 sum-check over `K = F_{q^e}` with `e = 8` at `d = 64`
+    // (Fig. 5 p. 45's P3 column). The house prime cannot state that —
+    // `number_theory::the_eight_degree_regime_needs_a_prime_outside_the_house_class`
+    // pins why, and adds that the `e = 8` prime with 2-adicity 1 is out of reach of
+    // *this* type, because `Z⁸ − A` is irreducible only when `q ≡ 1 (mod 4)`. The
+    // branch that satisfies both does exist, and this lands it: `q = 2³² − 527`,
+    // `≡ 113 (mod 128)`, whose `X⁶⁴ + 1` splits into eight degree-8 factors, with
+    // `K = F_q[Z]/(Z⁸ − 3)`.
+    #[test]
+    fn an_eight_degree_extension_exists_at_a_prime_in_p3s_regime() {
+        const Q: u64 = 4_294_966_769; // 2³² − 527
+        assert!(is_prime_u64(Q));
+        assert_eq!(Q % 128, 113);
+        assert_eq!(
+            Q % 4,
+            1,
+            "the binomial criterion's `4 | n ⇒ q ≡ 1 (mod 4)` clause"
+        );
+        let split = x_pow_d_plus_1_splitting(Q, 64).expect("odd prime, d a power of two");
+        assert_eq!(
+            (split.factor_degree, split.factor_count),
+            (8, 8),
+            "P3's (d = 64, e = 8) shape"
+        );
+
+        type K8 = ExtField<Zq<Q>, 8, 3>;
+        assert_eq!(K8::characteristic(), Q);
+        assert_eq!(K8::degree(), 8);
+        assert_eq!(K8::z_generator().pow(8), K8::from(3u64), "Z⁸ = A");
+
+        // Invertibility of every nonzero element *is* the field property, and here
+        // it is the only thing deciding that `Z⁸ − 3` is irreducible: 3⁸ elements of
+        // small support, each solved against its own linear system.
+        let mut checked = 0usize;
+        for code in 0u64..3u64.pow(8) {
+            let mut coeffs = [0u64; 8];
+            let mut rest = code;
+            for c in coeffs.iter_mut() {
+                *c = (rest % 3) as u64;
+                rest /= 3;
+            }
+            let x = K8 {
+                coeffs: coeffs.map(|v| Zq::<Q>::from(v)),
+            };
+            if x.is_zero() {
+                continue;
+            }
+            let inv = x
+                .inverse()
+                .unwrap_or_else(|| panic!("Z⁸ − 3 must be irreducible: {x}"));
+            assert_eq!(x * inv, K8::one());
+            checked += 1;
+        }
+        assert_eq!(checked, 3usize.pow(8) - 1, "the sweep must have run");
     }
 }

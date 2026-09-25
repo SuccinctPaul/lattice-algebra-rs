@@ -1315,6 +1315,12 @@ example 的映射必须给它名字，否则 `_ => panic!` 会在第一个 `y1` 
 结论：**G9 的第一步不是「写一个实例」，是把 `ExtField` 的模数从二项式放宽成一般首一多项式**；
 这条判据钉在 `algebra` 的 `number_theory::the_eight_degree_regime_needs_a_prime_outside_the_house_class`
 里，survey §4 的 G9 行也已从「absent」改成「unreachable at this instance」。
+**同一轮已把能落的那一半落了**：`ExtField<Zq<2³²−527>, 8, 3>`（`q ≡ 113 mod 128`，
+`X⁶⁴+1` 恰好 8 个 8 次因子）经 6560 个元素全可逆扫过，已是**被证明的域**
+（`extension::an_eight_degree_extension_exists_at_a_prime_in_p3s_regime`，algebra `--lib` 474/0）。
+剩下的是 CRT 读出 `R_F ≅ K^{d/e}` 与 `BatchSC`/`ShiftSC`（任务 #16），
+以及一个必须先回答的问题：`pcs::tree*` 整条线跑在 `2³²−99` 上，换 prime 就是换整个 ring 实例，
+这件事要显式决定，不能靠漂移。
 
 **#15 的实测收口（2026-09-25 18:2x，最终树 18:3x 复跑）**：
 `cargo run -q --release -p lattice-zk --example maltese`
