@@ -31,14 +31,22 @@
 //! operations per round instead of a full ring multiplication. That is where
 //! Hachi's `Õ(√(2^ℓ·λ))` verifier comes from.
 //!
-//! Assembled below: the lift, the commitment to `(z_ν, r_ν)`, the substitution
-//! at a transcript-derived `ζ`, and the three obligations a verifier must then
-//! believe. Not here, and recorded in `crates/zk/docs/open-milestones.md` under
-//! "Hachi": the sumcheck that *proves* the substituted claim (the claim is
-//! checked here, not proved); Lemma 1 / Theorem 1's trace-map identification of
-//! `F_{q^k}` with the fixed subring `R_q^H`; and the paper's own `‖ρ‖`
-//! bookkeeping, which needs its modulus-separation argument — so the norm gate
-//! below bounds the **witness** `z`, which is what Eq. 6 requires.
+//! Assembled below: the lift, the commitment to `(z_ν, r_ν)`, the substitution at
+//! a transcript-derived `ζ`, and the degree-2 sum-check over `F_{q^k}` that
+//! *proves* the substituted claim — [`zk::sumcheck::circuit::Product`] applied to
+//! the two oracles p. 7 names, `P` the committed table and `Q` the public weights
+//! `ζ` produces. That leaves five obligations, the last two being the sum-check's
+//! own round checks and the tie-back of its output to `P̃(ρ)·Q̃(ρ)` for *these*
+//! oracles.
+//!
+//! What the sum-check does **not** buy is succinctness: its output is a claim on
+//! `P` at `ρ`, and this assembly discharges it by opening the committed vector.
+//! The paper repeats the step recursively ("we can recursively repeat this
+//! process", p. 7); that recursion is not in this crate. Still absent, recorded in
+//! `crates/zk/docs/open-milestones.md` under "Hachi": Lemma 1 / Theorem 1's
+//! trace-map identification of `F_{q^k}` with the fixed subring `R_q^H`; and the
+//! paper's own `‖ρ‖` bookkeeping, which needs its modulus-separation argument — so
+//! the norm gate below bounds the **witness** `z`, which is what Eq. 6 requires.
 //!
 //! # Instance
 //!
@@ -57,6 +65,7 @@ use algebra::ring::{PolynomialQuotientRing, Ring};
 use zk::pcs::projection::{to_coeffs, FieldMat};
 use zk::pcs::switching::{evaluate_at_base, relation_residual};
 use zk::shortness::exact_l2::max_magnitude;
+use zk::sumcheck::circuit::{self, CircuitSumcheckProof, Product};
 
 /// `2³² − 99`: prime, `≡ 5 (mod 8)`, and no NTT of degree ≥ 4 exists.
 type Q = Zq<4294967197>;
@@ -73,6 +82,17 @@ const CROWS: usize = 4;
 /// Committed coefficient count: the `d` coefficients of each `zⱼ`, then the
 /// `d − 1` of `ρ`.
 const VLEN: usize = T * D + (D - 1);
+/// `µ`, the variables of the substituted claim: `2^µ ≥ VLEN`, the tail
+/// zero-padded. Padding *where* the coefficients sit is not free — the
+/// `HachiError::PointClaim` case below is exactly a prover that chose the other
+/// half of the cube.
+const MU: usize = 6;
+/// The cube the sum-check runs over.
+const CUBE: usize = 1 << MU;
+/// A degree-2 product circuit sends `Δ + 1 = 3` coefficients per round.
+const SC_NC: usize = 3;
+/// Domain separation for the sum-check's own transcript.
+const SC_DOMAIN: &[u8] = b"lattice-algebra/Z7/hachi-substituted";
 /// The witness is binary, which is what the gadget decomposition buys.
 const Z_BOUND: u64 = 1;
 /// Seed for the public commitment matrix.
@@ -97,6 +117,12 @@ enum HachiError {
     },
     /// `w` is not the relation's value, so no residual exists.
     NotARelation,
+    /// One of the substituted claim's `µ` rounds failed its running-claim check,
+    /// or the carried final evaluation is not its own last message at the point.
+    SumcheckRejected,
+    /// The sum-check's output claim `G(ρ)` is not `P̃(ρ)·Q̃(ρ)` for *these*
+    /// oracles: the prover proved a statement about a different table.
+    PointClaim,
 }
 
 /// The public relation: one matrix row and the claimed value.
@@ -180,15 +206,24 @@ fn bytes_of(values: &[Q]) -> Vec<u8> {
         .collect()
 }
 
+/// Everything the verifier's challenges are bound to: the relation, the
+/// commitment, the key. The substituted sum-check absorbs the **same** buffer, so
+/// `ζ` and the round challenges cannot be bound to different statements.
+fn statement(rel: &Relation, com: &[Q]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for m in &rel.ms {
+        out.extend(bytes_of(&to_coeffs(&[m.clone()])));
+    }
+    out.extend(bytes_of(&to_coeffs(&[rel.w.clone()])));
+    out.extend(bytes_of(com));
+    out.extend(KEY_SEED);
+    out
+}
+
 /// The challenge point `ζ = Σⱼ c·Z^j ∈ F_{q^k}`, bound to everything public.
 fn challenge(rel: &Relation, com: &[Q]) -> Ext {
     let mut tr = Transcript::<Shake256Xof>::new(b"lattice-algebra/Z7/hachi");
-    for m in &rel.ms {
-        tr.absorb(b"m", &bytes_of(&to_coeffs(&[m.clone()])));
-    }
-    tr.absorb(b"w", &bytes_of(&to_coeffs(&[rel.w.clone()])));
-    tr.absorb(b"c", &bytes_of(com));
-    tr.absorb(b"key", &KEY_SEED);
+    tr.absorb(b"statement", &statement(rel, com));
     let mut zeta = Ext::zero();
     let mut basis = Ext::one();
     for c in tr.challenge_bytes(K * 4).chunks_exact(4) {
@@ -199,9 +234,64 @@ fn challenge(rel: &Relation, com: &[Q]) -> Ext {
     zeta
 }
 
-/// The verifier: the commitment opens, the witness is short, and the lifted
-/// identity survives substitution at `ζ`.
-fn verify(rel: &Relation, key: &FieldMat<Q>, com: &[Q], lifted: &Lifted) -> Result<(), HachiError> {
+/// The two oracles of p. 7's substituted claim
+/// `Σ_{i∈{0,1}^µ} P(i)·Q(i) = V`: `P` is the table of committed coefficients, and
+/// `Q` holds the weights the substitution produces — `m̂ⱼ(ζ)·ζᵃ` on each `z_{j,a}`
+/// and `−(ζᵈ+1)·ζᵇ` on each `ρ_b` — with `V = ŵ(ζ)`.
+///
+/// `Σᵤ pᵤ·qᵤ = V` **is** the substituted equation rearranged:
+/// `Σⱼ m̂ⱼ(ζ)·ẑⱼ(ζ) − (ζᵈ+1)·ρ̂(ζ) = ŵ(ζ)`. So the sum-check proves the claim the
+/// direct substitution only states, and it ends at `G(ρ) = P̃(ρ)·Q̃(ρ)`.
+fn substituted(rel: &Relation, lifted: &Lifted, zeta: &Ext) -> (Vec<Ext>, Vec<Ext>, Ext) {
+    let powers: Vec<Ext> = (0..D).map(|a| zeta.pow(a as u64)).collect();
+    let shift = zeta.pow(D as u64) + Ext::one();
+    let mut p = vec![Ext::zero(); CUBE];
+    let mut q = vec![Ext::zero(); CUBE];
+    for (u, value) in coefficients(lifted).iter().enumerate() {
+        p[u] = Ext::from_base(*value);
+    }
+    for j in 0..T {
+        let m = evaluate_at_base(&to_coeffs(&[rel.ms[j].clone()]), zeta);
+        for a in 0..D {
+            q[j * D + a] = m.clone() * powers[a].clone();
+        }
+    }
+    for b in 0..lifted.rho.len() {
+        q[T * D + b] = Ext::zero() - shift.clone() * powers[b].clone();
+    }
+    let v = evaluate_at_base(&to_coeffs(&[rel.w.clone()]), zeta);
+    (p, q, v)
+}
+
+/// The prover's §1.3 message: a degree-2 sum-check over `F_{q^k}` for the
+/// substituted claim, at the same `ζ` the verifier derives.
+fn prove_substituted(
+    rel: &Relation,
+    lifted: &Lifted,
+    com: &[Q],
+) -> CircuitSumcheckProof<Ext, MU, SC_NC> {
+    let zeta = challenge(rel, com);
+    let (p, q, v) = substituted(rel, lifted, &zeta);
+    circuit::prove::<Ext, MU, SC_NC, _>(
+        &[&p, &q],
+        &v,
+        SC_DOMAIN,
+        &statement(rel, com),
+        &mut Product,
+    )
+    .expect("the honest lift satisfies the substituted claim")
+}
+
+/// The verifier: the commitment opens, the witness is short, the lifted identity
+/// survives substitution at `ζ`, and that substituted claim is *proved* by a
+/// sum-check whose output ties back to these very oracles.
+fn verify(
+    rel: &Relation,
+    key: &FieldMat<Q>,
+    com: &[Q],
+    lifted: &Lifted,
+    sumcheck: &CircuitSumcheckProof<Ext, MU, SC_NC>,
+) -> Result<(), HachiError> {
     let v = coefficients(lifted);
     if key.apply(&v).map_err(|_| HachiError::Commitment)? != com {
         return Err(HachiError::Commitment);
@@ -222,6 +312,15 @@ fn verify(rel: &Relation, key: &FieldMat<Q>, com: &[Q], lifted: &Lifted) -> Resu
     if lhs != rhs {
         return Err(HachiError::Substitution);
     }
+    // §1.3's *proof*, not just its statement: the same claim as a degree-2
+    // sum-check over `F_{q^k}`, tied back to these oracles at the verifier's own ρ.
+    let (p, q, v) = substituted(rel, lifted, &zeta);
+    let (rho, circuit_value) =
+        circuit::verify::<Ext, MU, SC_NC>(sumcheck, &v, SC_DOMAIN, &statement(rel, com))
+            .map_err(|_| HachiError::SumcheckRejected)?;
+    if circuit_value != circuit::multilinear_at(&p, &rho) * circuit::multilinear_at(&q, &rho) {
+        return Err(HachiError::PointClaim);
+    }
     Ok(())
 }
 
@@ -241,7 +340,8 @@ fn main() {
 
     let key = FieldMat::<Q>::uniform(b"hachi-ajtai", &KEY_SEED, CROWS, VLEN);
     let com = key.apply(&coefficients(&lifted)).expect("instance-sized");
-    verify(&rel, &key, &com, &lifted).expect("honest lift verifies");
+    let sc = prove_substituted(&rel, &lifted, &com);
+    verify(&rel, &key, &com, &lifted, &sc).expect("honest lift verifies");
 
     println!(
         "Hachi 2026/156 §1.3 ring switching — q = 2³²−99 (≡5 mod 8), d = {D}, k = {K}, Z^{K} = {A}, T = {T}"
@@ -251,6 +351,10 @@ fn main() {
         "  committed {} coefficients ({} zⱼ + ), opens and holds at ζ, ‖z‖∞ ≤ {Z_BOUND}",
         VLEN,
         T
+    );
+    println!(
+        "  the substituted claim is *proved*: a degree-2 sum-check over F_q^{{{K}}} of \
+         µ = {MU} rounds, {SC_NC} extension elements each, ending at G(ρ) = P̃(ρ)·Q̃(ρ)"
     );
 
     // The residual is load-bearing: with ρ := 0 the same z, re-committed so the
@@ -263,8 +367,11 @@ fn main() {
         w: rel.w.clone(),
     };
     let bare_com = key.apply(&coefficients(&no_rho)).expect("sized");
+    // The honest sum-check is the right argument here and in the two cases below:
+    // each of them fails at an obligation the verifier reaches *first*, so what is
+    // being measured is that the earlier gate fires, not the sum-check's.
     assert_eq!(
-        verify(&rel2, &key, &bare_com, &no_rho),
+        verify(&rel2, &key, &bare_com, &no_rho, &sc),
         Err(HachiError::Substitution),
         "the claim must need the residual, not merely the ring product"
     );
@@ -296,18 +403,54 @@ fn main() {
     let heavy_com = recommit(&mut heavy_rel, &key, &mut heavy);
     let got = max_magnitude(&to_coeffs(&heavy.zs));
     assert_eq!(
-        verify(&heavy_rel, &key, &heavy_com, &heavy),
+        verify(&heavy_rel, &key, &heavy_com, &heavy, &sc),
         Err(HachiError::NotShort { got, bound: Z_BOUND }),
         "the norm gate must be the only thing that fires"
     );
-    println!("  a witness with ‖z‖∞ = {got} passes both equations and trips the norm gate");
+    println!("  a witness with ‖z‖∞ = {got} passes the opening and trips the norm gate alone");
 
     // A stale commitment is caught before anything else.
     let mut shifted = com.clone();
     shifted[0] = shifted[0] + Q::ONE;
     assert_eq!(
-        verify(&rel, &key, &shifted, &lifted),
+        verify(&rel, &key, &shifted, &lifted, &sc),
         Err(HachiError::Commitment)
     );
+
+    // ── the two obligations §1.3's proof adds ───────────────────────────────
+    let mut forged = sc.clone();
+    forged.rounds[0][0] = forged.rounds[0][0].clone() + Ext::from_base(Q::ONE);
+    assert_eq!(
+        verify(&rel, &key, &com, &lifted, &forged),
+        Err(HachiError::SumcheckRejected),
+        "a moved round message must break the running-claim check"
+    );
+    println!(
+        "  round 1's message moved by one extension element → the sum-check refuses it \
+         ({MU} rounds, {SC_NC} coefficients each)"
+    );
+
+    // A prover that proves the *same* sum over a rotated cube: `Σᵤ pᵤ·qᵤ` is
+    // invariant under a bijection of the indices, so every round message verifies
+    // against the claim, and only the tie-back to `P̃(ρ)·Q̃(ρ)` for the verifier's
+    // own padding can see that the witness was placed elsewhere in the cube.
+    let zeta = challenge(&rel, &com);
+    let (mut p, mut q, v) = substituted(&rel, &lifted, &zeta);
+    p.rotate_left(1);
+    q.rotate_left(1);
+    let rotated = circuit::prove::<Ext, MU, SC_NC, _>(
+        &[&p, &q],
+        &v,
+        SC_DOMAIN,
+        &statement(&rel, &com),
+        &mut Product,
+    )
+    .expect("rotating both oracles preserves the hypercube sum");
+    assert_eq!(
+        verify(&rel, &key, &com, &lifted, &rotated),
+        Err(HachiError::PointClaim),
+        "the output claim must be about *these* oracles, not merely a true sum"
+    );
+    println!("  the same sum proved over a rotated cube → the point claim refuses it");
     println!("  every rejection is attributed to the obligation it violates");
 }

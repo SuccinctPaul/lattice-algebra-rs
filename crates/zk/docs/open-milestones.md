@@ -1337,3 +1337,40 @@ drift 报告为空。
 lib 侧：`--lib` **660 passed / 0 failed**（653 → 660，新增 7 条），
 `cargo test --workspace` **1345 passed / 0 failed / 19 个二进制**，`protocol_contract` 14/0。
 
+## Hachi 任务 #17：substituted claim 现在被**证明**，不只是被检查（2026-09-25 19:0x，实测）
+
+之前 example 的头注释自己写着：「the sumcheck that *proves* the substituted claim
+(the claim is checked here, not proved)」。这一轮把它落了。
+
+**先读正文**：eprint 2026/156 §1.3 p.7 给的语句是
+`Σ_{i∈{0,1}^µ} P(i)·Q(i) = V`，其中 `P := mle[(z′,r′)]` 是被承诺的那张表，
+`Q` 是代入 `X = ζ ∈ F_{q^k}` 产生的**公开**权重向量。把它按系数摊开就是
+`Σᵤ pᵤ·qᵤ = V`，其中 `z_{j,a}` 的权重是 `m̂ⱼ(ζ)·ζᵃ`、`ρ_b` 的是 `−(ζᵈ+1)·ζᵇ`、
+`V = ŵ(ζ)` —— 与 example 里原来那条直接检查是**同一个等式**，只是这次由协议给出。
+
+**src 侧新增能力**（不是 Hachi 专用逻辑，是通用件）：
+`sumcheck::circuit::Product`（`Composition<R, 3>`，`A(X)·B(X)`，对**任意**
+`MatrixElement` 域成立，包含 `ExtField` —— 这正是 Hachi「每轮 Õ(k) 次域运算」的落点）
+与 `sumcheck::circuit::multilinear_at`（协议自己用的那个 folding，泛型化到任意域）。
+4 条新 lib 测试：
+`the_product_circuit_proves_an_inner_product_over_an_extension_field`（Def. 9 的输出必须
+是**电路值** `Ã(ρ)·B̃(ρ)`，不是表的 MLE；`b` 取真扩张元素，退到基域就会不等）、
+`the_product_circuit_refuses_a_third_oracle_and_a_false_claim`（第三个 oracle 报
+`WrongLength{3,2}`，不静默配对）、
+`multilinear_at_agrees_with_the_equality_polynomial_expansion`（一般点 vs 独立
+`Σᵢ U(i)·êq(i,r)` 展开，外加 8 个顶点逐个核）、
+`multilinear_at_refuses_a_table_that_does_not_span_the_point`。
+顺手清掉一件重复：circuit 的测试模块里原本私有一个同名 `Product`（按对分块求和），
+两条调用都是 2 个 oracle，行为与新公开件一致，故删私用公，不留两份实现。
+
+**装配侧**：`examples/hachi.rs` 现在多两条义务，各自有独立反例 ——
+`HachiError::SumcheckRejected`（把第 1 轮消息动一个扩张元素）、
+`HachiError::PointClaim`（**把两张表同时循环平移一格**：`Σᵤ pᵤqᵤ` 在指标双射下不变，
+所以六轮全部通过，唯一还能看见「证的不是这张表」的就是输出回绑）。
+这个反例值得记：它说明「round 检查全过」和「证的是你的语句」是两件事。
+`challenge` 与 sum-check 现在共用同一个 `statement()` 缓冲，`ζ` 与轮挑战不可能绑到不同语句上。
+
+**仍然没有的**：p.7 那句「we can recursively repeat this process」的递归 ——
+输出对 `P̃(ρ)` 的断言在这里是**直接开启**兑现的，所以这一步不带来 succinctness，
+带来的是「语句被协议证明」；以及 Lemma 1/Thm 1 的迹映射桥 `R_q^H ≅ F_{q^k}`。
+
