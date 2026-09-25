@@ -1304,7 +1304,19 @@ Fig. 5 的 P3 行与 Fig. 6 的 finish 行取自 p.45–47 的表格文本。副
 example 的映射必须给它名字，否则 `_ => panic!` 会在第一个 `y1` 伪造用例上炸——
 这正是「每个 variant 都要有归属」这条纪律在起作用。
 
-**实测收口（2026-09-25 18:2x，最终树 18:3x 复跑）**：
+**G9 的前置条件已被量出来（2026-09-25 18:4x，实测，任务 #16）**：`BatchSC`/`ShiftSC` 要的
+`K = F_{q^8}` 在**我们自己的 prime 上不存在**。`X⁶⁴+1 = Φ₁₂₈` 在 `F_q` 上分解成
+`64/ord₁₂₈(q)` 个 `ord₁₂₈(q)` 次不可约因子；把 `1..128` 的奇剩余类全枚举一遍，
+**凡 `q ≡ 3 或 5 (mod 8)` 都有 `ord₁₂₈(q) = 32`**，所以 `q = 2³²−99 ≡ 29 (mod 128)` 给的是
+`e = 32`（两个因子），而 Fig. 5 的 P3 写的是 `e = 8`。`find_prime_for_splitting(64, 8, 32)`
+确实返回一个 32-bit prime（`≡ 7 (mod 8)`，2-adicity 1），但 `ExtField` 的 `Z⁸ − A` 模型在那里
+**一定失败**（二项式不可约的必要条件是 `4 | n ⇒ q ≡ 1 mod 4`；`2 ≤ A < 400` 全数扫过，无一不可约），
+`q ≡ 1 (mod 8)` 那一支可以（`A = 3`），但它的 2-adicity 是 4。
+结论：**G9 的第一步不是「写一个实例」，是把 `ExtField` 的模数从二项式放宽成一般首一多项式**；
+这条判据钉在 `algebra` 的 `number_theory::the_eight_degree_regime_needs_a_prime_outside_the_house_class`
+里，survey §4 的 G9 行也已从「absent」改成「unreachable at this instance」。
+
+**#15 的实测收口（2026-09-25 18:2x，最终树 18:3x 复跑）**：
 `cargo run -q --release -p lattice-zk --example maltese`
 exit 0，**54 个 tamper trip 全部 57 个命名检查**（561.32 s；提交前的同一棵树复跑 594.17 s），
 drift 报告为空。

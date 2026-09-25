@@ -425,4 +425,49 @@ mod tests {
         assert_eq!(x_pow_d_plus_1_splitting(9, 64), None, "q not prime");
         assert_eq!(x_pow_d_plus_1_splitting(2, 64), None, "q must be odd");
     }
+
+    // Maltese's P3 column (Fig. 5 p. 45) states `d = 64` with its sum-checks over a
+    // degree-`e = 8` extension, and this crate's tree line runs on the house prime
+    // `q = 2³² − 99`. **Those two do not meet**: `ord_128(2³² − 99) = 32`, so `X⁶⁴ + 1`
+    // has *two* factors of degree 32 there, and no prime `≡ 3 or 5 (mod 8)` can do
+    // better — that is the whole non-NTT half of the residue classes. P3's shape does
+    // exist at 32 bits; this pins which classes hold it, because the search is the
+    // part a reader cannot redo by eye.
+    #[test]
+    fn the_eight_degree_regime_needs_a_prime_outside_the_house_class() {
+        const HOUSE: u64 = 4_294_967_197; // 2³² − 99
+        assert_eq!(HOUSE % 8, 5);
+        let house = x_pow_d_plus_1_splitting(HOUSE, 64).expect("odd prime, d a power of two");
+        assert_eq!(
+            (house.factor_degree, house.factor_count),
+            (32, 2),
+            "the house prime is the two-factor regime, not P3's e = 8"
+        );
+
+        // The structural half: every odd class ≡ 3 or 5 (mod 8) has order 32 mod
+        // 128, so `e = 8` at `d = 64` is out of reach for all of them.
+        for r in (1..128u64).step_by(2) {
+            if r % 8 == 3 || r % 8 == 5 {
+                assert_eq!(order_mod(r, 128), Some(32), "class {r} mod 128");
+            }
+        }
+
+        let p3 = find_prime_for_splitting(64, 8, 32).expect("a 32-bit prime with e = 8");
+        assert!(is_prime_u64(p3));
+        assert!(
+            matches!(p3 % 8, 1 | 7),
+            "q = {p3}: e = 8 must sit outside the classes just swept"
+        );
+        let split = x_pow_d_plus_1_splitting(p3, 64).expect("inside the lemma");
+        assert_eq!((split.factor_degree, split.factor_count), (8, 8));
+        // `ExtField`'s modulus shape is the next constraint, and it is not free:
+        // `Z⁸ − A` is irreducible over `F_q` only when `q ≡ 1 (mod 4)` (the `4 | n`
+        // clause of the binomial irreducibility criterion), so the `q ≡ 7 (mod 8)`
+        // instance of this regime — 2-adicity 1, the closest to the house prime's
+        // non-NTT posture — has **no** binomial model at all: checked for every
+        // `2 ≤ A < 400` with `sympy.Poly(Z**8 - A, Z, domain=GF(q)).factor_list()`.
+        // The `q ≡ 1 (mod 8)` instance does (e.g. `A = 3` at `q = 4294966769`,
+        // whose 2-adicity is 4, still far short of the `q ≡ 1 (mod 128)` a
+        // length-64 negacyclic NTT would need).
+    }
 }
