@@ -12,7 +12,7 @@
 //! | Def. 19 `TCom` Setup / Commit / Open / Open_F | [`pcs::tree_commit`] |
 //! | §5 relations `PE`/`TE`, Eq. (7)–(10) + Lemma 14, Protocol 3 Π^PE_NC, Protocol 5 Π^Dec | [`pcs::tree_eval`] |
 //! | §2.2.2 + Protocol 4 Π^Fold, Def. 11/14 challenge sets, Thm. 2/3/4 | [`pcs::tree_fold`] |
-//! | §5.4 `Π^Fin` = `GH′ ∘ Π^PE_NC,fin ∘ Π^Reshape`, Def. 23, Prot. 6, Eq. (32)–(37) | [`pcs::tree_fin`] |
+//! | §5.4 `Π^Fin` = `GH′ ∘ Π^PE_NC,fin ∘ Π^Reshape`, Def. 23, Prot. 6, Eq. (32)–(38) | [`pcs::tree_fin`] |
 //! | Def. 9's degree-`d` sum-check | [`zk::sumcheck::circuit`] (`Δ = 2b` in Π^PE_NC, `Δ = 2` in Π^Fold) |
 //!
 //! and the trace below is ordered by the paper's own step numbering.
@@ -76,7 +76,9 @@
 //!   (`zk::pcs::tree_fin`) recommits the `TE(1,k,b)^ω × PE(1,k,b)^{ω+1}`
 //!   side-claims into Def. 23's two-layer Greyhound commitment, checks Eq. (32)–(36)
 //!   and Prot. 6 Step 2(f)'s prefix claim, continues through Π^PE_NC,fin's two
-//!   layer evaluations, and runs `GH′`'s added row `q⊺·s1 = y1` (§5.4.3, Eq. (37)).
+//!   layer evaluations, and runs `GH′`'s Eq. (38) — the five-row system
+//!   `P·(ŵ,s1,z)⊺ = (v,u,y2,0,η·y₁·ẽ₁)⊺` of §5.4.3, including the added
+//!   `q⊺·s1 = y1` row of Eq. (37) and the two norm gates Cor. 5 inherits.
 //!   The cycle's set-aside claims therefore now end up somewhere: the `TE`
 //!   value `v_top` is bound by Eq. (35) *through that fresh commitment*, which is
 //!   the paper's route. What is *not* landed is Greyhound's three-move core and
@@ -91,8 +93,9 @@
 //!   the finisher binds the claim the paper's way, the direct opening stays as the
 //!   cross-check that says so if the two ever disagree.
 //!   The residual gap is the reason the cycle still runs the direct branch's
-//!   checks: without the LaBRADOR core, `Π^Fin`'s `GH′` step verifies
-//!   `GHPrincipal′(b1,b2)`'s rows rather than proving them.
+//!   checks: without the LaBRADOR core, `Π^Fin`'s `GH′` step *verifies* Eq. (38) —
+//!   the prover's `ŵ, v, z` messages and all five rows — rather than proving it, so
+//!   knowledge soundness rests on the extraction the paper obtains from LaBRADOR.
 //!   Historical note, now superseded: on 2026-09-24 forging `v_top` produced an
 //!   *empty* failing set, which is what made `forward.top_tree_claim` necessary;
 //!   that forgery is now refused by `fin.eval_te` as well.
@@ -102,7 +105,9 @@
 //!   instance keeps `log q = 32`, `d = 64`, `b = 2`, `α = 32`, `k = 7` and the
 //!   same challenge set — the parameters that decide the protocol's *shape* — and
 //!   shrinks `n` and `ℓ` so the cycle runs in seconds. §6.2's accounting for real
-//!   P3 is printed alongside, from Fig. 6's own numbers (p. 47).
+//!   P3 is printed alongside, computed component by component by
+//!   [`zk::pcs::tree_fin::FinishAccounting`] and cross-checked against Fig. 6's
+//!   printed row (p. 47).
 //!
 //! Run with: `cargo run --release -p lattice-zk --example maltese`. The shape above
 //! is why this one example needs `--release`: `b = 2` only shrinks the cycle for
@@ -118,7 +123,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 use zk::pcs::tree_commit::{self, TreeKey, TreeOpening};
 use zk::pcs::tree_eval::{self, DecompositionProof, EvalError, NormCheckProof};
-use zk::pcs::tree_fin::{self, ClaimKind, SideClaim};
+use zk::pcs::tree_fin::{self, ClaimKind, GhPrimeProof, SideClaim};
 use zk::pcs::tree_fold::{self, ChallengeSet, CycleShape, FoldError, FoldProof, TreeClaim};
 
 /// The finisher's key type at this instance's shape parameters.
@@ -261,8 +266,11 @@ fn pe_side_claim(
 }
 
 /// §5.4's transcript material for a whole set-aside list: the binding, the
-/// reshaping challenges `ζ, ξ, η` (Prot. 6 Step 2(a)i), and the two points `r`
-/// (Prot. 6 Step 3's `r_{(µ'+m)}`) and `r′` (Prot. 7 Step 3's shift point).
+/// reshaping challenges `ζ, ξ, η` (Prot. 6 Step 2(a)i), the two points `r`
+/// (Prot. 6 Step 3's `r_{(µ'+m)}`) and `r′` (Prot. 7 Step 3's shift point), and
+/// `GH′`'s folding challenges `c` with Eq. (38)'s `η` — which p. 45 draws *after*
+/// the commitments to `ŵ, s1, z`, so it is derived from the same binding as the
+/// rest and never sent.
 #[derive(Clone)]
 struct Finishing {
     key: FinKey,
@@ -271,6 +279,8 @@ struct Finishing {
     eta: F,
     r: Vec<Elt>,
     r_prime: Vec<Elt>,
+    gh_challenges: Vec<Elt>,
+    gh_eta: Elt,
 }
 
 impl Finishing {
@@ -299,6 +309,7 @@ impl Finishing {
         let binding = tree_eval::statement_bytes(tree.seed(), &openings, &values, &points);
         let drawn = tree_eval::challenges::<F>(b"maltese-fin", &binding, 3);
         let variables = key.bottom_variables();
+        let blocks = key.nodes();
         Self {
             key,
             zeta: drawn[0],
@@ -310,7 +321,21 @@ impl Finishing {
                 &binding,
                 variables,
             ),
+            gh_challenges: (0..blocks)
+                .map(|j| p3_set().sample(seed, j as u64))
+                .collect(),
+            // p. 45: "η ←$ C", the same challenge set the folding rounds use. A
+            // full-ring η would make Eq. (38)'s norm gates vacuous — `‖z‖∞` is
+            // bounded by `d·(Σ‖c_j‖∞)·(b−1)`, which only *bites* for a short `C`.
+            gh_eta: p3_set().sample(seed, blocks as u64),
         }
+    }
+
+    /// `GH′`'s prover message on top of a finished `OE(2)` claim: `ŵ`, its
+    /// commitment `v = D·ŵ`, and the folded opening `z` (Eq. 38, p. 45).
+    fn prove_gh(&self, claim: &tree_fin::FinProof<F, D>) -> GhPrimeProof<F, D> {
+        tree_fin::gh_prime_prove(&self.key, claim, &self.gh_challenges)
+            .expect("GH′ proves Eq. (38) for its own claim")
     }
 
     fn prove(&self, tree: &Key, claims: &[SideClaim<F, D>]) -> tree_fin::FinProof<F, D> {
@@ -604,6 +629,15 @@ fn main() {
         finishing.eta,
     )
     .expect("Π^Fin verifier: Def. 23, Eq. (32)–(36) and GH′'s rows all hold");
+    let gh = finishing.prove_gh(&finish);
+    tree_fin::gh_prime_verify(
+        &finishing.key,
+        &finish,
+        &gh,
+        &finishing.gh_challenges,
+        &finishing.gh_eta,
+    )
+    .expect("GH′ verifier: Eq. (38)'s five rows and Cor. 5's two norm gates all hold");
     println!(
         "Π^Fin: {} side-claims (TE(1,{K},b)^{cycles} × PE(1,{K},b)^{}) recommitted into one Def. 23 pair — t* ∈ R^{},{}, |s1| = {}, |s_reshape| = {} (µ' = {}, γ = {}, β = {}); Eq. 35 binds x̃_top's value, Eq. 36 the two PE claims, GH′'s q⊺s1 = y1 the layer-1 claim",
         side_claims.len(),
@@ -619,9 +653,18 @@ fn main() {
     let finish_rings = tree_fin::wire_rings(&finish);
     let finish_bytes = finish_rings * D * 4;
     proof_bytes += finish_bytes;
+    let gh_rings = tree_fin::gh_prime_wire_elements(&gh);
+    proof_bytes += gh_rings * D * 4;
     println!(
         "  finish wire: {finish_rings} ring elements = {finish_bytes} bytes; §5.4's BatchSC would hide the {} entries of s1‖s_reshape this compilation reads",
         tree_fin::witness_entries(&finish)
+    );
+    println!(
+        "  GH′'s own message: {gh_rings} ring elements (ŵ = {}, v = {}, z = {}), on top of Π^Reshape's {}",
+        finishing.key.w_len(),
+        finishing.key.rows(),
+        finishing.key.inner_width(),
+        finish_rings,
     );
 
     // ── §6.1/§6.2: the real P3 numbers (Fig. 5 p. 46, Fig. 6 p. 47) ─────────
@@ -629,15 +672,24 @@ fn main() {
         "this run's proof: {proof_bytes} bytes for N = {} field coefficients",
         (1usize << HEIGHT) * N * D
     );
+    let p3 = tree_fin::FinishAccounting::new(4, 8, 64, 32, 32, 7, 6, 2);
     println!(
-        "P3 (Fig. 6): one cycle 43.8 KB × ω = 6, plus a ≈72 KB finish = {} KB ≈ the paper's 335 KB at N = 2^30",
-        6 * 43 + 72
+        "P3 (Fig. 5 pp. 45–46: log q = 32, d = 64, e = 8, n = 32, b = 2, k = 7; Fig. 6 p. 47: ω = 6 cycles, single cycle 43.8 KB, finish ∼72 KB, total 335 KB) → 6·43.8 + 72 = {}.{} KB, the paper's printed 335",
+        (6 * 438 + 720) / 10,
+        (6 * 438 + 720) % 10,
     );
-    let p3_finish_kb = (32 * 64 * 4 + 6 * 64 * 4) / 1024;
     println!(
-        "  of that finish row, the landed slice is {} KB at P3's n = 32, d = 64, log q = 32 (the one commitment + 6 ring claims just measured); the other ≈{} KB is Fig. 6's SC(2b)+ShiftSC(2,1)+2 RK + BatchSC(2,1)+2 RF messages and Greyhound(2^µ+k+1 nαd), i.e. §5.4.3's LaBRADOR core, still open",
-        p3_finish_kb,
-        72 - p3_finish_kb
+        "  the finish row computed component by component: {} KB of SC(2b) {} B + ShiftSC(2,1) {} B + BatchSC(2,1) {} B + 2 R_K {} B + 2 R_F {} B + 1 commitment {} B over µ′+m = {} rounds, leaving {} KB for Greyhound(2^µ+k+1·nα·d = {} F-elements) — §5.4.3's LaBRADOR core, still open",
+        p3.implemented_bytes() / 1024,
+        p3.norm_sumcheck,
+        p3.shift_sc,
+        p3.batch_sc,
+        p3.packed_claims,
+        p3.eval_claims,
+        p3.commitment,
+        p3.rounds,
+        p3.greyhound_allowance(72) / 1024,
+        p3.greyhound_input,
     );
     println!(
         "  (MSIS targets: Lemma 11 wants b' ≥ 2B = {} for the folded claim's binding; Lemma 12's relaxed binding wants 2·T_(C−C,k)·B = {})",
@@ -694,10 +746,11 @@ struct Scenario {
     next_value: Elt,
     shape: CycleShape,
     /// §5.4: `TE(1,k,b)^ω × PE(1,k,b)^{ω+1}` as Π^Reshape receives it, its
-    /// transcript material, and the finished proof.
+    /// transcript material, the finished proof, and `GH′`'s Eq. (38) message.
     side_claims: Vec<SideClaim<F, D>>,
     finishing: Finishing,
     finish: tree_fin::FinProof<F, D>,
+    gh: GhPrimeProof<F, D>,
 }
 
 impl Scenario {
@@ -812,6 +865,7 @@ impl Scenario {
         ));
         let finishing = Finishing::new(key, &FIN_SEED, &side_claims);
         let finish = finishing.prove(key, &side_claims);
+        let gh = finishing.prove_gh(&finish);
 
         Self {
             key: key.clone(),
@@ -843,6 +897,7 @@ impl Scenario {
             side_claims,
             finishing,
             finish,
+            gh,
         }
     }
 }
@@ -1012,6 +1067,34 @@ fn failing(sc: &Scenario) -> BTreeSet<&'static str> {
         );
     }
 
+    // ── §5.4.3: Eq. (38), the five-row system `GH′` proves with LaBRADOR ─────
+    // The row `B·s1 = u` is `fin.gh_root`'s (Def. 23 prints it first), so it is
+    // not given a second name here.
+    for error in tree_fin::gh_prime_report(
+        &sc.finishing.key,
+        &sc.finish,
+        &sc.gh,
+        &sc.finishing.gh_challenges,
+        &sc.finishing.gh_eta,
+    ) {
+        record(
+            match error {
+                tree_fin::FinError::GhCommitmentMismatch { .. } => "fin.eq38_commit",
+                tree_fin::FinError::GhEvalRowMismatch => "fin.eq38_row3",
+                tree_fin::FinError::GhFoldRowMismatch => "fin.eq38_row4",
+                tree_fin::FinError::GhEq38LastRowMismatch { .. } => "fin.eq38_eta_row",
+                tree_fin::FinError::GhWNotShort { .. } => "fin.gh_w_short",
+                tree_fin::FinError::GhZNotShort { .. } => "fin.gh_z_short",
+                // Eq. (37) is row 5's `η` term, so `GH′` re-reads it; the name is
+                // the equation's, and both reports may speak it.
+                tree_fin::FinError::QFormMismatch => "fin.q_claim",
+                tree_fin::FinError::WrongLength { .. } => "fin.wrong_shape",
+                other => panic!("gh_prime_report returned an unmapped {other:?}"),
+            },
+            true,
+        );
+    }
+
     // ── the two claim-level facts the cycle forwards ────────────────────────
     // The TE claim Π^Fold was given must be the *bridge* applied to the PE claim
     // Π^PE_NC was given, evaluated on the very vector the norm check ran on; if
@@ -1108,6 +1191,12 @@ const ALL_CHECKS: &[&str] = &[
     "fin.form_vectors",
     "fin.q_claim",
     "fin.ab_claim",
+    "fin.eq38_commit",
+    "fin.eq38_row3",
+    "fin.eq38_row4",
+    "fin.eq38_eta_row",
+    "fin.gh_w_short",
+    "fin.gh_z_short",
     "fin.wrong_shape",
 ];
 
@@ -1555,10 +1644,14 @@ fn tamper(key: &Key, f: &[Elt], seed: &[u8; 32]) -> BTreeSet<&'static str> {
     .expect("re-derive Step 2/3's claims from the moved layer");
     s.finish.a1 = derived.a1;
     s.finish.y1 = derived.y1;
+    // `ŵ, v, z` are built from `s2`, which this case leaves alone, so `GH′`'s
+    // message stays the honest one — and Eq. (38)'s last row, which reads
+    // `(c⊺G_{b1,n})·s1`, disagrees with it. That is not a cascade to hide: row 5
+    // is a *second* reading of the recomposition equation, at the challenge `c`.
     case(
         "finish: the recomposition G·s1 = (I⊗B2)·s2 broken (Def. 23, line 2)",
         &s,
-        &["fin.gh_link"],
+        &["fin.gh_link", "fin.eq38_eta_row"],
     );
 
     let mut s = sc.clone();
@@ -1616,6 +1709,10 @@ fn tamper(key: &Key, f: &[Elt], seed: &[u8; 32]) -> BTreeSet<&'static str> {
         s.finish.r_prime.clone(),
     )
     .expect("re-derive the layer claims");
+    // Recompute `GH′`'s message for the vector actually committed to, so this
+    // case stays about the equation its label names rather than about a stale
+    // `ŵ, v, z`.
+    s.gh = s.finishing.prove_gh(&s.finish);
     case(
         "finish: a b2-long s2, committed consistently (Def. 23, line 3 + Prot. 6 Step 1)",
         &s,
@@ -1636,6 +1733,10 @@ fn tamper(key: &Key, f: &[Elt], seed: &[u8; 32]) -> BTreeSet<&'static str> {
         s.finish.r_prime.clone(),
     )
     .expect("re-derive the layer claims");
+    // Recompute `GH′`'s message for the vector actually committed to, so this
+    // case stays about the equation its label names rather than about a stale
+    // `ŵ, v, z`.
+    s.gh = s.finishing.prove_gh(&s.finish);
     case(
         "finish: t* commits to another vector than the side-claims (Prot. 6 Step 1(a))",
         &s,
@@ -1658,6 +1759,10 @@ fn tamper(key: &Key, f: &[Elt], seed: &[u8; 32]) -> BTreeSet<&'static str> {
         s.finish.r_prime.clone(),
     )
     .expect("re-derive the layer claims");
+    // Recompute `GH′`'s message for the vector actually committed to, so this
+    // case stays about the equation its label names rather than about a stale
+    // `ŵ, v, z`.
+    s.gh = s.finishing.prove_gh(&s.finish);
     case(
         "finish: a recommitted opening with a live 0^{2nα} prefix (Prot. 6 Step 2(f))",
         &s,
@@ -1734,10 +1839,12 @@ fn tamper(key: &Key, f: &[Elt], seed: &[u8; 32]) -> BTreeSet<&'static str> {
 
     let mut s = sc.clone();
     s.finish.y1 = s.finish.y1 + monomial(1);
+    // Eq. (38)'s last row carries `η·ẽ₁·(q⊺s1 − y₁)`, so the §5.4.3 modification
+    // reads the same forgery the relation row does — and only at row 0.
     case(
         "finish: GHPrincipal′'s extra row q⊺·s1 = y1 forged (§5.4.3)",
         &s,
-        &["fin.q_claim"],
+        &["fin.q_claim", "fin.eq38_eta_row"],
     );
 
     let mut s = sc.clone();
@@ -1745,7 +1852,88 @@ fn tamper(key: &Key, f: &[Elt], seed: &[u8; 32]) -> BTreeSet<&'static str> {
     case(
         "finish: GHPrincipal′'s row a⊺·s2·b = y2 forged (§5.4.3)",
         &s,
-        &["fin.ab_claim"],
+        &["fin.ab_claim", "fin.eq38_row3"],
+    );
+
+    // ── Eq. (38) row by row, on `GH′`'s own message (p. 45) ─────────────────
+    let mut s = sc.clone();
+    s.gh.v[0] = s.gh.v[0].clone() + monomial(1);
+    case(
+        "finish: Eq. (38) row 1, the commitment v = D·ŵ, forged",
+        &s,
+        &["fin.eq38_commit"],
+    );
+
+    let mut s = sc.clone();
+    s.gh.w_hat[0] = s.gh.w_hat[0].clone() + monomial(1);
+    case(
+        "finish: ŵ moved (row 1 and the two gadget rows read it; it is also no \
+         longer b1-short)",
+        &s,
+        &[
+            "fin.gh_w_short",
+            "fin.eq38_commit",
+            "fin.eq38_row3",
+            "fin.eq38_row4",
+        ],
+    );
+
+    let mut s = sc.clone();
+    // The non-canonical digit pair `(0,0) → (2,−1)` recomposes to the same `ŵ`'s
+    // value, so every equation of Eq. (38) still balances once `v` is rebound:
+    // only `‖ŵ‖∞ < b1` stands between this prover and a witness no LaBRADOR
+    // extractor could return.
+    let zero = monomial(0);
+    let at = s
+        .gh
+        .w_hat
+        .windows(2)
+        .enumerate()
+        .find(|(index, pair)| index % ALPHA + 1 < ALPHA && pair[0] == zero && pair[1] == zero)
+        .expect("a gadget image has adjacent zero digits inside one block")
+        .0;
+    s.gh.w_hat[at] = monomial(2);
+    s.gh.w_hat[at + 1] = monomial(0) - monomial(1);
+    s.gh.v = s
+        .finishing
+        .key
+        .d()
+        .matvec(&s.gh.w_hat)
+        .expect("the same shape the honest commitment had");
+    case(
+        "finish: ŵ non-canonical but recomposing, with v rebound (Cor. 5's norm gate)",
+        &s,
+        &["fin.gh_w_short"],
+    );
+
+    let mut s = sc.clone();
+    s.gh.z[0] = s.gh.z[0].clone() + monomial(1);
+    case(
+        "finish: the folded opening z moved (Eq. 38 rows 4 and 5 read it)",
+        &s,
+        &["fin.eq38_row4", "fin.eq38_eta_row"],
+    );
+
+    let mut s = sc.clone();
+    let z_bound = tree_fin::folded_norm_bound(&s.finishing.gh_challenges, BASE);
+    s.gh.z[0] = monomial(z_bound + 1);
+    case(
+        "finish: z longer than d·(Σ‖c‖∞)·(b−1) (Cor. 5's second norm gate)",
+        &s,
+        &["fin.gh_z_short", "fin.eq38_row4", "fin.eq38_eta_row"],
+    );
+
+    let mut s = sc.clone();
+    s.finish.a[0] = s.finish.a[0].clone() + monomial(1);
+    case(
+        "finish: Lemma 16's a forged (the form check, the relation row, and Eq. 38 \
+         row 4 all read it)",
+        &s,
+        &[
+            "fin.form_vectors",
+            "fin.ab_claim",
+            "fin.eq38_row4",
+        ],
     );
 
     let mut s = sc.clone();
@@ -1767,11 +1955,14 @@ fn tamper(key: &Key, f: &[Elt], seed: &[u8; 32]) -> BTreeSet<&'static str> {
     s.finish.b = std::mem::replace(&mut s.finish.a, swapped);
     // Transposing Lem. 16's split keeps `|a|·|b| = |s2|`, so the nested sum still
     // spans the vector — and reads it in the wrong order. The form check fires
-    // because the received tensors are no longer those of `r′`.
+    // because the received tensors are no longer those of `r′`, and `GH′` refuses
+    // it one step earlier as a *shape*: `a ∈ R^{2^β α2}` and `b ∈ R^{2^γ}` are
+    // different lengths here, so Eq. (38)'s rows cannot be evaluated on the
+    // transposed pair at all.
     case(
         "finish: Lemma 16's split transposed (a ↔ b)",
         &s,
-        &["fin.form_vectors", "fin.ab_claim"],
+        &["fin.form_vectors", "fin.ab_claim", "fin.wrong_shape"],
     );
 
     let mut s = sc.clone();

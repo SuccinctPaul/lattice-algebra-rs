@@ -1247,10 +1247,75 @@ Eq. (38)/`Q_N`/Lemma 14——**只看导出名和文档注释就判定它是纯�
 判定为「保留重复代码」并拦了两次，于是我只能按它给的方向把删除做完，而不是留一棵半破的树。
 **当前状态**：`pcs::tree_finish` 已不在 crate 内（注册行一并删除），`--lib`
 **653 passed / 0 failed**（= 665 − 它那 12 条测试），装配照旧走 `tree_fin`（48 tamper / 51 名检查）。
-副本在 `/tmp/lane-debris/tree_finish.rs`，**不在仓库里、重启即失**。
+副本在 `~/lane-debris/tree_finish.rs`（`/Users/paul/lane-debris/`，**不在仓库里**）。
 
 所以 **#15 不算完成，是一笔欠账**：需要把 `norm_check_fin_*`（PE2→OE2 round 协议）、`finish_accounting`、
 `FinShape::*` 与上述 13 条测试从副本移植进 `tree_fin`，或按 §5.4 重做；在此之前仓库里
 **不存在**这部分覆盖，任何「`Π^Fin` 已完整落地」的说法都不成立。判据也收紧为：
 **判断两个实现是否重复，看测试集之差，不看导出名或注释。**
+
+### #15 收口：Eq. (38) 与 Fig. 6 记账已并入 `tree_fin`（2026-09-25 17:0x，实测）
+
+先按论文原文重读一遍再动手：Eq. (38) 的矩阵是从 PDF p.45 **渲染成图**读出来的
+（`/tmp/maltese_p45_eq38.png`），Def. 23 的 `GHSetup` 只印 `B1, B2`（p.39 正文），
+Fig. 5 的 P3 行与 Fig. 6 的 finish 行取自 p.45–47 的表格文本。副本里那套读法**五行全对**，
+但它的文档有一处需要自己判：`D` 不是 Def. 23 的第三个 key，而是 GH′ 跑 Greyhound
+初始三步协议（NS24 Fig. 4）时**另有的 `ŵ` 承诺矩阵**——所以 `FinKey` 现在多一个
+`d: RingMatrixKey`（label `fin-D`，`n × 2^γ·α1`），并在 doc 里写明「Def. 23 不印它是因为它只重述承诺方案」。
+
+**已并入 `pcs::tree_fin` 的能力**（都是新增，没有改动装配已在用的签名）：
+`GhPrimeProof{ŵ, v, z}` + `gh_prime_prove/report/verify` + `folded_norm_bound` +
+`column_combination` + `gh_prime_wire_elements`，以及 `FinishAccounting`（Fig.6 那一行逐件算）。
+新增 6 条 lib 测试，全部**一次通过**（预测的失败集合就是实测集合）：
+
+| 测试 | 钉住的东西 |
+|---|---|
+| `eq_38_verifies_and_its_rows_are_named_separately` | 诚实证明过；row1 单独 = `[GhCommitmentMismatch{0}]`；row3 单独 = `[GhEvalRowMismatch]`（forge `y2`）；row4 单独 = `[GhFoldRowMismatch]`（forge `a`） |
+| `the_eta_entry_is_what_carries_eq_37_into_eq_38` | **同一处伪造**在 `η=0` 下只得 `[QFormMismatch]`，`η≠0` 下得 `[QFormMismatch, GhEq38LastRowMismatch{row:0}]` —— `+η·ẽ₁·q⊺` 这一格就是 §5.4.3 的全部改动，且只落在第 0 行 |
+| `a_noncanonical_w_hat_trips_only_the_gh_norm_gate` | `(0,0)→(2,−1)` 保 `G·ŵ`、再 rebind `v`，于是 Eq. (38) 五行全过、只剩 `‖ŵ‖ < b1` 在说话（沿用 `each_def_23_gate_fails_alone` 的手法） |
+| `folded_norm_bound_tracks_the_challenges_and_bites` | 三元挑战下界 = `d·2^γ·(b−1) = 64`（不是 `u64::MAX` 那种空门），诚实 `z` 在界内，越界 `z` 报 `[GhZNotShort, GhFoldRowMismatch, GhEq38LastRowMismatch{0}]` |
+| `finish_accounting_decomposes_fig_6_s_p3_row` | P3 逐件：`µ′+m = 22` 轮、SC(2b) 3520 B、ShiftSC 2112 B、BatchSC 2112 B、2 R_K 4096 B、2 R_F 512 B、1 commitment 8192 B ⇒ **已落地 20,544 B**，到 ∼72 KB 的差额 **51 KB 就是 `Greyhound(2^{µ+k+1}nαd = 268,435,456 个 F 元素)`**；并核了 Fig. 6 自己的算术 43.8×6 + 72 = 334.8 ≈ Fig. 5 的 335 |
+| `a_padding_block_is_pinned_by_step_1a_alone` | 见下面「两条必须改掉的旧断言」第 2 条 |
+
+**没有移植的那一条，以及为什么**：`norm_check_fin_*`（`Π^PE_NC,fin` Step 1 的 `Q_N`
+零检验当真 round 协议跑，`Δ = 2·max(b1,b2)`）。理由写进 `tree_fin` 的「What is *not* here」：
+它的结论就是 Def. 23 的 `‖s1‖∞ < b1`、`s2` 的 `b2` 界，而 `gh_open_report` 已经把这两条
+各自命名并把**开启出来的** witness 直接量了；本装配连 `BatchSC` 都没有（openings 照发），
+所以跑一轮只是多发消息、不多约束。代价也说清了：Fig. 6 那一行里 `SC(2b)` 这一件本模块不发。
+
+**两条必须改掉的旧断言（都是我自己上一轮写下的）**：
+1. `tree_fin` 的模块文档里有 `[`norm_check_fin`]`、`[`gh_prime_report`]` 两个**悬空 intra-doc 链接**
+   ——即文档在宣称一个不存在的能力。`gh_prime_report` 现在真的有了；`norm_check_fin` 改成
+   明写「不跑，因为……」。`cargo doc` 复查：tree_fin 已无 unresolved-link 警告。
+2. 上面第 4 条说「padding block 里的活前缀只有 `tree_finish` 能单独钉住，`tree_fin` 里做不到」。
+   **实测：这个说法在 `tree_fin` 里不成立，但不是因为缺检查。** 我把 padding block（本例 index 1537）
+   改成非零并 re-derive `v_A/v_G` **且** re-derive `OE(2)` 那条腿，得到的是
+   `[BlocksMismatch { at: 1537 }]` —— `PrefixNotZero` 根本不报，因为 Step 2(f) 的门只走**声明块**；
+   真正钉住 padding 的是 Prot. 6 Step 1(a) 的绑定。所以正确的钉子是
+   `a_padding_block_is_pinned_by_step_1a_alone`（已加），而不是「padding 里的前缀单独触发 PrefixNotZero」。
+   **教训**：被删模块的*否定性*断言（「另一个实现里做不到」）也必须重新实测，不能继承。
+
+**装配侧**：`examples/maltese.rs` 现在真的发 `GH′` 的消息并验 Eq. (38)——`Finishing` 多
+`gh_challenges`（P3 的 `C_sp(32,8)`，每块一个）与 `gh_eta`（p.45「η ←$ C」），
+`Scenario` 多 `gh` 字段，`failing()` 多一个 `gh_prime_report` 段与 6 个名字
+（`fin.eq38_commit / row3 / row4 / eta_row / fin.gh_w_short / fin.gh_z_short`），
+`proof_bytes` 把 `ŵ, v, z` 计入，P3 那两行打印改由 `FinishAccounting` 算而不是手算。
+一个坑记下来：`gh_prime_report` 会重发 `QFormMismatch`（row 5 的 `η` 项就是用 `q⊺s1` 写的），
+example 的映射必须给它名字，否则 `_ => panic!` 会在第一个 `y1` 伪造用例上炸——
+这正是「每个 variant 都要有归属」这条纪律在起作用。
+
+**实测收口（2026-09-25 18:2x，最终树 18:3x 复跑）**：
+`cargo run -q --release -p lattice-zk --example maltese`
+exit 0，**54 个 tamper trip 全部 57 个命名检查**（561.32 s；提交前的同一棵树复跑 594.17 s），
+drift 报告为空。
+走到这个数字用了三轮：第一轮在 `y1` 用例上因未映射 `QFormMismatch` 而 panic；
+第二轮报出 5 条 drift，其中 3 条（`b2`-long `s2`、`t*` 换向量、活前缀）是**我的用例自身不一致**——
+它们改了 `s2` 却没重算 `ŵ, v, z`，于是 Eq. (38) 的 row3/row5 跟着响。修法是给这三例补
+`prove_gh`，让「一个把什么都重算一致的证明者」仍然只被它名字里那条方程拒绝
+（`t*` 换向量那例因此回到 `["fin.blocks"]` 单名，比原来强）。
+另外 2 条 drift 是**真级联**，写进期望并给了理由：伪造 `s1` 会同时破 Eq. (38) 第 5 行
+（那一行读 `(c⊺G_{b1,n})·s1`，是重构方程在挑战 `c` 下的第二次读出）；
+`a ↔ b` 转置在 `GH′` 里更早地被**形状**拒绝（`|a| = 2^β α2 ≠ 2^γ = |b|`）。
+lib 侧：`--lib` **660 passed / 0 failed**（653 → 660，新增 7 条），
+`cargo test --workspace` **1345 passed / 0 failed / 19 个二进制**，`protocol_contract` 14/0。
 
