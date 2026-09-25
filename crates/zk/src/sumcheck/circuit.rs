@@ -268,6 +268,42 @@ pub trait Composition<R: MatrixElement, const NC: usize> {
     ) -> Result<(), CircuitError>;
 }
 
+/// The two-oracle product `G(X) = A(X)·B(X)`, which reaches degree exactly 2 and
+/// so needs `NC = 3`.
+///
+/// This is the shape a claim takes when one factor is a **committed** multilinear
+/// table and the other is **public**: Hachi's ring-switching step (eprint
+/// 2026/156, §1.3 p. 7) lifts `Σ_k M_k(X)·z_k(X) = w(X) + (X^d+1)·r(X)` to
+/// `Z_q[X]`, commits to `P := mle[(z′,r′)]`, draws `α ← F_{q^k}`, and is left
+/// with the field inner-product claim
+///
+/// ```text
+/// Σ_{i∈{0,1}^µ} P(i)·Q(i) = V,      Q public,
+/// ```
+///
+/// whose `Q` holds the `α`-powers the substitution produces. Maltese's Eq. (15)
+/// (`Σ_j q̃_subs,j(X)·s̃_j(X)`, p. 31) is a sum of these. `A` is the committed
+/// factor and `B` the public one; the protocol itself does not care which is
+/// which, but the caller's opening obligation does.
+pub struct Product;
+
+impl<R: MatrixElement> Composition<R, 3> for Product {
+    fn compose(
+        &mut self,
+        lines: &[LinePoly<R, 3>],
+        acc: &mut LinePoly<R, 3>,
+    ) -> Result<(), CircuitError> {
+        if lines.len() != 2 {
+            return Err(CircuitError::WrongLength {
+                got: lines.len(),
+                expected: 2,
+            });
+        }
+        acc.add_assign(&lines[0].mul(&lines[1])?);
+        Ok(())
+    }
+}
+
 /// A completed degree-`Δ` sum-check (Def. 9) over `NV` variables, where the
 /// round messages carry `NC = Δ + 1` coefficients.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -278,6 +314,37 @@ pub struct CircuitSumcheckProof<R: MatrixElement, const NV: usize, const NC: usi
     pub point: Vec<R>,
     /// `G(ρ)` — the *circuit* value at `ρ`, Def. 9's output claim.
     pub final_eval: R,
+}
+
+/// The multilinear extension of `table` at `point`: `µ` halvings along the
+/// leading variable, which is the same fold [`prove`] makes internally, so the
+/// two cannot drift.
+///
+/// Exposed because Def. 9's output claim is about the **circuit** at `ρ`, and the
+/// caller's obligation is to tie that claim to its own oracles — which needs this
+/// map over any [`MatrixElement`] domain, an extension field included (that is
+/// exactly what Hachi's substituted claim lives in).
+///
+/// # Panics
+/// If `table.len() != 2^point.len()`: a truncated table would make the fold agree
+/// with the extension at the vertices it never read.
+pub fn multilinear_at<R: MatrixElement>(table: &[R], point: &[R]) -> R {
+    let len = 1usize << point.len();
+    assert_eq!(
+        table.len(),
+        len,
+        "a point of {} variables spans {len} entries, but the table has {}",
+        point.len(),
+        table.len()
+    );
+    let mut cur = table.to_vec();
+    for rho in point {
+        let half = cur.len() / 2;
+        cur = (0..half)
+            .map(|i| cur[i].clone() + rho.clone() * (cur[half + i].clone() - cur[i].clone()))
+            .collect();
+    }
+    cur[0].clone()
 }
 
 /// Squeezes the round challenge, bound to the **whole** message.
@@ -416,6 +483,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use algebra::ring::extension::ExtField;
     use algebra::ring::zq::Zq;
     use algebra::ring::traits::Ring;
 
@@ -430,22 +498,6 @@ mod tests {
         (0..len)
             .map(|i| F::from((base + i as u64 * 7) % 1_000_003))
             .collect()
-    }
-
-    /// `G(X) = a(X)·b(X)` — the bilinear shape of Eq. (15) at one subtree.
-    struct Product;
-
-    impl Composition<F, NC> for Product {
-        fn compose(
-            &mut self,
-            lines: &[LinePoly<F, NC>],
-            acc: &mut LinePoly<F, NC>,
-        ) -> Result<(), CircuitError> {
-            for pair in lines.chunks_exact(2) {
-                acc.add_assign(&pair[0].mul(&pair[1])?);
-            }
-            Ok(())
-        }
     }
 
     /// `G(X) = a(X)·b(X)·c(X)` — needs `NC ≥ 4`, and reports an overflow below
@@ -649,5 +701,119 @@ mod tests {
         assert_eq!(LinePoly::<F, NC>::monomial(x, 2).eval(&F::from(3u64)), x * F::from(9u64));
         assert_eq!(LinePoly::<F, NC>::monomial(x, 5).coeffs, [F::ZERO; NC]);
         assert_eq!(squared.scaled(&hi).coeffs[0], squared.coeffs[0] * hi);
+    }
+
+    /// Hachi's §1.3 step is a product of a committed table and a public one,
+    /// **over the extension field** — that is where its `Õ(k)` verifier comes
+    /// from. This runs [`Product`] there, and pins Def. 9's output form: the
+    /// protocol ends at the circuit value `Ã(ρ)·B̃(ρ)`, not at a claim about a
+    /// table sum, which is the distinction [`crate::sumcheck`] cannot cross.
+    #[test]
+    fn the_product_circuit_proves_an_inner_product_over_an_extension_field() {
+        type E = ExtField<F, 4, 2>;
+        let z = E::z_generator();
+        let a: Vec<E> = vec_at(LEN, 3)
+            .iter()
+            .map(|v| E::from_base(*v))
+            .collect();
+        // Genuinely extension-valued weights: two base coefficients each, so a
+        // silent collapse to the base field would show up as an inequality.
+        let b: Vec<E> = (0..LEN)
+            .map(|i| {
+                E::from_base(F::from(1 + i as u64))
+                    + z.clone() * E::from_base(F::from(7 + 3 * i as u64))
+            })
+            .collect();
+        let claimed: E = (0..LEN).fold(E::zero(), |acc, i| acc + a[i].clone() * b[i].clone());
+        let binding = b"hachi-shaped";
+        let proof =
+            prove::<E, NV, 3, _>(&[&a, &b], &claimed, DOMAIN, binding, &mut Product)
+                .expect("the prover proves a true field inner product");
+        let (rho, final_eval) = verify::<E, NV, 3>(&proof, &claimed, DOMAIN, binding)
+            .expect("the verifier accepts and hands back (ρ, G(ρ))");
+
+        assert_eq!(rho.len(), NV);
+        assert_eq!(final_eval, proof.final_eval);
+        assert_eq!(
+            final_eval,
+            multilinear_at(&a, &rho) * multilinear_at(&b, &rho),
+            "Def. 9's output claim is the circuit evaluated at ρ"
+        );
+    }
+
+    /// [`multilinear_at`] is the map the protocol folds: at a vertex it returns
+    /// the table entry, and at a general point it matches an independent
+    /// `Σ_i U(i)·êq(i,r)` expansion — over the extension field, where the
+    /// coefficients genuinely mix.
+    #[test]
+    fn multilinear_at_agrees_with_the_equality_polynomial_expansion() {
+        type E = ExtField<F, 4, 2>;
+        let z = E::z_generator();
+        let one = E::one();
+        let table: Vec<E> = (0..LEN)
+            .map(|i| {
+                E::from_base(F::from(2 + i as u64))
+                    + z.clone() * E::from_base(F::from(5 * i as u64))
+            })
+            .collect();
+        let point: Vec<E> = (0..NV)
+            .map(|j| {
+                z.clone() * E::from_base(F::from(9 + j as u64))
+                    + E::from_base(F::from(3 + j as u64))
+            })
+            .collect();
+        let mut expect = E::zero();
+        for bits in 0..LEN {
+            let mut weight = one.clone();
+            for j in 0..NV {
+                let factor = if (bits >> (NV - 1 - j)) & 1 == 1 {
+                    point[j].clone()
+                } else {
+                    one.clone() - point[j].clone()
+                };
+                weight = weight * factor;
+            }
+            expect = expect + table[bits].clone() * weight;
+        }
+        assert_eq!(multilinear_at(&table, &point), expect);
+        for bits in 0..LEN {
+            let vertex: Vec<E> = (0..NV)
+                .map(|j| {
+                    if (bits >> (NV - 1 - j)) & 1 == 1 {
+                        one.clone()
+                    } else {
+                        E::zero()
+                    }
+                })
+                .collect();
+            assert_eq!(multilinear_at(&table, &vertex), table[bits], "vertex {bits}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "spans")]
+    fn multilinear_at_refuses_a_table_that_does_not_span_the_point() {
+        let point: Vec<F> = (0..NV - 1).map(|_| F::from(7u64)).collect();
+        let _ = multilinear_at(&vec_at(LEN, 3), &point);
+    }
+
+    /// [`Product`] is exactly two oracles: a third is refused rather than quietly
+    /// paired, and a false claim is refused by the prover itself.
+    #[test]
+    fn the_product_circuit_refuses_a_third_oracle_and_a_false_claim() {
+        let (a, b, c) = (vec_at(LEN, 3), vec_at(LEN, 5), vec_at(LEN, 7));
+        assert_eq!(
+            prove::<F, NV, NC, _>(&[&a, &b, &c], &F::ZERO, DOMAIN, b"", &mut Product),
+            Err(CircuitError::WrongLength {
+                got: 3,
+                expected: 2
+            }),
+            "pairing three oracles would be a different circuit than declared"
+        );
+        let lie = sum_of_products(&[&a, &b]) + F::ONE;
+        assert_eq!(
+            prove::<F, NV, NC, _>(&[&a, &b], &lie, DOMAIN, b"", &mut Product),
+            Err(CircuitError::ClaimMismatch)
+        );
     }
 }
