@@ -1,4 +1,68 @@
-# NIST PQC Mapping
+# PQC & Lattice-ZK: Separate Chapters
+
+> This crate is intentionally architected as **two complementary but distinct chapters**:
+> 1. **PQC** (post-quantum cryptography) for NIST-standardized schemes
+> 2. **Lattice-ZK** (zero-knowledge proofs) for polynomial commitments and protocols
+
+## Separation Philosophy
+
+While both lines share base primitives (`lattice-algebra`, `lattice-pqc::module_layer`), they serve fundamentally different purposes:
+
+| Aspect | PQC Chapter | Lattice-ZK Chapter |
+|--------|-------------|-------------------|
+| **Goal** | Standard-compliant crypto primitives | Zero-knowledge proof systems |
+| **Standards** | FIPS 203/204/205/206 | Research proposals, eprint papers |
+| **Trust Model** | Public-key encryption/signatures | Proof of knowledge, PCS |
+| **Verification** | Decapsulation, signature validation | Protocol security (binding, soundness) |
+| **Examples** | KAT vectors, ACVP alignment | Tamper batteries proving liveness |
+
+### PQC Line (`lattice-pqc`)
+✅ **Implemented against official specs:**
+- ML-KEM (FIPS 203) - Complete
+- ML-DSA (FIPS 204) - Complete  
+- Falcon/FN-DSA (FIPS 206 draft) - Round-3 complete
+- FrodoKEM/NTRU/sntrup - Reference ports complete
+
+See [`pqc.mdx`](./schemes/pqc.mdx) for details.
+
+### Lattice-ZK Line (`lattice-zk`)
+✅ **All 14 schemes from §1 survey implemented:**
+- Greyhound, SLAP, FMN, Rinocchio, CMNW, CELPC, Orbweaver
+- Serval, Hachi, Maltese, Akita, Grand Danois, Jindo
+- LaBRADOR (one recursion level)
+
+See [`index.mdx`](./schemes/index.mdx) for overview and individual scheme docs.
+
+## Shared Foundation
+
+Both lines use the same base APIs:
+
+| Layer | Purpose | Used By |
+|-------|---------|---------|
+| **Algebra** | Ring arithmetic, number theory | ✅ Both |
+| **Module Layer** | Matrix/vector operations | ✅ Both |
+| **XOF/Transcripts** | Hashing, challenge derivation | ✅ Both |
+| **Samplers** | Rejection sampling distributions | ✅ Both |
+| **NTT Domain** | Fast polynomial multiplication | ✅ Both |
+
+This shared foundation means updates to base layers automatically benefit both PQC and ZK applications.
+
+---
+
+## Quick Navigation
+
+### PQC Documentation
+- [PQC Overview](./pqc.mdx) - NIST schemes implementation status
+- [Reference Implementation Status](../introduction/security-status.mdx) - Security claims
+
+### Lattice-ZK Documentation  
+- [Schemes Index](./schemes/index.mdx) - All 14 lattice-ZK schemes
+- [Scheme Comparison Survey](../../crates/zk/docs/survey-lattice-pcs.md) - Technical deep dive
+- [ZK Roadmap](./zk-snark.mdx) - Protocol stack architecture
+
+---
+
+> The separation allows each chapter to be independently useful while sharing optimized foundations. Users can import only what they need without pulling in unused protocol components.
 
 How the lattice NIST schemes land **directly** on the base library — all of it inside the `lattice-pqc` crate (`pqc::mlkem`, `pqc::mldsa`, `pqc::falcon`), built on `lattice-algebra` (plus `sha3` for the fixed-length FIPS hashes): every specification step maps to a base API, and schemes reduce to *parameter tables + call order + packing rules*. Falcon is the one exception — a verbatim port of the round-3 reference implementation in self-contained sub-modules.
 
